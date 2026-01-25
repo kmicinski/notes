@@ -25,3 +25,10 @@ This is a short paper. In mid-January '26, we talked with Remy about Yannakakis'
 
 ## Notes
 
+This article makes a very nice example
+
+```
+Q = R(i, j) ⋈ S(j, k) ⋈ T (k, l) ⋈ U (l, m)
+```
+
+
