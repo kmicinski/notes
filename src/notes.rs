@@ -477,6 +477,77 @@ pub fn get_file_at_commit(
 }
 
 // ============================================================================
+// BibTeX Parsing
+// ============================================================================
+
+#[derive(Debug, Clone, Default)]
+pub struct ParsedBibtex {
+    pub entry_type: String,
+    pub cite_key: String,
+    pub title: Option<String>,
+    pub author: Option<String>,
+    pub year: Option<i32>,
+    pub venue: Option<String>,
+    pub doi: Option<String>,
+}
+
+/// Parse a BibTeX entry string and extract structured fields.
+/// Uses regex-based parsing to avoid additional dependencies.
+pub fn parse_bibtex(bibtex: &str) -> Option<ParsedBibtex> {
+    let bibtex = bibtex.trim();
+    if bibtex.is_empty() {
+        return None;
+    }
+
+    let mut result = ParsedBibtex::default();
+
+    // Parse entry type and cite key: @type{key,
+    let entry_re = regex::Regex::new(r"@(\w+)\s*\{\s*([^,\s]+)").ok()?;
+    if let Some(caps) = entry_re.captures(bibtex) {
+        result.entry_type = caps.get(1)?.as_str().to_lowercase();
+        result.cite_key = caps.get(2)?.as_str().to_string();
+    } else {
+        return None;
+    }
+
+    // Helper to extract a field value
+    fn extract_field(bibtex: &str, field: &str) -> Option<String> {
+        // Match: field = {value} or field = "value" or field = number
+        // Need to escape braces for format! macro: {{ becomes {, }} becomes }
+        let pattern = format!(
+            r#"(?i){}\s*=\s*(?:\{{([^}}]*)\}}|"([^"]*)"|(\d+))"#,
+            regex::escape(field)
+        );
+        let re = regex::Regex::new(&pattern).ok()?;
+        if let Some(caps) = re.captures(bibtex) {
+            // Return first non-None capture group
+            caps.get(1)
+                .or_else(|| caps.get(2))
+                .or_else(|| caps.get(3))
+                .map(|m| m.as_str().trim().to_string())
+        } else {
+            None
+        }
+    }
+
+    result.title = extract_field(bibtex, "title");
+    result.author = extract_field(bibtex, "author");
+    result.doi = extract_field(bibtex, "doi");
+
+    // Parse year
+    if let Some(year_str) = extract_field(bibtex, "year") {
+        result.year = year_str.parse().ok();
+    }
+
+    // Derive venue from journal, booktitle, or howpublished
+    result.venue = extract_field(bibtex, "journal")
+        .or_else(|| extract_field(bibtex, "booktitle"))
+        .or_else(|| extract_field(bibtex, "howpublished"));
+
+    Some(result)
+}
+
+// ============================================================================
 // Bibliography Export
 // ============================================================================
 

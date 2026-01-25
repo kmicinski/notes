@@ -49,6 +49,63 @@ pub struct PaperSource {
 }
 
 // ============================================================================
+// Effective Metadata (derived from BibTeX)
+// ============================================================================
+
+#[derive(Debug, Clone, Default)]
+pub struct EffectivePaperMeta {
+    pub bib_key: String,
+    pub title: Option<String>,
+    pub authors: Option<String>,
+    pub year: Option<i32>,
+    pub venue: Option<String>,
+}
+
+impl PaperMeta {
+    /// Returns effective metadata by preferring BibTeX-derived values over explicit fields.
+    /// This makes BibTeX the single source of truth when present.
+    pub fn effective_metadata(&self, note_title: &str) -> EffectivePaperMeta {
+        use crate::notes::parse_bibtex;
+
+        let mut effective = EffectivePaperMeta {
+            bib_key: self.bib_key.clone(),
+            title: Some(note_title.to_string()),
+            authors: self.authors.clone(),
+            year: self.year,
+            venue: self.venue.clone(),
+        };
+
+        // If we have bibtex, parse it and use those values as primary source
+        if let Some(ref bibtex) = self.bibtex {
+            if let Some(parsed) = parse_bibtex(bibtex) {
+                // Use parsed cite_key if different from stored bib_key
+                if !parsed.cite_key.is_empty() {
+                    effective.bib_key = parsed.cite_key;
+                }
+                // Prefer BibTeX title, fall back to note title
+                if parsed.title.is_some() {
+                    effective.title = parsed.title;
+                }
+                // Prefer BibTeX author
+                if parsed.author.is_some() {
+                    effective.authors = parsed.author;
+                }
+                // Prefer BibTeX year
+                if parsed.year.is_some() {
+                    effective.year = parsed.year;
+                }
+                // Prefer BibTeX venue
+                if parsed.venue.is_some() {
+                    effective.venue = parsed.venue;
+                }
+            }
+        }
+
+        effective
+    }
+}
+
+// ============================================================================
 // Time Tracking
 // ============================================================================
 

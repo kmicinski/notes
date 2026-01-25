@@ -185,76 +185,95 @@ fn render_view(
     notes_dir: &PathBuf,
     logged_in: bool,
 ) -> Html<String> {
-    let mut meta_html = String::from("<dl class=\"meta-block\">");
-    meta_html.push_str(&format!(
-        "<dt>Key:</dt><dd><code>[@{}]</code></dd>",
-        note.key
-    ));
+    let mut meta_html = String::from("<div class=\"meta-block\">");
+
+    // Helper macro for rows
+    fn meta_row(label: &str, value: &str) -> String {
+        format!(
+            r#"<div class="meta-row"><span class="meta-label">{}</span><span class="meta-value">{}</span></div>"#,
+            label, value
+        )
+    }
+
+    meta_html.push_str(&meta_row("Key", &format!("<code>[@{}]</code>", note.key)));
 
     if let Some(date) = note.date {
-        meta_html.push_str(&format!(
-            "<dt>Date:</dt><dd>{}</dd>",
-            date.format("%Y-%m-%d")
-        ));
+        meta_html.push_str(&meta_row("Date", &date.format("%Y-%m-%d").to_string()));
     }
 
     if let NoteType::Paper(ref paper) = note.note_type {
-        meta_html.push_str(&format!(
-            "<dt>Bib Key:</dt><dd><code>{}</code></dd>",
-            paper.bib_key
+        let effective = paper.effective_metadata(&note.title);
+
+        meta_html.push_str(&meta_row(
+            "Cite",
+            &format!("<code>{}</code>", html_escape(&effective.bib_key)),
         ));
-        if let Some(ref authors) = paper.authors {
-            meta_html.push_str(&format!(
-                "<dt>Authors:</dt><dd>{}</dd>",
-                html_escape(authors)
-            ));
+        if let Some(ref authors) = effective.authors {
+            meta_html.push_str(&meta_row("Authors", &html_escape(authors)));
         }
-        if let Some(year) = paper.year {
-            meta_html.push_str(&format!("<dt>Year:</dt><dd>{}</dd>", year));
+        if let Some(year) = effective.year {
+            meta_html.push_str(&meta_row("Year", &year.to_string()));
         }
-        if let Some(ref venue) = paper.venue {
-            meta_html.push_str(&format!("<dt>Venue:</dt><dd>{}</dd>", html_escape(venue)));
+        if let Some(ref venue) = effective.venue {
+            meta_html.push_str(&meta_row("Venue", &html_escape(venue)));
         }
         if !paper.sources.is_empty() {
-            meta_html.push_str("<dt>Sources:</dt><dd>");
+            let mut sources_html = String::new();
             for (i, source) in paper.sources.iter().enumerate() {
                 if i > 0 {
-                    meta_html.push_str(" · ");
+                    sources_html.push_str(" · ");
                 }
                 let link = match source.source_type.as_str() {
                     "arxiv" => format!(
-                        "<a href=\"https://arxiv.org/abs/{}\" target=\"_blank\">arXiv:{}</a>",
-                        html_escape(&source.identifier),
+                        "<a href=\"https://arxiv.org/abs/{}\" target=\"_blank\">arXiv</a>",
                         html_escape(&source.identifier)
                     ),
                     "doi" => format!(
-                        "<a href=\"https://doi.org/{}\" target=\"_blank\">DOI:{}</a>",
-                        html_escape(&source.identifier),
+                        "<a href=\"https://doi.org/{}\" target=\"_blank\">DOI</a>",
                         html_escape(&source.identifier)
                     ),
                     _ => format!(
-                        "<a href=\"{}\" target=\"_blank\">{}</a>",
-                        html_escape(&source.identifier),
+                        "<a href=\"{}\" target=\"_blank\">Link</a>",
                         html_escape(&source.identifier)
                     ),
                 };
-                meta_html.push_str(&link);
+                sources_html.push_str(&link);
             }
-            meta_html.push_str("</dd>");
+            meta_html.push_str(&meta_row("Sources", &sources_html));
         }
     }
 
     if let Some(ref parent_key) = note.parent_key {
         if let Some(parent) = notes_map.get(parent_key) {
-            meta_html.push_str(&format!(
-                "<dt>Parent:</dt><dd><a href=\"/note/{}\">{}</a></dd>",
-                parent_key,
-                html_escape(&parent.title)
+            meta_html.push_str(&meta_row(
+                "Parent",
+                &format!(
+                    "<a href=\"/note/{}\">{}</a>",
+                    parent_key,
+                    html_escape(&parent.title)
+                ),
             ));
         }
     }
 
-    meta_html.push_str("</dl>");
+    meta_html.push_str("</div>");
+
+    // BibTeX block (separate from meta)
+    if let NoteType::Paper(ref paper) = note.note_type {
+        if let Some(ref bibtex) = paper.bibtex {
+            let bibtex_id = format!("bibtex-{}", note.key);
+            meta_html.push_str(&format!(
+                r#"<div class="bibtex-block" onclick="copyBibtex('{}')">
+                    <div class="bibtex-header">
+                        <span>BibTeX</span>
+                        <span class="bibtex-copy-hint" id="{}-hint">Click to copy</span>
+                    </div>
+                    <pre id="{}">{}</pre>
+                </div>"#,
+                bibtex_id, bibtex_id, bibtex_id, html_escape(bibtex)
+            ));
+        }
+    }
 
     let content_with_links = process_crosslinks(&note.raw_content, notes_map);
     let rendered_content = render_markdown(&content_with_links);
@@ -323,8 +342,11 @@ fn render_view(
             r#"<div class="mode-toggle">
                 <button class="active">View</button>
                 <button onclick="window.location.href='/note/{}?edit=true'">Edit</button>
+                <button class="delete-btn" onclick="confirmDelete('{}', '{}')">Delete</button>
             </div>"#,
-            note.key
+            note.key,
+            note.key,
+            html_escape(&note.title).replace('\'', "\\'")
         )
     } else {
         String::new()
@@ -416,6 +438,81 @@ pub async fn save_note(
     }
 
     (StatusCode::OK, "Saved").into_response()
+}
+
+// ============================================================================
+// Note Delete Handler
+// ============================================================================
+
+#[derive(Deserialize)]
+pub struct DeleteNoteBody {
+    pub confirm: bool,
+}
+
+pub async fn delete_note(
+    Path(key): Path<String>,
+    State(state): State<Arc<AppState>>,
+    jar: CookieJar,
+    axum::Json(body): axum::Json<DeleteNoteBody>,
+) -> Response {
+    if !is_logged_in(&jar) {
+        return (StatusCode::UNAUTHORIZED, "Not logged in").into_response();
+    }
+
+    if !body.confirm {
+        return (StatusCode::BAD_REQUEST, "Deletion not confirmed").into_response();
+    }
+
+    let notes_map = state.notes_map();
+
+    let note = match notes_map.get(&key) {
+        Some(n) => n,
+        None => return (StatusCode::NOT_FOUND, "Note not found").into_response(),
+    };
+
+    let full_path = state.notes_dir.join(&note.path);
+    let note_path = note.path.clone();
+    let note_title = note.title.clone();
+
+    // Delete the file
+    if let Err(e) = fs::remove_file(&full_path) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to delete: {}", e),
+        )
+            .into_response();
+    }
+
+    // Git commit the deletion
+    let notes_dir = state.notes_dir.clone();
+    tokio::task::spawn_blocking(move || {
+        let now = chrono::Local::now();
+        let commit_msg = format!(
+            "deleted note '{}': {}",
+            note_title,
+            now.format("%a %b %d, %-I:%M%p")
+        );
+
+        // Stage the deletion
+        let _ = Command::new("git")
+            .args(["rm", "--cached", &note_path.to_string_lossy()])
+            .current_dir(&notes_dir)
+            .output();
+
+        // Also stage the actual file removal
+        let _ = Command::new("git")
+            .args(["add", "-A"])
+            .current_dir(&notes_dir)
+            .output();
+
+        // Commit
+        let _ = Command::new("git")
+            .args(["commit", "-m", &commit_msg])
+            .current_dir(&notes_dir)
+            .output();
+    });
+
+    (StatusCode::OK, "Deleted").into_response()
 }
 
 // ============================================================================

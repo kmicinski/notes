@@ -47,6 +47,8 @@ The Transformer follows an encoder-decoder structure:
 Input -> Encoder Stack -> Decoder Stack -> Output
 ```
 
+asdfasdf
+
 Each encoder layer has:
 - Multi-head self-attention
 - Position-wise feed-forward network

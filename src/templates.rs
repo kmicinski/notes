@@ -220,13 +220,30 @@ h1 { font-size: 1.5rem; }
 
 .meta-block {
     background: var(--accent);
-    padding: 0.75rem 1rem;
+    padding: 0.5rem 0.75rem;
     margin-bottom: 1rem;
     border-radius: 4px;
-    font-size: 0.85rem;
+    font-size: 0.8rem;
+    line-height: 1.4;
 }
-.meta-block dt { font-weight: 600; display: inline; }
-.meta-block dd { display: inline; margin: 0; margin-right: 1.5rem; }
+.meta-block .meta-row {
+    display: flex;
+    gap: 0.5rem;
+}
+.meta-block .meta-label {
+    font-weight: 600;
+    color: var(--base01);
+    min-width: 60px;
+}
+.meta-block .meta-value {
+    color: var(--fg);
+}
+.meta-block code {
+    font-size: 0.75rem;
+    background: var(--bg);
+    padding: 0.1rem 0.3rem;
+    border-radius: 2px;
+}
 
 .time-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 1rem; }
 .time-table th, .time-table td { padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border); }
@@ -425,6 +442,53 @@ h1 { font-size: 1.5rem; }
     display: inline-block;
     margin-bottom: 1rem;
     font-size: 0.9rem;
+}
+
+/* BibTeX Block */
+.bibtex-block {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    margin: 1rem 0;
+    cursor: pointer;
+    transition: border-color 0.2s;
+}
+.bibtex-block:hover {
+    border-color: var(--link);
+}
+.bibtex-header {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.5rem 1rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+}
+.bibtex-copy-hint {
+    font-weight: normal;
+    font-style: italic;
+}
+.bibtex-block pre {
+    margin: 0;
+    padding: 1rem;
+    font-family: "SF Mono", "Consolas", "Liberation Mono", monospace;
+    font-size: 0.8rem;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    background: transparent;
+    border-radius: 0;
+}
+
+/* Delete Button */
+.delete-btn {
+    background: var(--red) !important;
+    color: white !important;
+    border-color: var(--red) !important;
+}
+.delete-btn:hover {
+    background: #b02020 !important;
+    border-color: #b02020 !important;
 }
 
 /* Floating Action Button */
@@ -1050,6 +1114,55 @@ pub fn base_html(title: &str, content: &str, search_query: Option<&str>, logged_
         {content}
     </div>
     {fab}
+    <script>
+    // Copy BibTeX to clipboard
+    function copyBibtex(elementId) {{
+        const pre = document.getElementById(elementId);
+        const hint = document.getElementById(elementId + '-hint');
+        if (!pre) return;
+
+        const text = pre.textContent;
+        navigator.clipboard.writeText(text).then(() => {{
+            if (hint) {{
+                hint.textContent = 'Copied!';
+                setTimeout(() => {{
+                    hint.textContent = 'Click to copy';
+                }}, 2000);
+            }}
+        }}).catch(err => {{
+            console.error('Failed to copy:', err);
+            if (hint) {{
+                hint.textContent = 'Copy failed';
+                setTimeout(() => {{
+                    hint.textContent = 'Click to copy';
+                }}, 2000);
+            }}
+        }});
+    }}
+
+    // Confirm and delete note
+    async function confirmDelete(key, title) {{
+        const confirmed = confirm('Delete "' + title + '"?\n\nThis will remove the note file and create a git commit. You can recover it from git history if needed.');
+        if (!confirmed) return;
+
+        try {{
+            const response = await fetch('/api/note/' + key, {{
+                method: 'DELETE',
+                headers: {{ 'Content-Type': 'application/json' }},
+                body: JSON.stringify({{ confirm: true }})
+            }});
+
+            if (response.ok) {{
+                window.location.href = '/';
+            }} else {{
+                const err = await response.text();
+                alert('Failed to delete: ' + err);
+            }}
+        }} catch (e) {{
+            alert('Error deleting note: ' + e.message);
+        }}
+    }}
+    </script>
 </body>
 </html>"#,
         title = html_escape(title),
@@ -1157,6 +1270,57 @@ pub fn render_editor(note: &Note, _notes_map: &HashMap<String, Note>, _logged_in
             letter-spacing: 0.05em;
         }}
 
+        /* Git Mode Toggle */
+        .git-mode-toggle {{
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.8rem;
+            color: #93a1a1;
+        }}
+        .toggle-switch {{
+            position: relative;
+            display: inline-block;
+            width: 36px;
+            height: 20px;
+        }}
+        .toggle-switch input {{
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }}
+        .toggle-slider {{
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #93a1a1;
+            transition: 0.3s;
+            border-radius: 20px;
+        }}
+        .toggle-slider:before {{
+            position: absolute;
+            content: "";
+            height: 14px;
+            width: 14px;
+            left: 3px;
+            bottom: 3px;
+            background-color: #fdf6e3;
+            transition: 0.3s;
+            border-radius: 50%;
+        }}
+        input:checked + .toggle-slider {{
+            background-color: #859900;
+        }}
+        input:checked + .toggle-slider:before {{
+            transform: translateX(16px);
+        }}
+        #git-mode-label {{
+            min-width: 100px;
+        }}
+
         .editor-status-dot {{
             width: 8px;
             height: 8px;
@@ -1179,6 +1343,13 @@ pub fn render_editor(note: &Note, _notes_map: &HashMap<String, Note>, _logged_in
         <div class="editor-header">
             <h1>{title}</h1>
             <span class="emacs-badge" id="emacs-badge" style="display:none;">EMACS</span>
+            <div class="git-mode-toggle">
+                <label class="toggle-switch">
+                    <input type="checkbox" id="commit-on-save" onchange="toggleGitMode()">
+                    <span class="toggle-slider"></span>
+                </label>
+                <span id="git-mode-label">Commit on type</span>
+            </div>
             <div class="editor-status" id="editor-status">
                 <span class="editor-status-dot"></span>
                 <span id="status-text">Ready</span>
@@ -1199,6 +1370,35 @@ pub fn render_editor(note: &Note, _notes_map: &HashMap<String, Note>, _logged_in
         let hasUnsavedChanges = false;
         const noteKey = "{key}";
         const AUTO_SAVE_DELAY = 90000; // 90 seconds
+
+        // Git mode: 'type' = commit on auto-save, 'save' = only commit on explicit save
+        let gitMode = localStorage.getItem('gitMode') || 'type';
+
+        // Initialize git mode toggle on page load
+        document.addEventListener('DOMContentLoaded', function() {{
+            const toggle = document.getElementById('commit-on-save');
+            const label = document.getElementById('git-mode-label');
+            if (gitMode === 'save') {{
+                toggle.checked = true;
+                label.textContent = 'Commit on save';
+            }} else {{
+                toggle.checked = false;
+                label.textContent = 'Commit on type';
+            }}
+        }});
+
+        function toggleGitMode() {{
+            const toggle = document.getElementById('commit-on-save');
+            const label = document.getElementById('git-mode-label');
+            if (toggle.checked) {{
+                gitMode = 'save';
+                label.textContent = 'Commit on save';
+            }} else {{
+                gitMode = 'type';
+                label.textContent = 'Commit on type';
+            }}
+            localStorage.setItem('gitMode', gitMode);
+        }}
 
         require.config({{ paths: {{ vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' }} }});
 
@@ -1312,7 +1512,8 @@ pub fn render_editor(note: &Note, _notes_map: &HashMap<String, Note>, _logged_in
             if (autoSaveTimer) clearTimeout(autoSaveTimer);
             autoSaveTimer = setTimeout(() => {{
                 if (hasUnsavedChanges) {{
-                    saveNote(true); // auto-save with git commit
+                    // Auto-save: commit only if gitMode is 'type'
+                    saveNote(true, gitMode === 'type');
                 }}
             }}, AUTO_SAVE_DELAY);
         }}
@@ -1324,8 +1525,13 @@ pub fn render_editor(note: &Note, _notes_map: &HashMap<String, Note>, _logged_in
             textEl.textContent = text;
         }}
 
-        async function saveNote(isAutoSave) {{
+        async function saveNote(isAutoSave, shouldCommit) {{
             if (!editor) return;
+
+            // If called with only one arg (explicit save button), always commit
+            if (shouldCommit === undefined) {{
+                shouldCommit = true; // Explicit save always commits
+            }}
 
             const currentContent = editor.getValue();
             if (currentContent === lastSavedContent) {{
@@ -1333,7 +1539,10 @@ pub fn render_editor(note: &Note, _notes_map: &HashMap<String, Note>, _logged_in
                 return;
             }}
 
-            updateStatus('saving', isAutoSave ? 'Auto-saving...' : 'Saving...');
+            const statusMsg = isAutoSave
+                ? (shouldCommit ? 'Auto-saving + committing...' : 'Auto-saving...')
+                : 'Saving + committing...';
+            updateStatus('saving', statusMsg);
 
             try {{
                 const response = await fetch('/api/note/' + noteKey, {{
@@ -1341,7 +1550,7 @@ pub fn render_editor(note: &Note, _notes_map: &HashMap<String, Note>, _logged_in
                     headers: {{ 'Content-Type': 'application/json' }},
                     body: JSON.stringify({{
                         content: currentContent,
-                        auto_commit: isAutoSave
+                        auto_commit: shouldCommit
                     }})
                 }});
 
@@ -1350,7 +1559,8 @@ pub fn render_editor(note: &Note, _notes_map: &HashMap<String, Note>, _logged_in
                     hasUnsavedChanges = false;
                     const now = new Date();
                     const timeStr = now.toLocaleTimeString('en-US', {{ hour: 'numeric', minute: '2-digit' }});
-                    updateStatus('saved', 'Saved at ' + timeStr);
+                    const commitNote = shouldCommit ? ' (committed)' : '';
+                    updateStatus('saved', 'Saved at ' + timeStr + commitNote);
                 }} else {{
                     const err = await response.text();
                     updateStatus('error', 'Save failed');

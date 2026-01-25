@@ -33,7 +33,10 @@ async fn main() {
         .route("/logout", get(handlers::logout))
         // Note routes
         .route("/note/{key}", get(handlers::view_note))
-        .route("/api/note/{key}", axum::routing::post(handlers::save_note))
+        .route(
+            "/api/note/{key}",
+            axum::routing::post(handlers::save_note).delete(handlers::delete_note),
+        )
         .route("/note/{key}/history/{commit}", get(handlers::view_note_history))
         // List routes
         .route("/papers", get(handlers::papers))
