@@ -23,6 +23,7 @@ pub struct Note {
     pub raw_content: String,
     pub full_file_content: String,
     pub modified: DateTime<Utc>,
+    pub pdf: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

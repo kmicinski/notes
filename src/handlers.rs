@@ -9,10 +9,10 @@ use crate::notes::{
     generate_bibliography, generate_key, get_file_at_commit, get_git_history, html_escape,
     parse_frontmatter, process_crosslinks, render_markdown, search_notes,
 };
-use crate::templates::{base_html, render_editor};
+use crate::templates::{base_html, render_editor, render_viewer};
 use crate::AppState;
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Multipart, Path, Query, State},
     http::{header::SET_COOKIE, HeaderMap, StatusCode},
     response::{Html, IntoResponse, Redirect, Response},
 };
@@ -24,6 +24,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Arc;
+use reqwest;
 
 // ============================================================================
 // Index Handler
@@ -351,6 +352,19 @@ fn render_view(
     } else {
         String::new()
     };
+
+    // Use full-page viewer layout if note has a PDF (for split view)
+    if note.pdf.is_some() {
+        return Html(render_viewer(
+            note,
+            &rendered_content,
+            &meta_html,
+            &time_html,
+            &sub_notes_html,
+            &history_html,
+            logged_in,
+        ));
+    }
 
     let full_html = format!(
         r#"<div class="note-header">
@@ -1005,4 +1019,248 @@ pub async fn bibliography(State(state): State<Arc<AppState>>) -> Response {
     let bib = generate_bibliography(&notes);
 
     ([("content-type", "text/plain; charset=utf-8")], bib).into_response()
+}
+
+// ============================================================================
+// PDF Handlers
+// ============================================================================
+
+#[derive(Deserialize)]
+pub struct UploadPdfQuery {
+    pub note_key: String,
+}
+
+pub async fn upload_pdf(
+    Query(query): Query<UploadPdfQuery>,
+    State(state): State<Arc<AppState>>,
+    jar: CookieJar,
+    mut multipart: Multipart,
+) -> Response {
+    if !is_logged_in(&jar) {
+        return (StatusCode::UNAUTHORIZED, "Not logged in").into_response();
+    }
+
+    let notes_map = state.notes_map();
+    let note = match notes_map.get(&query.note_key) {
+        Some(n) => n.clone(),
+        None => return (StatusCode::NOT_FOUND, "Note not found").into_response(),
+    };
+
+    // Get the file from multipart
+    let mut filename = String::new();
+    let mut file_data = Vec::new();
+
+    while let Ok(Some(field)) = multipart.next_field().await {
+        if field.name() == Some("file") {
+            filename = field
+                .file_name()
+                .unwrap_or("document.pdf")
+                .to_string();
+
+            match field.bytes().await {
+                Ok(bytes) => file_data = bytes.to_vec(),
+                Err(e) => return (StatusCode::BAD_REQUEST, format!("Failed to read file: {}", e)).into_response(),
+            }
+            break;
+        }
+    }
+
+    if file_data.is_empty() {
+        return (StatusCode::BAD_REQUEST, "No file uploaded").into_response();
+    }
+
+    // Sanitize filename
+    let safe_filename = sanitize_pdf_filename(&filename);
+    let pdf_path = PathBuf::from("pdfs").join(&safe_filename);
+
+    // Save file
+    if let Err(e) = fs::write(&pdf_path, &file_data) {
+        return (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to save PDF: {}", e)).into_response();
+    }
+
+    // Update note frontmatter
+    if let Err(e) = update_note_pdf_frontmatter(&state.notes_dir, &note.path, &safe_filename) {
+        return (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to update note: {}", e)).into_response();
+    }
+
+    axum::Json(serde_json::json!({
+        "success": true,
+        "filename": safe_filename
+    })).into_response()
+}
+
+#[derive(Deserialize)]
+pub struct DownloadPdfRequest {
+    pub note_key: String,
+    pub url: String,
+}
+
+pub async fn download_pdf_from_url(
+    State(state): State<Arc<AppState>>,
+    jar: CookieJar,
+    axum::Json(body): axum::Json<DownloadPdfRequest>,
+) -> Response {
+    if !is_logged_in(&jar) {
+        return (StatusCode::UNAUTHORIZED, "Not logged in").into_response();
+    }
+
+    let notes_map = state.notes_map();
+    let note = match notes_map.get(&body.note_key) {
+        Some(n) => n.clone(),
+        None => return (StatusCode::NOT_FOUND, "Note not found").into_response(),
+    };
+
+    // Download the PDF
+    let client = reqwest::Client::new();
+    let response = match client.get(&body.url).send().await {
+        Ok(r) => r,
+        Err(e) => return (StatusCode::BAD_REQUEST, format!("Failed to download: {}", e)).into_response(),
+    };
+
+    if !response.status().is_success() {
+        return (StatusCode::BAD_REQUEST, format!("Download failed with status: {}", response.status())).into_response();
+    }
+
+    let bytes = match response.bytes().await {
+        Ok(b) => b,
+        Err(e) => return (StatusCode::BAD_REQUEST, format!("Failed to read response: {}", e)).into_response(),
+    };
+
+    // Generate filename from URL or use bib_key
+    let filename = if let crate::models::NoteType::Paper(ref paper) = note.note_type {
+        format!("{}.pdf", paper.bib_key)
+    } else {
+        let url_path = body.url.split('/').last().unwrap_or("document");
+        if url_path.ends_with(".pdf") {
+            url_path.to_string()
+        } else {
+            format!("{}.pdf", note.key)
+        }
+    };
+
+    let safe_filename = sanitize_pdf_filename(&filename);
+    let pdf_path = PathBuf::from("pdfs").join(&safe_filename);
+
+    // Save file
+    if let Err(e) = fs::write(&pdf_path, &bytes) {
+        return (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to save PDF: {}", e)).into_response();
+    }
+
+    // Update note frontmatter
+    if let Err(e) = update_note_pdf_frontmatter(&state.notes_dir, &note.path, &safe_filename) {
+        return (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to update note: {}", e)).into_response();
+    }
+
+    axum::Json(serde_json::json!({
+        "success": true,
+        "filename": safe_filename
+    })).into_response()
+}
+
+#[derive(Deserialize)]
+pub struct RenamePdfRequest {
+    pub note_key: String,
+    pub new_name: String,
+}
+
+pub async fn rename_pdf(
+    State(state): State<Arc<AppState>>,
+    jar: CookieJar,
+    axum::Json(body): axum::Json<RenamePdfRequest>,
+) -> Response {
+    if !is_logged_in(&jar) {
+        return (StatusCode::UNAUTHORIZED, "Not logged in").into_response();
+    }
+
+    let notes_map = state.notes_map();
+    let note = match notes_map.get(&body.note_key) {
+        Some(n) => n.clone(),
+        None => return (StatusCode::NOT_FOUND, "Note not found").into_response(),
+    };
+
+    let old_filename = match &note.pdf {
+        Some(f) => f.clone(),
+        None => return (StatusCode::BAD_REQUEST, "Note has no PDF attached").into_response(),
+    };
+
+    let new_filename = sanitize_pdf_filename(&body.new_name);
+    let old_path = PathBuf::from("pdfs").join(&old_filename);
+    let new_path = PathBuf::from("pdfs").join(&new_filename);
+
+    if !old_path.exists() {
+        return (StatusCode::NOT_FOUND, "PDF file not found").into_response();
+    }
+
+    if let Err(e) = fs::rename(&old_path, &new_path) {
+        return (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to rename PDF: {}", e)).into_response();
+    }
+
+    // Update note frontmatter
+    if let Err(e) = update_note_pdf_frontmatter(&state.notes_dir, &note.path, &new_filename) {
+        return (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to update note: {}", e)).into_response();
+    }
+
+    axum::Json(serde_json::json!({
+        "success": true,
+        "filename": new_filename
+    })).into_response()
+}
+
+fn sanitize_pdf_filename(filename: &str) -> String {
+    let name = filename.trim();
+    // Remove path separators
+    let name = name.replace(['/', '\\'], "_");
+    // Ensure .pdf extension
+    if name.to_lowercase().ends_with(".pdf") {
+        name
+    } else {
+        format!("{}.pdf", name)
+    }
+}
+
+fn update_note_pdf_frontmatter(notes_dir: &PathBuf, note_path: &PathBuf, pdf_filename: &str) -> Result<(), String> {
+    let full_path = notes_dir.join(note_path);
+    let content = fs::read_to_string(&full_path)
+        .map_err(|e| format!("Failed to read note: {}", e))?;
+
+    let lines: Vec<&str> = content.lines().collect();
+
+    if lines.is_empty() || lines[0].trim() != "---" {
+        return Err("Note has no frontmatter".to_string());
+    }
+
+    // Find end of frontmatter
+    let mut end_idx = None;
+    for (i, line) in lines.iter().enumerate().skip(1) {
+        if line.trim() == "---" {
+            end_idx = Some(i);
+            break;
+        }
+    }
+
+    let end_idx = end_idx.ok_or("Invalid frontmatter")?;
+
+    // Check if pdf: already exists in frontmatter
+    let mut has_pdf = false;
+    let mut new_lines: Vec<String> = Vec::new();
+
+    for (i, line) in lines.iter().enumerate() {
+        if i > 0 && i < end_idx && line.trim().starts_with("pdf:") {
+            has_pdf = true;
+            new_lines.push(format!("pdf: {}", pdf_filename));
+        } else {
+            new_lines.push(line.to_string());
+        }
+    }
+
+    // If pdf: didn't exist, add it before the closing ---
+    if !has_pdf {
+        new_lines.insert(end_idx, format!("pdf: {}", pdf_filename));
+    }
+
+    let new_content = new_lines.join("\n");
+    fs::write(&full_path, new_content)
+        .map_err(|e| format!("Failed to write note: {}", e))?;
+
+    Ok(())
 }

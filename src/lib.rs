@@ -71,7 +71,7 @@ pub use models::{
 
 pub use notes::{
     extract_references, generate_bibliography, generate_key, get_file_at_commit, get_git_history,
-    html_escape, js_escape, load_all_notes, load_note, parse_bibtex, parse_frontmatter,
+    html_escape, load_all_notes, load_note, parse_bibtex, parse_frontmatter,
     process_crosslinks, render_markdown, search_notes, Frontmatter, ParsedBibtex,
 };
 

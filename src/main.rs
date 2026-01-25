@@ -13,6 +13,7 @@
 
 use axum::{routing::get, Router};
 use std::sync::Arc;
+use tower_http::services::ServeDir;
 
 use notes::{auth, graph, handlers, smart_add, AppState, NOTES_DIR};
 
@@ -22,6 +23,9 @@ use notes::{auth, graph, handlers, smart_add, AppState, NOTES_DIR};
 
 #[tokio::main]
 async fn main() {
+    // Create pdfs directory if it doesn't exist
+    std::fs::create_dir_all("pdfs").expect("Failed to create pdfs directory");
+
     let state = Arc::new(AppState::new());
 
     let app = Router::new()
@@ -50,6 +54,11 @@ async fn main() {
         .route("/api/smart-add/attach", axum::routing::post(smart_add::smart_add_attach))
         // Export routes
         .route("/bibliography.bib", get(handlers::bibliography))
+        // PDF routes
+        .nest_service("/pdfs", ServeDir::new("pdfs"))
+        .route("/api/pdf/upload", axum::routing::post(handlers::upload_pdf))
+        .route("/api/pdf/download-url", axum::routing::post(handlers::download_pdf_from_url))
+        .route("/api/pdf/rename", axum::routing::post(handlers::rename_pdf))
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3000")

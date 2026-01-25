@@ -5,7 +5,8 @@
 
 use crate::auth::is_auth_enabled;
 use crate::models::Note;
-use crate::notes::{html_escape, js_escape};
+use crate::notes::html_escape;
+use serde::Serialize;
 use std::collections::HashMap;
 
 // ============================================================================
@@ -463,7 +464,6 @@ h1 { font-size: 1.5rem; }
     font-size: 0.8rem;
     font-weight: 600;
     color: var(--muted);
-    border-bottom: 1px solid var(--border);
 }
 .bibtex-copy-hint {
     font-weight: normal;
@@ -471,13 +471,21 @@ h1 { font-size: 1.5rem; }
 }
 .bibtex-block pre {
     margin: 0;
-    padding: 1rem;
+    padding: 0 1rem;
     font-family: "SF Mono", "Consolas", "Liberation Mono", monospace;
     font-size: 0.8rem;
     white-space: pre-wrap;
     word-wrap: break-word;
     background: transparent;
     border-radius: 0;
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease, padding 0.3s ease;
+}
+.bibtex-block:hover pre {
+    max-height: 500px;
+    padding: 1rem;
+    border-top: 1px solid var(--border);
 }
 
 /* Delete Button */
@@ -1175,8 +1183,44 @@ pub fn base_html(title: &str, content: &str, search_query: Option<&str>, logged_
 // Editor Template
 // ============================================================================
 
-pub fn render_editor(note: &Note, _notes_map: &HashMap<String, Note>, _logged_in: bool) -> String {
-    let content_escaped = js_escape(&note.full_file_content);
+#[derive(Serialize)]
+struct NoteSuggestion {
+    key: String,
+    title: String,
+}
+
+pub fn render_editor(note: &Note, notes_map: &HashMap<String, Note>, _logged_in: bool) -> String {
+    // Use serde_json for proper escaping
+    let content_json = serde_json::to_string(&note.full_file_content)
+        .unwrap_or_else(|_| "\"\"".to_string());
+
+    // PDF handling
+    let pdf_filename = note.pdf.as_deref().unwrap_or("");
+    let pdf_filename_json = serde_json::to_string(pdf_filename)
+        .unwrap_or_else(|_| "\"\"".to_string());
+
+    let pdf_status_html = if let Some(ref pdf) = note.pdf {
+        format!(
+            r#"<a href="/pdfs/{}" target="_blank" class="pdf-link" title="Open PDF in new tab">📄 {}</a>
+               <button class="pdf-toggle-btn" id="pdf-toggle-btn" onclick="togglePdfViewer()" title="Toggle PDF viewer">View</button>
+               <button class="pdf-toggle-btn" onclick="addPageNote()" title="Add note for current PDF page">+ Page Note</button>"#,
+            html_escape(pdf),
+            html_escape(pdf)
+        )
+    } else {
+        r#"<button class="pdf-toggle-btn" onclick="openPdfUpload()">Upload PDF</button>"#.to_string()
+    };
+
+    // Build note suggestions for autocomplete using serde_json
+    let suggestions: Vec<NoteSuggestion> = notes_map
+        .iter()
+        .map(|(key, n)| NoteSuggestion {
+            key: key.clone(),
+            title: n.title.clone(),
+        })
+        .collect();
+    let notes_json = serde_json::to_string(&suggestions)
+        .unwrap_or_else(|_| "[]".to_string());
 
     format!(
         r##"<!DOCTYPE html>
@@ -1263,7 +1307,7 @@ pub fn render_editor(note: &Note, _notes_map: &HashMap<String, Note>, _logged_in
             font-size: 0.65rem;
             font-weight: 600;
             padding: 0.2rem 0.4rem;
-            background: #6c71c4; /* solarized violet */
+            background: #6c71c4;
             color: #fdf6e3;
             border-radius: 3px;
             font-family: monospace;
@@ -1321,6 +1365,35 @@ pub fn render_editor(note: &Note, _notes_map: &HashMap<String, Note>, _logged_in
             min-width: 100px;
         }}
 
+        /* Font Size Controls - Stylized A icons */
+        .font-size-controls {{
+            display: flex;
+            align-items: baseline;
+            gap: 0.15rem;
+            font-family: Georgia, 'Times New Roman', serif;
+            color: #93a1a1;
+        }}
+        .font-size-controls label {{
+            cursor: pointer;
+            padding: 0.2rem 0.35rem;
+            border-radius: 3px;
+            transition: all 0.15s ease;
+            line-height: 1;
+        }}
+        .font-size-controls label:hover {{
+            color: #657b83;
+        }}
+        .font-size-controls input[type="radio"] {{
+            display: none;
+        }}
+        .font-size-controls input[type="radio"]:checked + span {{
+            color: #268bd2;
+        }}
+        .font-size-controls .size-tiny {{ font-size: 0.7rem; }}
+        .font-size-controls .size-small {{ font-size: 0.85rem; }}
+        .font-size-controls .size-normal {{ font-size: 1rem; font-weight: 500; }}
+        .font-size-controls .size-large {{ font-size: 1.2rem; font-weight: 500; }}
+
         .editor-status-dot {{
             width: 8px;
             height: 8px;
@@ -1329,12 +1402,216 @@ pub fn render_editor(note: &Note, _notes_map: &HashMap<String, Note>, _logged_in
             flex-shrink: 0;
         }}
 
-        #monaco-editor {{
+        /* Split Layout */
+        .editor-main {{
             position: absolute;
             top: 48px;
             left: 0;
             right: 0;
             bottom: 0;
+        }}
+
+        #monaco-editor {{
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            transition: right 0.2s ease;
+        }}
+
+        #monaco-editor.with-pdf {{
+            right: 50%;
+        }}
+
+        /* PDF Viewer - Simple iframe, no toolbar */
+        #pdf-viewer-pane {{
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 50%;
+            bottom: 0;
+            display: none;
+            border-left: 1px solid #93a1a1;
+            background: #586e75;
+        }}
+        #pdf-viewer-pane.active {{
+            display: block;
+        }}
+
+        #pdf-iframe {{
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: white;
+        }}
+
+        /* PDF Status in header */
+        .pdf-status {{
+            font-size: 0.75rem;
+            color: #93a1a1;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }}
+        .pdf-status .pdf-link {{
+            color: #268bd2;
+            text-decoration: none;
+            font-size: 0.8rem;
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+            transition: background 0.15s;
+        }}
+        .pdf-status .pdf-link:hover {{
+            background: #eee8d5;
+            text-decoration: none;
+        }}
+        .pdf-status .pdf-toggle-btn {{
+            padding: 0.2rem 0.5rem;
+            border: 1px solid #93a1a1;
+            border-radius: 3px;
+            background: transparent;
+            color: #93a1a1;
+            cursor: pointer;
+            font-size: 0.75rem;
+        }}
+        .pdf-status .pdf-toggle-btn:hover {{
+            background: #eee8d5;
+        }}
+        .pdf-status .pdf-toggle-btn.active {{
+            background: #268bd2;
+            color: #fdf6e3;
+            border-color: #268bd2;
+        }}
+
+        /* PDF Upload Modal */
+        .pdf-upload-overlay {{
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.6);
+            z-index: 2000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }}
+        .pdf-upload-overlay.active {{
+            display: flex;
+        }}
+        .pdf-upload-modal {{
+            background: #fdf6e3;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        }}
+        .pdf-upload-header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid #eee8d5;
+        }}
+        .pdf-upload-header h3 {{
+            margin: 0;
+            font-size: 1.1rem;
+            color: #657b83;
+        }}
+        .pdf-upload-close {{
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: #93a1a1;
+            padding: 0;
+            line-height: 1;
+        }}
+        .pdf-upload-close:hover {{
+            color: #657b83;
+        }}
+        .pdf-upload-body {{
+            padding: 1.5rem;
+        }}
+        .pdf-dropzone {{
+            border: 2px dashed #93a1a1;
+            border-radius: 8px;
+            padding: 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color 0.2s, background 0.2s;
+            margin-bottom: 1rem;
+        }}
+        .pdf-dropzone:hover,
+        .pdf-dropzone.dragover {{
+            border-color: #268bd2;
+            background: #eee8d5;
+        }}
+        .pdf-dropzone-icon {{
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+        }}
+        .pdf-dropzone-text {{
+            font-size: 0.9rem;
+            color: #657b83;
+        }}
+        .pdf-dropzone-hint {{
+            font-size: 0.8rem;
+            color: #93a1a1;
+            margin-top: 0.5rem;
+        }}
+        .pdf-upload-divider {{
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin: 1rem 0;
+            color: #93a1a1;
+            font-size: 0.8rem;
+        }}
+        .pdf-upload-divider::before,
+        .pdf-upload-divider::after {{
+            content: '';
+            flex: 1;
+            border-top: 1px solid #eee8d5;
+        }}
+        .pdf-url-input {{
+            display: flex;
+            gap: 0.5rem;
+        }}
+        .pdf-url-input input {{
+            flex: 1;
+            padding: 0.6rem 0.8rem;
+            border: 1px solid #93a1a1;
+            border-radius: 4px;
+            background: #fdf6e3;
+            color: #657b83;
+            font-size: 0.9rem;
+        }}
+        .pdf-url-input input::placeholder {{
+            color: #93a1a1;
+        }}
+        .pdf-upload-status {{
+            margin-top: 1rem;
+            padding: 0.75rem;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            display: none;
+        }}
+        .pdf-upload-status.active {{
+            display: block;
+        }}
+        .pdf-upload-status.loading {{
+            background: #eee8d5;
+            color: #657b83;
+        }}
+        .pdf-upload-status.success {{
+            background: #d5e8d5;
+            color: #2d6a2d;
+        }}
+        .pdf-upload-status.error {{
+            background: #f5d5d5;
+            color: #a02020;
         }}
     </style>
 </head>
@@ -1343,6 +1620,12 @@ pub fn render_editor(note: &Note, _notes_map: &HashMap<String, Note>, _logged_in
         <div class="editor-header">
             <h1>{title}</h1>
             <span class="emacs-badge" id="emacs-badge" style="display:none;">EMACS</span>
+            <div class="font-size-controls" title="Font size">
+                <label><input type="radio" name="font-size" value="11" onchange="setFontSize(11)"><span class="size-tiny">A</span></label>
+                <label><input type="radio" name="font-size" value="13" onchange="setFontSize(13)"><span class="size-small">A</span></label>
+                <label><input type="radio" name="font-size" value="15" onchange="setFontSize(15)"><span class="size-normal">A</span></label>
+                <label><input type="radio" name="font-size" value="18" onchange="setFontSize(18)"><span class="size-large">A</span></label>
+            </div>
             <div class="git-mode-toggle">
                 <label class="toggle-switch">
                     <input type="checkbox" id="commit-on-save" onchange="toggleGitMode()">
@@ -1355,9 +1638,39 @@ pub fn render_editor(note: &Note, _notes_map: &HashMap<String, Note>, _logged_in
                 <span id="status-text">Ready</span>
             </div>
             <button class="btn primary" onclick="saveNote(false)">Save</button>
+            <div class="pdf-status" id="pdf-status">{pdf_status_html}</div>
             <a href="/note/{key}" class="btn">Done</a>
         </div>
-        <div id="monaco-editor"></div>
+        <div class="editor-main">
+            <div id="monaco-editor"></div>
+            <div id="pdf-viewer-pane">
+                <iframe id="pdf-iframe" src=""></iframe>
+            </div>
+        </div>
+
+        <!-- PDF Upload Modal -->
+        <div class="pdf-upload-overlay" id="pdf-upload-overlay" onclick="if(event.target===this)closePdfUpload()">
+            <div class="pdf-upload-modal">
+                <div class="pdf-upload-header">
+                    <h3>Upload PDF</h3>
+                    <button class="pdf-upload-close" onclick="closePdfUpload()">&times;</button>
+                </div>
+                <div class="pdf-upload-body">
+                    <div class="pdf-dropzone" id="pdf-dropzone" onclick="document.getElementById('pdf-file-input').click()">
+                        <div class="pdf-dropzone-icon">📄</div>
+                        <div class="pdf-dropzone-text">Click or drag PDF here</div>
+                        <div class="pdf-dropzone-hint">PDF files only, max 50MB</div>
+                        <input type="file" id="pdf-file-input" accept=".pdf" style="display:none" onchange="handlePdfFileSelect(event)">
+                    </div>
+                    <div class="pdf-upload-divider">or enter URL</div>
+                    <div class="pdf-url-input">
+                        <input type="text" id="pdf-url-input" placeholder="https://arxiv.org/pdf/...">
+                        <button class="btn" onclick="downloadPdfFromUrl()">Download</button>
+                    </div>
+                    <div class="pdf-upload-status" id="pdf-upload-status"></div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
@@ -1365,7 +1678,7 @@ pub fn render_editor(note: &Note, _notes_map: &HashMap<String, Note>, _logged_in
     <script>
         let editor;
         let emacsMode;
-        let lastSavedContent = `{content}`;
+        let lastSavedContent = {content_json};
         let autoSaveTimer = null;
         let hasUnsavedChanges = false;
         const noteKey = "{key}";
@@ -1374,8 +1687,348 @@ pub fn render_editor(note: &Note, _notes_map: &HashMap<String, Note>, _logged_in
         // Git mode: 'type' = commit on auto-save, 'save' = only commit on explicit save
         let gitMode = localStorage.getItem('gitMode') || 'type';
 
-        // Initialize git mode toggle on page load
+        // PDF filename
+        let pdfFilename = {pdf_filename_json};
+
+        // Notes for autocomplete
+        const allNotes = {notes_json};
+
+        // Font size from localStorage
+        let currentFontSize = parseInt(localStorage.getItem('editorFontSize')) || 15;
+
+        function setFontSize(size) {{
+            currentFontSize = size;
+            localStorage.setItem('editorFontSize', size);
+            if (editor) {{
+                editor.updateOptions({{ fontSize: size }});
+            }}
+        }}
+
+        function initFontSizeControls() {{
+            const radios = document.querySelectorAll('input[name="font-size"]');
+            radios.forEach(radio => {{
+                if (parseInt(radio.value) === currentFontSize) {{
+                    radio.checked = true;
+                }}
+            }});
+        }}
+
+        // =====================================================================
+        // PDF Viewer Functions (Simple iframe-based)
+        // =====================================================================
+
+        function showPdfViewer() {{
+            if (!pdfFilename) return;
+            const pane = document.getElementById('pdf-viewer-pane');
+            const monacoDiv = document.getElementById('monaco-editor');
+            const iframe = document.getElementById('pdf-iframe');
+            iframe.src = '/pdfs/' + encodeURIComponent(pdfFilename);
+            pane.classList.add('active');
+            if (monacoDiv) monacoDiv.classList.add('with-pdf');
+            const btn = document.getElementById('pdf-toggle-btn');
+            if (btn) btn.classList.add('active');
+            sessionStorage.setItem('pdf-visible-' + noteKey, 'true');
+            // Trigger Monaco layout update after transition
+            setTimeout(function() {{ if (editor) editor.layout(); }}, 250);
+        }}
+
+        function hidePdfViewer() {{
+            const pane = document.getElementById('pdf-viewer-pane');
+            const monacoDiv = document.getElementById('monaco-editor');
+            const iframe = document.getElementById('pdf-iframe');
+            iframe.src = '';
+            pane.classList.remove('active');
+            if (monacoDiv) monacoDiv.classList.remove('with-pdf');
+            const btn = document.getElementById('pdf-toggle-btn');
+            if (btn) btn.classList.remove('active');
+            sessionStorage.setItem('pdf-visible-' + noteKey, 'false');
+            // Trigger Monaco layout update after transition
+            setTimeout(function() {{ if (editor) editor.layout(); }}, 250);
+        }}
+
+        function togglePdfViewer() {{
+            const pane = document.getElementById('pdf-viewer-pane');
+            if (pane.classList.contains('active')) {{
+                hidePdfViewer();
+            }} else {{
+                showPdfViewer();
+            }}
+        }}
+
+        function openPdfInNewTab() {{
+            if (pdfFilename) {{
+                window.open('/pdfs/' + encodeURIComponent(pdfFilename), '_blank');
+            }}
+        }}
+
+        // =====================================================================
+        // Page-Based Annotation
+        // =====================================================================
+
+        function getCurrentPdfPage() {{
+            try {{
+                const iframe = document.getElementById('pdf-iframe');
+                if (!iframe || !iframe.contentWindow) return null;
+                const hash = iframe.contentWindow.location.hash;
+                const match = hash.match(/page=(\d+)/);
+                return match ? parseInt(match[1], 10) : 1;
+            }} catch (e) {{
+                // Cross-origin or other error
+                return null;
+            }}
+        }}
+
+        function addPageNote() {{
+            const page = getCurrentPdfPage();
+            if (page === null) {{
+                alert('Could not detect PDF page. Make sure the PDF viewer is open.');
+                return;
+            }}
+
+            const content = editor.getValue();
+            const h2 = String.fromCharCode(35, 35);
+            const h3 = String.fromCharCode(35, 35, 35);
+            const nl = String.fromCharCode(10);
+
+            // Look for existing page section
+            const pageHeading = h3 + ' Page ' + page;
+            const pageIdx = content.indexOf(pageHeading);
+
+            if (pageIdx !== -1) {{
+                // Find end of this page section (next h3 or h2, or end)
+                const afterPage = content.substring(pageIdx + pageHeading.length);
+                const nextH3 = afterPage.indexOf(nl + h3 + ' ');
+                const nextH2 = afterPage.indexOf(nl + h2 + ' ');
+
+                let insertAt;
+                if (nextH3 !== -1 && (nextH2 === -1 || nextH3 < nextH2)) {{
+                    insertAt = pageIdx + pageHeading.length + nextH3;
+                }} else if (nextH2 !== -1) {{
+                    insertAt = pageIdx + pageHeading.length + nextH2;
+                }} else {{
+                    insertAt = content.length;
+                }}
+
+                // Insert a new bullet point
+                const annotation = nl + '- ';
+                insertAnnotation(insertAt, annotation);
+            }} else {{
+                // Need to create page section - find or create Paper Notes first
+                const paperNotesHeading = h2 + ' Paper Notes';
+                let paperIdx = content.indexOf(paperNotesHeading);
+
+                if (paperIdx === -1) {{
+                    // Create Paper Notes section at end
+                    const newSection = nl + nl + paperNotesHeading + nl + nl + pageHeading + nl + nl + '- ';
+                    insertAnnotation(content.length, newSection);
+                }} else {{
+                    // Find where to insert the new page section (keep pages sorted)
+                    const afterPaperNotes = content.substring(paperIdx + paperNotesHeading.length);
+
+                    // Find all existing page headings and their positions
+                    let insertPos = paperIdx + paperNotesHeading.length;
+                    let foundSpot = false;
+
+                    // Look for next h2 section (end of Paper Notes)
+                    const nextH2 = afterPaperNotes.indexOf(nl + h2 + ' ');
+                    const searchEnd = nextH2 !== -1 ? nextH2 : afterPaperNotes.length;
+
+                    // Find existing page sections
+                    const pageRegex = new RegExp(h3.replace(/\x23/g, '\\\\x23') + ' Page (\\\\d+)', 'g');
+                    let match;
+                    const searchArea = afterPaperNotes.substring(0, searchEnd);
+
+                    while ((match = pageRegex.exec(searchArea)) !== null) {{
+                        const existingPage = parseInt(match[1], 10);
+                        if (existingPage > page) {{
+                            // Insert before this page
+                            insertPos = paperIdx + paperNotesHeading.length + match.index;
+                            foundSpot = true;
+                            break;
+                        }}
+                    }}
+
+                    if (!foundSpot) {{
+                        // Insert at end of Paper Notes section
+                        if (nextH2 !== -1) {{
+                            insertPos = paperIdx + paperNotesHeading.length + nextH2;
+                        }} else {{
+                            insertPos = content.length;
+                        }}
+                    }}
+
+                    const annotation = nl + nl + pageHeading + nl + nl + '- ';
+                    insertAnnotation(insertPos, annotation);
+                }}
+            }}
+        }}
+
+        function insertAnnotation(position, text) {{
+            const model = editor.getModel();
+            const pos = model.getPositionAt(position);
+
+            editor.executeEdits('annotation', [{{
+                range: new monaco.Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column),
+                text: text,
+                forceMoveMarkers: true
+            }}]);
+
+            // Move cursor to end of inserted annotation
+            const newPos = model.getPositionAt(position + text.length);
+            editor.setPosition(newPos);
+            editor.focus();
+
+            // Mark as unsaved
+            hasUnsavedChanges = true;
+            updateStatus('pending', 'Unsaved changes');
+            scheduleAutoSave();
+        }}
+
+        // =====================================================================
+        // PDF Upload Functions
+        // =====================================================================
+
+        function openPdfUpload() {{
+            document.getElementById('pdf-upload-overlay').classList.add('active');
+            document.getElementById('pdf-url-input').value = '';
+            document.getElementById('pdf-upload-status').classList.remove('active');
+        }}
+
+        function closePdfUpload() {{
+            document.getElementById('pdf-upload-overlay').classList.remove('active');
+        }}
+
+        // Drag and drop handling
         document.addEventListener('DOMContentLoaded', function() {{
+            const dropzone = document.getElementById('pdf-dropzone');
+            if (dropzone) {{
+                dropzone.addEventListener('dragover', (e) => {{
+                    e.preventDefault();
+                    dropzone.classList.add('dragover');
+                }});
+                dropzone.addEventListener('dragleave', () => {{
+                    dropzone.classList.remove('dragover');
+                }});
+                dropzone.addEventListener('drop', (e) => {{
+                    e.preventDefault();
+                    dropzone.classList.remove('dragover');
+                    const files = e.dataTransfer.files;
+                    if (files.length > 0) {{
+                        uploadPdfFile(files[0]);
+                    }}
+                }});
+            }}
+        }});
+
+        function handlePdfFileSelect(event) {{
+            const files = event.target.files;
+            if (files.length > 0) {{
+                uploadPdfFile(files[0]);
+            }}
+        }}
+
+        async function uploadPdfFile(file) {{
+            if (!file.name.toLowerCase().endsWith('.pdf')) {{
+                showUploadStatus('error', 'Please select a PDF file');
+                return;
+            }}
+
+            if (file.size > 50 * 1024 * 1024) {{
+                showUploadStatus('error', 'File too large (max 50MB)');
+                return;
+            }}
+
+            showUploadStatus('loading', 'Uploading...');
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {{
+                const response = await fetch('/api/pdf/upload?note_key=' + noteKey, {{
+                    method: 'POST',
+                    body: formData
+                }});
+
+                const result = await response.json();
+
+                if (result.success) {{
+                    showUploadStatus('success', 'Uploaded: ' + result.filename);
+                    pdfFilename = result.filename;
+
+                    // Update the PDF status display
+                    const pdfStatus = document.getElementById('pdf-status');
+                    pdfStatus.innerHTML = `
+                        <a href="/pdfs/${{encodeURIComponent(result.filename)}}" target="_blank">${{result.filename}}</a>
+                        <button class="pdf-toggle-btn" id="pdf-toggle-btn" onclick="togglePdfViewer()">View</button>
+                    `;
+
+                    // Close modal and show PDF
+                    setTimeout(() => {{
+                        closePdfUpload();
+                        showPdfViewer();
+                    }}, 1000);
+                }} else {{
+                    showUploadStatus('error', result.error || 'Upload failed');
+                }}
+            }} catch (e) {{
+                showUploadStatus('error', 'Upload failed: ' + e.message);
+            }}
+        }}
+
+        async function downloadPdfFromUrl() {{
+            const url = document.getElementById('pdf-url-input').value.trim();
+            if (!url) {{
+                showUploadStatus('error', 'Please enter a URL');
+                return;
+            }}
+
+            showUploadStatus('loading', 'Downloading...');
+
+            try {{
+                const response = await fetch('/api/pdf/download-url', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{ note_key: noteKey, url: url }})
+                }});
+
+                const result = await response.json();
+
+                if (result.success) {{
+                    showUploadStatus('success', 'Downloaded: ' + result.filename);
+                    pdfFilename = result.filename;
+
+                    // Update the PDF status display
+                    const pdfStatus = document.getElementById('pdf-status');
+                    pdfStatus.innerHTML = `
+                        <a href="/pdfs/${{encodeURIComponent(result.filename)}}" target="_blank">${{result.filename}}</a>
+                        <button class="pdf-toggle-btn" id="pdf-toggle-btn" onclick="togglePdfViewer()">View</button>
+                    `;
+
+                    // Close modal and show PDF
+                    setTimeout(() => {{
+                        closePdfUpload();
+                        showPdfViewer();
+                    }}, 1000);
+                }} else {{
+                    showUploadStatus('error', result.error || 'Download failed');
+                }}
+            }} catch (e) {{
+                showUploadStatus('error', 'Download failed: ' + e.message);
+            }}
+        }}
+
+        function showUploadStatus(type, message) {{
+            const status = document.getElementById('pdf-upload-status');
+            status.className = 'pdf-upload-status active ' + type;
+            status.textContent = message;
+        }}
+
+        // Initialize controls on page load
+        document.addEventListener('DOMContentLoaded', function() {{
+            // Font size controls
+            initFontSizeControls();
+
+            // Git mode toggle
             const toggle = document.getElementById('commit-on-save');
             const label = document.getElementById('git-mode-label');
             if (gitMode === 'save') {{
@@ -1384,6 +2037,11 @@ pub fn render_editor(note: &Note, _notes_map: &HashMap<String, Note>, _logged_in
             }} else {{
                 toggle.checked = false;
                 label.textContent = 'Commit on type';
+            }}
+
+            // Restore PDF visibility from session storage
+            if (pdfFilename && sessionStorage.getItem('pdf-visible-' + noteKey) === 'true') {{
+                showPdfViewer();
             }}
         }});
 
@@ -1436,10 +2094,10 @@ pub fn render_editor(note: &Note, _notes_map: &HashMap<String, Note>, _logged_in
             }});
 
             editor = monaco.editor.create(document.getElementById('monaco-editor'), {{
-                value: `{content}`,
+                value: {content_json},
                 language: 'markdown',
                 theme: 'solarized-light',
-                fontSize: 15,
+                fontSize: currentFontSize,
                 lineNumbers: 'on',
                 wordWrap: 'on',
                 minimap: {{ enabled: false }},
@@ -1457,6 +2115,92 @@ pub fn render_editor(note: &Note, _notes_map: &HashMap<String, Note>, _logged_in
                 renderLineHighlight: 'line',
                 occurrencesHighlight: 'off',
                 folding: false,
+                quickSuggestions: {{ other: true, comments: false, strings: true }},
+                suggestOnTriggerCharacters: true,
+            }});
+
+            // Register note reference completion provider
+            monaco.languages.registerCompletionItemProvider('markdown', {{
+                triggerCharacters: ['@', '['],
+                provideCompletionItems: function(model, position) {{
+                    const textUntilPosition = model.getValueInRange({{
+                        startLineNumber: position.lineNumber,
+                        startColumn: 1,
+                        endLineNumber: position.lineNumber,
+                        endColumn: position.column
+                    }});
+
+                    // Check if we're in a [@...] context
+                    const match = textUntilPosition.match(/\[@([^\]]*)$/);
+                    if (!match) {{
+                        return {{ suggestions: [] }};
+                    }}
+
+                    const prefix = match[1].toLowerCase();
+                    const wordRange = {{
+                        startLineNumber: position.lineNumber,
+                        startColumn: position.column - match[1].length,
+                        endLineNumber: position.lineNumber,
+                        endColumn: position.column
+                    }};
+
+                    const suggestions = allNotes
+                        .filter(note => {{
+                            const titleLower = note.title.toLowerCase();
+                            const keyLower = note.key.toLowerCase();
+                            return titleLower.includes(prefix) || keyLower.includes(prefix);
+                        }})
+                        .map(note => ({{
+                            label: note.title,
+                            kind: monaco.languages.CompletionItemKind.Reference,
+                            detail: '[@' + note.key + ']',
+                            insertText: note.key + ']',
+                            range: wordRange,
+                            sortText: note.title.toLowerCase(),
+                            filterText: note.title + ' ' + note.key
+                        }}));
+
+                    return {{ suggestions: suggestions }};
+                }}
+            }});
+
+            // Register hover provider to show note titles for [@key] references
+            monaco.languages.registerHoverProvider('markdown', {{
+                provideHover: function(model, position) {{
+                    const line = model.getLineContent(position.lineNumber);
+                    // Find all [@...] references on this line
+                    const regex = /\[@([^\]]+)\]/g;
+                    let match;
+                    while ((match = regex.exec(line)) !== null) {{
+                        const startCol = match.index + 1;
+                        const endCol = match.index + match[0].length + 1;
+                        if (position.column >= startCol && position.column <= endCol) {{
+                            const key = match[1];
+                            const note = allNotes.find(n => n.key === key);
+                            if (note) {{
+                                return {{
+                                    range: new monaco.Range(
+                                        position.lineNumber, startCol,
+                                        position.lineNumber, endCol
+                                    ),
+                                    contents: [
+                                        {{ value: '**' + note.title + '**' }},
+                                        {{ value: '_Click to open: [' + note.key + '](/note/' + note.key + ')_' }}
+                                    ]
+                                }};
+                            }} else {{
+                                return {{
+                                    range: new monaco.Range(
+                                        position.lineNumber, startCol,
+                                        position.lineNumber, endCol
+                                    ),
+                                    contents: [{{ value: '_Unknown reference_' }}]
+                                }};
+                            }}
+                        }}
+                    }}
+                    return null;
+                }}
             }});
 
             // Track changes for auto-save
@@ -1584,6 +2328,489 @@ pub fn render_editor(note: &Note, _notes_map: &HashMap<String, Note>, _logged_in
 </html>"##,
         title = html_escape(&note.title),
         key = note.key,
-        content = content_escaped,
+        content_json = content_json,
+        pdf_filename_json = pdf_filename_json,
+        pdf_status_html = pdf_status_html,
+        notes_json = notes_json,
+    )
+}
+
+// ============================================================================
+// Viewer Template (View mode with PDF support)
+// ============================================================================
+
+pub fn render_viewer(
+    note: &Note,
+    rendered_content: &str,
+    meta_html: &str,
+    time_html: &str,
+    sub_notes_html: &str,
+    history_html: &str,
+    logged_in: bool,
+) -> String {
+    let pdf_filename = note.pdf.as_deref().unwrap_or("");
+    let pdf_filename_json = serde_json::to_string(pdf_filename)
+        .unwrap_or_else(|_| "\"\"".to_string());
+
+    let pdf_status_html = if let Some(ref pdf) = note.pdf {
+        format!(
+            r#"<a href="/pdfs/{}" target="_blank">{}</a>
+               <button class="pdf-toggle-btn" id="pdf-toggle-btn" onclick="togglePdfViewer()">View PDF</button>"#,
+            html_escape(pdf),
+            html_escape(pdf)
+        )
+    } else {
+        String::new()
+    };
+
+    let mode_toggle = if logged_in {
+        format!(
+            r#"<div class="mode-toggle">
+                <button class="active">View</button>
+                <button onclick="window.location.href='/note/{}?edit=true'">Edit</button>
+                <button class="delete-btn" onclick="confirmDelete('{}', '{}')">Delete</button>
+            </div>"#,
+            note.key,
+            note.key,
+            html_escape(&note.title).replace('\'', "\\'")
+        )
+    } else {
+        String::new()
+    };
+
+    format!(
+        r##"<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{title}</title>
+    <style>
+        :root {{
+            --base03: #002b36;
+            --base02: #073642;
+            --base01: #586e75;
+            --base00: #657b83;
+            --base0: #839496;
+            --base1: #93a1a1;
+            --base2: #eee8d5;
+            --base3: #fdf6e3;
+            --yellow: #b58900;
+            --orange: #cb4b16;
+            --red: #dc322f;
+            --magenta: #d33682;
+            --violet: #6c71c4;
+            --blue: #268bd2;
+            --cyan: #2aa198;
+            --green: #859900;
+            --bg: var(--base3);
+            --fg: var(--base00);
+            --muted: var(--base1);
+            --border: var(--base2);
+            --link: var(--blue);
+            --link-hover: var(--cyan);
+            --accent: var(--base2);
+            --code-bg: var(--base2);
+        }}
+
+        * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            line-height: 1.6;
+            color: var(--fg);
+            background: var(--bg);
+            overflow: hidden;
+        }}
+
+        .viewer-container {{
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            flex-direction: column;
+        }}
+
+        .viewer-header {{
+            background: var(--accent);
+            border-bottom: 1px solid var(--border);
+            padding: 0.75rem 1rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }}
+
+        .viewer-header h1 {{
+            margin: 0;
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--fg);
+            flex: 1;
+        }}
+
+        .viewer-header a, .viewer-header button {{
+            font-size: 0.9rem;
+        }}
+
+        .mode-toggle {{
+            display: flex;
+            gap: 0;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            overflow: hidden;
+        }}
+        .mode-toggle button {{
+            padding: 0.4rem 1rem;
+            border: none;
+            background: var(--accent);
+            color: var(--fg);
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-family: inherit;
+        }}
+        .mode-toggle button.active {{
+            background: var(--link);
+            color: white;
+        }}
+        .mode-toggle button:hover:not(.active) {{
+            background: var(--border);
+        }}
+        .delete-btn {{
+            background: var(--red) !important;
+            color: white !important;
+        }}
+        .delete-btn:hover {{
+            background: #b02020 !important;
+        }}
+
+        .pdf-status {{
+            font-size: 0.8rem;
+            color: var(--muted);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }}
+        .pdf-status a {{
+            color: var(--link);
+            text-decoration: none;
+        }}
+        .pdf-status a:hover {{
+            text-decoration: underline;
+        }}
+        .pdf-toggle-btn {{
+            padding: 0.3rem 0.6rem;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            background: var(--bg);
+            color: var(--fg);
+            cursor: pointer;
+            font-size: 0.8rem;
+        }}
+        .pdf-toggle-btn:hover {{
+            background: var(--accent);
+        }}
+        .pdf-toggle-btn.active {{
+            background: var(--link);
+            color: white;
+            border-color: var(--link);
+        }}
+
+        .back-link {{
+            color: var(--link);
+            text-decoration: none;
+            font-size: 0.9rem;
+        }}
+        .back-link:hover {{
+            text-decoration: underline;
+        }}
+
+        .viewer-main {{
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }}
+
+        .content-pane {{
+            flex: 1;
+            overflow-y: auto;
+            padding: 2rem;
+            min-width: 0;
+        }}
+
+        .content-wrapper {{
+            max-width: 900px;
+            margin: 0 auto;
+        }}
+
+        /* PDF Viewer Pane - no toolbar, just iframe */
+        #pdf-viewer-pane {{
+            width: 50%;
+            display: none;
+            border-left: 1px solid var(--border);
+            background: #586e75;
+        }}
+        #pdf-viewer-pane.active {{
+            display: block;
+        }}
+
+        #pdf-iframe {{
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: white;
+        }}
+
+        /* Content Styling */
+        a {{ color: var(--link); text-decoration: none; }}
+        a:hover {{ color: var(--link-hover); text-decoration: underline; }}
+
+        h1, h2, h3 {{ font-weight: 600; margin-top: 1.5em; margin-bottom: 0.5em; }}
+        h2 {{ font-size: 1.3rem; }}
+        h3 {{ font-size: 1.1rem; }}
+
+        .meta-block {{
+            background: var(--accent);
+            padding: 0.5rem 0.75rem;
+            margin-bottom: 1rem;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            line-height: 1.4;
+        }}
+        .meta-block .meta-row {{
+            display: flex;
+            gap: 0.5rem;
+        }}
+        .meta-block .meta-label {{
+            font-weight: 600;
+            color: var(--base01);
+            min-width: 60px;
+        }}
+        .meta-block .meta-value {{
+            color: var(--fg);
+        }}
+        .meta-block code {{
+            font-size: 0.75rem;
+            background: var(--bg);
+            padding: 0.1rem 0.3rem;
+            border-radius: 2px;
+        }}
+
+        .bibtex-block {{
+            background: var(--code-bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            margin: 1rem 0;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }}
+        .bibtex-block:hover {{
+            border-color: var(--link);
+        }}
+        .bibtex-header {{
+            display: flex;
+            justify-content: space-between;
+            padding: 0.5rem 1rem;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--muted);
+        }}
+        .bibtex-copy-hint {{
+            font-weight: normal;
+            font-style: italic;
+        }}
+        .bibtex-block pre {{
+            margin: 0;
+            padding: 0 1rem;
+            font-family: "SF Mono", "Consolas", "Liberation Mono", monospace;
+            font-size: 0.8rem;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            background: transparent;
+            border-radius: 0;
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease, padding 0.3s ease;
+        }}
+        .bibtex-block:hover pre {{
+            max-height: 500px;
+            padding: 1rem;
+            border-top: 1px solid var(--border);
+        }}
+
+        .note-content pre {{
+            background: var(--accent);
+            padding: 1rem;
+            overflow-x: auto;
+            border-radius: 4px;
+            margin: 1rem 0;
+        }}
+        .note-content code {{
+            font-family: "SF Mono", "Consolas", "Liberation Mono", monospace;
+            font-size: 0.9em;
+        }}
+        .note-content p code {{
+            background: var(--accent);
+            padding: 0.1rem 0.3rem;
+            border-radius: 3px;
+        }}
+        .note-content blockquote {{
+            border-left: 3px solid var(--border);
+            margin: 1rem 0;
+            padding-left: 1rem;
+            color: var(--muted);
+        }}
+        .note-content ul, .note-content ol {{
+            margin: 1rem 0;
+            padding-left: 1.5rem;
+        }}
+        .note-content p {{ margin: 1rem 0; }}
+
+        .crosslink {{
+            background: var(--accent);
+            padding: 0.1rem 0.3rem;
+            border-radius: 3px;
+            font-size: 0.9em;
+        }}
+
+        .time-table {{ width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 1rem; }}
+        .time-table th, .time-table td {{ padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border); }}
+        .time-table th {{ font-weight: 600; }}
+
+        .history-list {{ font-size: 0.85rem; }}
+        .history-item {{ padding: 0.5rem 0; border-bottom: 1px solid var(--border); }}
+        .history-item:last-child {{ border-bottom: none; }}
+        .history-hash {{ font-family: monospace; color: var(--muted); }}
+
+        .sub-notes {{ margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border); }}
+        .sub-notes h3 {{ font-size: 1rem; margin-top: 0; }}
+    </style>
+</head>
+<body>
+    <div class="viewer-container">
+        <div class="viewer-header">
+            <a href="/" class="back-link">&larr; All Notes</a>
+            <h1>{title}</h1>
+            <div class="pdf-status" id="pdf-status">{pdf_status_html}</div>
+            {mode_toggle}
+        </div>
+        <div class="viewer-main">
+            <div class="content-pane">
+                <div class="content-wrapper">
+                    {meta_html}
+                    <div class="note-content">{rendered_content}</div>
+                    {time_html}
+                    {sub_notes_html}
+                    {history_html}
+                </div>
+            </div>
+            <div id="pdf-viewer-pane">
+                <iframe id="pdf-iframe" src=""></iframe>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const noteKey = "{key}";
+        const pdfFilename = {pdf_filename_json};
+
+        function showPdfViewer() {{
+            if (!pdfFilename) return;
+            const pane = document.getElementById('pdf-viewer-pane');
+            const iframe = document.getElementById('pdf-iframe');
+            iframe.src = '/pdfs/' + encodeURIComponent(pdfFilename);
+            pane.classList.add('active');
+            const btn = document.getElementById('pdf-toggle-btn');
+            if (btn) btn.classList.add('active');
+            sessionStorage.setItem('pdf-visible-' + noteKey, 'true');
+        }}
+
+        function hidePdfViewer() {{
+            const pane = document.getElementById('pdf-viewer-pane');
+            const iframe = document.getElementById('pdf-iframe');
+            iframe.src = '';
+            pane.classList.remove('active');
+            const btn = document.getElementById('pdf-toggle-btn');
+            if (btn) btn.classList.remove('active');
+            sessionStorage.setItem('pdf-visible-' + noteKey, 'false');
+        }}
+
+        function togglePdfViewer() {{
+            const pane = document.getElementById('pdf-viewer-pane');
+            if (pane.classList.contains('active')) {{
+                hidePdfViewer();
+            }} else {{
+                showPdfViewer();
+            }}
+        }}
+
+        function openPdfInNewTab() {{
+            if (pdfFilename) {{
+                window.open('/pdfs/' + encodeURIComponent(pdfFilename), '_blank');
+            }}
+        }}
+
+        // Copy BibTeX to clipboard
+        function copyBibtex(elementId) {{
+            const pre = document.getElementById(elementId);
+            const hint = document.getElementById(elementId + '-hint');
+            if (!pre) return;
+
+            const text = pre.textContent;
+            navigator.clipboard.writeText(text).then(() => {{
+                if (hint) {{
+                    hint.textContent = 'Copied!';
+                    setTimeout(() => {{
+                        hint.textContent = 'Click to copy';
+                    }}, 2000);
+                }}
+            }}).catch(err => {{
+                console.error('Failed to copy:', err);
+            }});
+        }}
+
+        // Confirm and delete note
+        async function confirmDelete(key, title) {{
+            const confirmed = confirm('Delete "' + title + '"?\\n\\nThis will remove the note file and create a git commit.');
+            if (!confirmed) return;
+
+            try {{
+                const response = await fetch('/api/note/' + key, {{
+                    method: 'DELETE',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{ confirm: true }})
+                }});
+
+                if (response.ok) {{
+                    window.location.href = '/';
+                }} else {{
+                    const err = await response.text();
+                    alert('Failed to delete: ' + err);
+                }}
+            }} catch (e) {{
+                alert('Error deleting note: ' + e.message);
+            }}
+        }}
+
+        // Restore PDF visibility from session storage
+        document.addEventListener('DOMContentLoaded', function() {{
+            if (pdfFilename && sessionStorage.getItem('pdf-visible-' + noteKey) === 'true') {{
+                showPdfViewer();
+            }}
+        }});
+    </script>
+</body>
+</html>"##,
+        title = html_escape(&note.title),
+        key = note.key,
+        pdf_filename_json = pdf_filename_json,
+        pdf_status_html = pdf_status_html,
+        mode_toggle = mode_toggle,
+        meta_html = meta_html,
+        rendered_content = rendered_content,
+        time_html = time_html,
+        sub_notes_html = sub_notes_html,
+        history_html = history_html,
     )
 }

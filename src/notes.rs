@@ -39,6 +39,7 @@ pub struct Frontmatter {
     pub year: Option<i32>,
     pub time: Vec<TimeEntry>,
     pub sources: Vec<PaperSource>,
+    pub pdf: Option<String>,
 }
 
 pub fn parse_frontmatter(content: &str) -> (Frontmatter, String) {
@@ -205,6 +206,11 @@ pub fn parse_frontmatter(content: &str) -> (Frontmatter, String) {
                 "time" => {
                     in_time_block = true;
                 }
+                "pdf" => {
+                    if !value.is_empty() {
+                        fm.pdf = Some(value.to_string());
+                    }
+                }
                 _ => {}
             }
         }
@@ -287,6 +293,7 @@ pub fn load_note(path: &PathBuf, notes_dir: &PathBuf) -> Option<Note> {
         raw_content: body,
         full_file_content: content,
         modified,
+        pdf: fm.pdf,
     })
 }
 
@@ -399,12 +406,6 @@ pub fn html_escape(s: &str) -> String {
         .replace('>', "&gt;")
         .replace('"', "&quot;")
         .replace('\'', "&#39;")
-}
-
-pub fn js_escape(s: &str) -> String {
-    s.replace('\\', "\\\\")
-        .replace('`', "\\`")
-        .replace('$', "\\$")
 }
 
 // ============================================================================
