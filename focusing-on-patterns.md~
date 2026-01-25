@@ -1,0 +1,16 @@
+# "Focusing on Pattern Matching"
+## Neelakantan R. Krishnaswami, Carnegie Mellon University, neelk@cs.cmu.edu
+#### link: https://www.cl.cam.ac.uk/~nk480/pattern-popl09.pdf
+#### tag: neelk-popl09
+
+We often think of pattern matching as secondary--something desugared
+by a compiler pass into the fundamental connectives of the type theory
+(logic, etc.) via elaboration into usages of projections,
+let-elimination, etc. This paper asks: what if we wanted to build
+pattern matching into the rules of the type theory? However, there is
+a more important message in this paper than that superficial
+goal. Instead, we can think about the structure of these proof systems
+as being operationally-minded, in terms of canonicalizing the proof
+search in a very relevant manner.
+
+When we think about a traditional 
