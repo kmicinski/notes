@@ -16,7 +16,7 @@ issn = {2150-8097},
 url = {https://doi.org/10.14778/3712221.3712232},
 doi = {10.14778/3712221.3712232},
 journal = {Proc. VLDB Endow.},
-month = nov,
+month = {nov},
 pages = {651–665},
 numpages = {15}
 }
