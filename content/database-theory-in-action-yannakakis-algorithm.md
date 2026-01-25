@@ -23,12 +23,17 @@ This is a short paper. In mid-January '26, we talked with Remy about Yannakakis'
 
 ## Key Contributions
 
+
+
 ## Notes
+
+Definition (Join Tree): 
 
 This article makes a very nice example
 
 ```
 Q = R(i, j) ⋈ S(j, k) ⋈ T (k, l) ⋈ U (l, m)
 ```
+
 
 
