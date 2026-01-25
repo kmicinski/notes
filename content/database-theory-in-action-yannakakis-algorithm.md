@@ -23,7 +23,7 @@ This is a short paper. In mid-January '26, we talked with Remy about Yannakakis'
 
 ## Key Contributions
 
-
+- This is a short paper, mostly just gives a blog-post-style exposition of the ideas.
 
 ## Notes
 
