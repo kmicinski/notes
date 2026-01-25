@@ -23,6 +23,7 @@ time:
     minutes: 90
     category: reading
     description: Detailed study of attention mechanism
+pdf: vaswani2017attention.pdf
 ---
 
 # Attention Is All You Need
@@ -63,3 +64,8 @@ Connects to my broader project ideas in [@8264bc].
 
 - How does the attention mechanism scale to very long sequences?
 - What are the memory implications of self-attention?
+
+## Paper Notes
+
+- "https://proceedings.neurips.cc/paper_files/paper/2017/file/3f5ee243547dee91fb..."
+  
