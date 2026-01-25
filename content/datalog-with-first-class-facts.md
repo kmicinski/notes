@@ -20,8 +20,6 @@ month = {nov},
 pages = {651–665},
 numpages = {15}
 }
-|
-
 ---
 
 ## Summary
