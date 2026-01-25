@@ -18,7 +18,7 @@ bibtex: |
 
 ## Summary
 
-This paper references @[]
+
 
 ## Key Contributions
 
