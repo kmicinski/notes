@@ -25,9 +25,14 @@ numpages = {15}
 
 ## Summary
 
-
+This is our VLDB paper on Slog
 
 ## Key Contributions
+
+- Datalog^\exists! formalism
+- Slog as an engine
+- k-CFA experiments vs. Soufflé
+- Scaling experiments on subsets of reasoning benchmarks
 
 ## Notes
 
