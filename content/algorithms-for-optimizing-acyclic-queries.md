@@ -36,7 +36,6 @@ pdf: wang:icdt26.pdf
 [Remy's blog](https://remy.wang/blog/join-tree.html)
 
 **Intution**: a hypergraph is a *venn diagram* with vertices = variables in the query.
-
 ![Viz](https://remy.wang/blog/assets/hypergraph.svg)
 
 The hypergraph of a query has:
@@ -44,7 +43,6 @@ The hypergraph of a query has:
 - *hyper-edges* connecting multiple variables when used in one of the atoms of the clause.
 
 Given a conjunctive (Datalog) query Q, its associated hypergraph has a vertex vₓ for each variable x appearing in Q, and a hyperedge {vₓ, vᵧ, v_z, …} for each atom R(x, y, z, …) in the body of Q.
-
 (Open Question): What do you do with negation? We're assuming a positive fragment? 
 (Open Question): What if the query uses ground atoms?
 
@@ -65,5 +63,26 @@ If we draw the hypergraph:
 
 In this case, if the arity of all relations is two, then the *hyperedges* are really just **edges**. However, if we have relations with arity >2, then we see the more general hypergraph structure and you have more of a venn diagram shape to the hypergraph.
 
+## Definition: Join Tree
+
+First, a join tree is *not* the join hypergraph, but it is related to the join hypergraph. A query is alpha-acylic if it has a join tree. A join tree is a decomposition of the query into a tree such that each atom in the query (I guess literal?) is connected in the tree, if we view the tree as a graph. The definition of connectedness here is a bit tough because I don't know if this is a directed graph or not? 
+
+For example, for the query 
+
+```
+Q(a,b,c,d,e,f,g,h) :- R(a,c,d), S(b,c,d), W(d,h), U(e,g,h), V(f,g,h).
+```
+
+we have: 
+```
+      W(d,h)
+     /      \
+    R(a,c,d)  U(e,g,h)
+    |        |
+    S(b,c,d)  V(f,g,h)
+```
+
+Notice how 
 
 ## Notes
+
