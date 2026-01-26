@@ -22,6 +22,8 @@ pdf: wang:icdt26.pdf
 
 - First off: there's a methodological difference between *operator* trees and *join* trees. For example, you might have R ⋈ (Q ⋈ P) or (R ⋈ Q) ⋈ P--both of these implicitly materialize the result of an inner relation, which presumes you are materializing a subordinate result. By contrast, a join tree enables doing more optimal evaluation by avoiding intermediate tuple materialization, eliminating "dangling tuples" by using semijoins.
 
+- In this work, we equate a conjunctive query with its *join hypergraph*, although there are a lot of different graph-like things, so it's important to be clear about what that means. See formal definitions.
+
 - The new innovations in this paper relate to providing new optimization strategies that focus on join trees rather than operator trees. Traditional (cost-based, I believe) estimators are tuned to work with the traditional operator-based plans.
 
 ## Key Contributions
@@ -35,7 +37,7 @@ pdf: wang:icdt26.pdf
 ## Definition: Join Hypergraph
 [Remy's blog](https://remy.wang/blog/join-tree.html)
 
-**Intution**: a hypergraph is a *venn diagram* with vertices = variables in the query.
+**Intution**: a hypergraph is a *venn diagram* with vertices = variables in the query. 
 
 ![Viz](https://remy.wang/blog/assets/hypergraph.svg)
 
@@ -46,6 +48,8 @@ The hypergraph of a query has:
 Given a conjunctive (Datalog) query Q, its associated hypergraph has a vertex vₓ for each variable x appearing in Q, and a hyperedge {vₓ, vᵧ, v_z, …} for each atom R(x, y, z, …) in the body of Q.
 (Open Question): What do you do with negation? We're assuming a positive fragment? 
 (Open Question): What if the query uses ground atoms?
+
+
 
 ### Formal Definition (Defn. 1)
 
@@ -72,7 +76,7 @@ A *simple graph* is a multigraph that is really just a regular graph: the incide
 
 #### Formal Definition (Defn 6) -- Line Graph
 
-This one is important, look at Figure 1(b): the line graph is is **not just a straight line**, it is a big weighted clique, which counts--for each pair of relations--how many variables they share, I believe. 
+This one is important, look at Figure 1(b): the line graph is is **not just a straight line**, it is a big weighted clique, which counts--for each pair of relations--how many variables they share, I believe. Higher edge weights correspond to higher interactions between relations (multiple variables / columns?)
 
 ## Example: Star Queries
 
