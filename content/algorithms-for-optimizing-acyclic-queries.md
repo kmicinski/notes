@@ -36,6 +36,8 @@ pdf: wang:icdt26.pdf
 [Remy's blog](https://remy.wang/blog/join-tree.html)
 
 **Intution**: a hypergraph is a *venn diagram* with vertices = variables in the query.
+
+
 ![Viz](https://remy.wang/blog/assets/hypergraph.svg)
 
 The hypergraph of a query has:
