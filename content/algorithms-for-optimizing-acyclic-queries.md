@@ -70,6 +70,10 @@ A *simple graph* is a multigraph that is really just a regular graph: the incide
 
 - Defn. 5: Weighted graph, really weighted *multi* graph is $(G,omega)$, where $omega$ is a weight function. 
 
+#### Formal Definition (Defn 6) -- Line Graph
+
+This one is important 
+
 ## Example: Star Queries
 
 Consider the star queries, which are queries that look like this:
