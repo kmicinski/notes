@@ -37,7 +37,6 @@ pdf: wang:icdt26.pdf
 
 **Intution**: a hypergraph is a *venn diagram* with vertices = variables in the query.
 
-
 ![Viz](https://remy.wang/blog/assets/hypergraph.svg)
 
 The hypergraph of a query has:
@@ -47,6 +46,10 @@ The hypergraph of a query has:
 Given a conjunctive (Datalog) query Q, its associated hypergraph has a vertex vₓ for each variable x appearing in Q, and a hyperedge {vₓ, vᵧ, v_z, …} for each atom R(x, y, z, …) in the body of Q.
 (Open Question): What do you do with negation? We're assuming a positive fragment? 
 (Open Question): What if the query uses ground atoms?
+
+### Formal Definition (Defn. 1)
+
+A hypergraph H = (X,R,χ) consists of a set of vertices *X*, a set of hyperedges *R 
 
 ## Example: Star Queries
 
