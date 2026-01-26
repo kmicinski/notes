@@ -25,6 +25,8 @@ pdf: 202530.202532.pdf
 
 ## Summary
 
+This paper establishes a bijection between SSA and CPS, showing that they are equivalent in power.
+
 ## Key Contributions
 
 ## Notes
