@@ -72,7 +72,7 @@ A *simple graph* is a multigraph that is really just a regular graph: the incide
 
 #### Formal Definition (Defn 6) -- Line Graph
 
-This one is important 
+This one is important, look at Figure 1(b): the line graph is is **not just a straight line**, it is a big weighted clique, which counts--for each pair of relations--how many variables they share, I believe. 
 
 ## Example: Star Queries
 
