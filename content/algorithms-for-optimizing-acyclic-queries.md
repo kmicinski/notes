@@ -82,7 +82,9 @@ we have:
     S(b,c,d)  V(f,g,h)
 ```
 
+> An equivalent definition requires that for any two nodes containing a variable x, the path between the nodes must all contain x. It's not hard to see this is the same as requiring all nodes containing x to be connected.
 
+**Kris Intuition**: there are no places in the graph where x pops out of nowhere. When you do the 
 
 ## Notes
 
