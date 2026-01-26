@@ -21,7 +21,13 @@ bibtex: |
 
 - First off: there's a methodological difference between *operator* trees and *join* trees. For example, you might have R ⋈ (Q ⋈ P) or (R ⋈ Q) ⋈ P--both of these implicitly materialize the result of an inner relation, which presumes you are materializing a subordinate result. By contrast, a join tree enables doing more optimal evaluation by avoiding intermediate tuple materialization, eliminating "dangling tuples" by using semijoins.
 
-- The new innovations in this paper relate to providing new optimization strategies that focus on join trees rather than operator trees. Traditional (cost-based, I believe) estimators are tuned to work with the traditional operator-based plans; it seems reasonable to believe 
+- The new innovations in this paper relate to providing new optimization strategies that focus on join trees rather than operator trees. Traditional (cost-based, I believe) estimators are tuned to work with the traditional operator-based plans.
+
+- Hypothesis(?) Before this paper, there were no provably-good results for identifying good join trees for alpha-acyclic queries:
+  - "First, we give an algorithm to enumerate all join trees of an alpha-acylic query by edits in linear time with amortized constant delay, which forms the basis of a coast-based optimizer for acylic joins." 
+  - "Second, we show the Maximum Cardinality Search algorithm by Tarjan and Yannakakis constructs the unique *shallowest* join tree for any Berge-acylic query, thus enabling parallel execution of large join queries."
+  - "Finally, we prove that a simple algorithm by Hu et al. converts any connected left-deep linear plan of a gamma-acylic query into a join tree, allowing reuse of optimizers developed for binary joins."
+    -> (Question): This result seems compelling, because gamma-acylic plans are the most general of the class of acylic plans.
 
 ## Key Contributions
 
