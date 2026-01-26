@@ -2,7 +2,6 @@
 title: A correspondence between continuation passing style and static single assignment form
 date: 2026-01-26
 type: paper
-bib_key: 
 year: 1995
 bibtex: |
   @inproceedings{kelsey95ssacps,
