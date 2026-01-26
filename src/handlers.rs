@@ -261,7 +261,7 @@ fn render_view(
 
     // BibTeX block (separate from meta)
     if let NoteType::Paper(ref paper) = note.note_type {
-        if let Some(ref bibtex) = paper.bibtex {
+        if let Some(bibtex) = paper.canonical_bibtex() {
             let bibtex_id = format!("bibtex-{}", note.key);
             meta_html.push_str(&format!(
                 r#"<div class="bibtex-block" onclick="copyBibtex('{}')">
@@ -889,8 +889,9 @@ pub async fn papers(State(state): State<Arc<AppState>>, jar: CookieJar) -> Html<
 
     for note in papers {
         if let NoteType::Paper(ref paper) = note.note_type {
-            let authors = paper.authors.as_deref().unwrap_or("Unknown");
-            let year = paper.year.map(|y| y.to_string()).unwrap_or_default();
+            let meta = paper.effective_metadata(&note.title);
+            let authors = meta.authors.as_deref().unwrap_or("Unknown");
+            let year = meta.year.map(|y| y.to_string()).unwrap_or_default();
 
             html.push_str(&format!(
                 r#"<li class="note-item paper">
@@ -904,7 +905,7 @@ pub async fn papers(State(state): State<Arc<AppState>>, jar: CookieJar) -> Html<
                 html_escape(&note.title),
                 html_escape(authors),
                 year,
-                paper.bib_key
+                meta.bib_key
             ));
         }
     }
@@ -1128,7 +1129,8 @@ pub async fn download_pdf_from_url(
 
     // Generate filename from URL or use bib_key
     let filename = if let crate::models::NoteType::Paper(ref paper) = note.note_type {
-        format!("{}.pdf", paper.bib_key)
+        let meta = paper.effective_metadata(&note.title);
+        format!("{}.pdf", meta.bib_key)
     } else {
         let url_path = body.url.split('/').last().unwrap_or("document");
         if url_path.ends_with(".pdf") {

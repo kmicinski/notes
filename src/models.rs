@@ -35,11 +35,13 @@ pub enum NoteType {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PaperMeta {
-    pub bib_key: String,
-    pub bibtex: Option<String>,
-    pub authors: Option<String>,
-    pub venue: Option<String>,
-    pub year: Option<i32>,
+    /// One or more BibTeX entries. The bibtex is the sole source of truth for
+    /// citation metadata (bib_key, authors, year, venue, title).
+    pub bibtex_entries: Vec<String>,
+    /// When multiple bibtex entries exist, this specifies which cite key is canonical.
+    /// If None, the first entry is used.
+    pub canonical_key: Option<String>,
+    /// External sources (arxiv, doi, url) for the paper
     pub sources: Vec<PaperSource>,
 }
 
@@ -63,46 +65,77 @@ pub struct EffectivePaperMeta {
 }
 
 impl PaperMeta {
-    /// Returns effective metadata by preferring BibTeX-derived values over explicit fields.
-    /// This makes BibTeX the single source of truth when present.
+    /// Returns effective metadata from the canonical BibTeX entry.
+    /// BibTeX is the single source of truth for all citation metadata.
     pub fn effective_metadata(&self, note_title: &str) -> EffectivePaperMeta {
         use crate::notes::parse_bibtex;
 
         let mut effective = EffectivePaperMeta {
-            bib_key: self.bib_key.clone(),
+            bib_key: String::new(),
             title: Some(note_title.to_string()),
-            authors: self.authors.clone(),
-            year: self.year,
-            venue: self.venue.clone(),
+            authors: None,
+            year: None,
+            venue: None,
         };
 
-        // If we have bibtex, parse it and use those values as primary source
-        if let Some(ref bibtex) = self.bibtex {
-            if let Some(parsed) = parse_bibtex(bibtex) {
-                // Use parsed cite_key if different from stored bib_key
-                if !parsed.cite_key.is_empty() {
-                    effective.bib_key = parsed.cite_key;
+        if self.bibtex_entries.is_empty() {
+            return effective;
+        }
+
+        // Find the canonical entry: either by canonical_key or use first entry
+        let canonical_bibtex = if let Some(ref key) = self.canonical_key {
+            // Find entry matching the canonical key
+            self.bibtex_entries.iter().find(|entry| {
+                if let Some(parsed) = parse_bibtex(entry) {
+                    parsed.cite_key == *key
+                } else {
+                    false
                 }
-                // Prefer BibTeX title, fall back to note title
-                if parsed.title.is_some() {
-                    effective.title = parsed.title;
-                }
-                // Prefer BibTeX author
-                if parsed.author.is_some() {
-                    effective.authors = parsed.author;
-                }
-                // Prefer BibTeX year
-                if parsed.year.is_some() {
-                    effective.year = parsed.year;
-                }
-                // Prefer BibTeX venue
-                if parsed.venue.is_some() {
-                    effective.venue = parsed.venue;
-                }
+            }).unwrap_or(&self.bibtex_entries[0])
+        } else {
+            &self.bibtex_entries[0]
+        };
+
+        if let Some(parsed) = parse_bibtex(canonical_bibtex) {
+            effective.bib_key = parsed.cite_key;
+            if parsed.title.is_some() {
+                effective.title = parsed.title;
             }
+            effective.authors = parsed.author;
+            effective.year = parsed.year;
+            effective.venue = parsed.venue;
         }
 
         effective
+    }
+
+    /// Returns the canonical BibTeX entry as a string
+    pub fn canonical_bibtex(&self) -> Option<&String> {
+        use crate::notes::parse_bibtex;
+
+        if self.bibtex_entries.is_empty() {
+            return None;
+        }
+
+        if let Some(ref key) = self.canonical_key {
+            self.bibtex_entries.iter().find(|entry| {
+                if let Some(parsed) = parse_bibtex(entry) {
+                    parsed.cite_key == *key
+                } else {
+                    false
+                }
+            }).or(Some(&self.bibtex_entries[0]))
+        } else {
+            Some(&self.bibtex_entries[0])
+        }
+    }
+
+    /// Returns all parsed BibTeX entries
+    pub fn all_bibtex_parsed(&self) -> Vec<crate::notes::ParsedBibtex> {
+        use crate::notes::parse_bibtex;
+        self.bibtex_entries.iter()
+            .filter_map(|entry| parse_bibtex(entry))
+            .collect()
     }
 }
 

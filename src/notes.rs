@@ -32,11 +32,10 @@ pub struct Frontmatter {
     pub date: Option<NaiveDate>,
     pub note_type: Option<String>,
     pub parent: Option<String>,
-    pub bib_key: Option<String>,
-    pub bibtex: Option<String>,
-    pub authors: Option<String>,
-    pub venue: Option<String>,
-    pub year: Option<i32>,
+    /// One or more BibTeX entries (sole source of truth for paper metadata)
+    pub bibtex_entries: Vec<String>,
+    /// When multiple bibtex entries exist, this specifies which cite key is canonical
+    pub canonical_key: Option<String>,
     pub time: Vec<TimeEntry>,
     pub sources: Vec<PaperSource>,
     pub pdf: Option<String>,
@@ -146,7 +145,8 @@ pub fn parse_frontmatter(content: &str) -> (Frontmatter, String) {
 
         if let Some(ref key) = current_key {
             if !multiline_value.is_empty() && key.as_str() == "bibtex" {
-                fm.bibtex = Some(multiline_value.trim().to_string());
+                // Add this bibtex entry to the list
+                fm.bibtex_entries.push(multiline_value.trim().to_string());
                 multiline_value.clear();
             }
         }
@@ -166,17 +166,11 @@ pub fn parse_frontmatter(content: &str) -> (Frontmatter, String) {
                 }
                 "type" => fm.note_type = Some(value.to_string()),
                 "parent" => fm.parent = Some(value.to_string()),
-                "bib_key" | "bibkey" => fm.bib_key = Some(value.to_string()),
-                "authors" => fm.authors = Some(value.to_string()),
-                "venue" => fm.venue = Some(value.to_string()),
-                "year" => {
-                    if let Ok(y) = value.parse() {
-                        fm.year = Some(y);
-                    }
-                }
+                "canonical_key" | "canonical" => fm.canonical_key = Some(value.to_string()),
                 "bibtex" => {
+                    // Single-line bibtex (rare but supported)
                     if !value.starts_with('|') && !value.is_empty() {
-                        fm.bibtex = Some(value.to_string());
+                        fm.bibtex_entries.push(value.to_string());
                     }
                 }
                 "arxiv" => {
@@ -211,6 +205,8 @@ pub fn parse_frontmatter(content: &str) -> (Frontmatter, String) {
                         fm.pdf = Some(value.to_string());
                     }
                 }
+                // Legacy fields - ignore (bibtex is now the source of truth)
+                "bib_key" | "bibkey" | "authors" | "venue" | "year" => {}
                 _ => {}
             }
         }
@@ -228,7 +224,7 @@ pub fn parse_frontmatter(content: &str) -> (Frontmatter, String) {
 
     if let Some(ref key) = current_key {
         if !multiline_value.is_empty() && key.as_str() == "bibtex" {
-            fm.bibtex = Some(multiline_value.trim().to_string());
+            fm.bibtex_entries.push(multiline_value.trim().to_string());
         }
     }
 
@@ -269,13 +265,10 @@ pub fn load_note(path: &PathBuf, notes_dir: &PathBuf) -> Option<Note> {
     let metadata = fs::metadata(path).ok()?;
     let modified: DateTime<Utc> = metadata.modified().ok()?.into();
 
-    let note_type = if fm.note_type.as_deref() == Some("paper") || fm.bib_key.is_some() {
+    let note_type = if fm.note_type.as_deref() == Some("paper") || !fm.bibtex_entries.is_empty() {
         NoteType::Paper(PaperMeta {
-            bib_key: fm.bib_key.unwrap_or_else(|| key.clone()),
-            bibtex: fm.bibtex,
-            authors: fm.authors,
-            venue: fm.venue,
-            year: fm.year,
+            bibtex_entries: fm.bibtex_entries,
+            canonical_key: fm.canonical_key,
             sources: fm.sources,
         })
     } else {
@@ -557,22 +550,10 @@ pub fn generate_bibliography(notes: &[Note]) -> String {
 
     for note in notes {
         if let NoteType::Paper(ref paper) = note.note_type {
-            if let Some(ref bibtex) = paper.bibtex {
-                bib.push_str(bibtex);
+            // Include all bibtex entries for this paper
+            for bibtex_entry in &paper.bibtex_entries {
+                bib.push_str(bibtex_entry);
                 bib.push_str("\n\n");
-            } else {
-                bib.push_str(&format!("@misc{{{},\n", paper.bib_key));
-                bib.push_str(&format!("  title = {{{}}},\n", note.title));
-                if let Some(ref authors) = paper.authors {
-                    bib.push_str(&format!("  author = {{{}}},\n", authors));
-                }
-                if let Some(year) = paper.year {
-                    bib.push_str(&format!("  year = {{{}}},\n", year));
-                }
-                if let Some(ref venue) = paper.venue {
-                    bib.push_str(&format!("  howpublished = {{{}}},\n", venue));
-                }
-                bib.push_str("}\n\n");
             }
         }
     }
