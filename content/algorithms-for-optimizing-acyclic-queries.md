@@ -60,7 +60,9 @@ A *multigraph G = (R,E,ρ)* consists of a set of vertices R, a set of edges E, a
 3:45PM 1/26 -- I'm confused to be blunt about what makes this different than just a regular graph in this case.
 Answer: I see, because you factor out E / ρ, this is saying that you can have a bag of edes. 
 
+#### Formal Definition (Defn. 3) -- Simple Graph 
 
+A *simple graph* is a multigraph that is really just a regular graph: the incidence function ρ is injective (one to one) and always returns two distinct nodes.
 
 ## Example: Star Queries
 
