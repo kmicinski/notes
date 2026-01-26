@@ -62,7 +62,7 @@ Answer: I see, because you factor out E / ρ, this is saying that you can have a
 
 #### Formal Definition (Defn. 3) -- Simple Graph 
 
-A *simple graph* is a multigraph that is really just a regular graph: the incidence function ρ is injective (one to one) and always returns two distinct nodes.
+A *simple graph* is a multigraph that is really just a regular graph: the incidence function ρ is injective (one to one) and always returns two distinct nodes. 
 
 ## Example: Star Queries
 
