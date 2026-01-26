@@ -68,7 +68,7 @@ A *simple graph* is a multigraph that is really just a regular graph: the incide
 
 - Defn. 4: clique, diamond, cycle
 
-- Defn. 5: Weighted graph, really weighted *multi* graph is $(G,)
+- Defn. 5: Weighted graph, really weighted *multi* graph is $(G,omega)$, where $omega$ is a weight function. 
 
 ## Example: Star Queries
 
