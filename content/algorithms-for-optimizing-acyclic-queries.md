@@ -31,9 +31,24 @@ bibtex: |
   - "Finally, we prove that a simple algorithm by Hu et al. converts any connected left-deep linear plan of a gamma-acylic query into a join tree, allowing reuse of optimizers developed for binary joins."
     -> (Question): This result seems compelling, because gamma-acylic plans are the most general of the class of acylic plans.
 
-## Sec 1. Introduction
+## Definition: Join Hypergraph
 
-- A significant amount of focused has been placed upon optimizing binary joins, which are fundamentally destined to failure on some queries, even acylic queries. 
+[Remy's blog](https://remy.wang/blog/join-tree.html)
+
+## Example: Star Queries
+
+Consider the star queries, which are queries that look like this:
+
+    Q(x,y,z,w) <-- R(x,y), S(y,z), T(y,w)
+
+The general case is that we have N body clauses, all sharing some unique variable (`y` here):
+
+    Q(…) <-- R₁(x, y₁), R₂(x, y₂), …, R_k(x, y_k)
+
+If we draw the hypergraph:
+ - One hyperedge per atom
+ - All hyperedges intersect in x
+ - 
 
 ## Notes
 
