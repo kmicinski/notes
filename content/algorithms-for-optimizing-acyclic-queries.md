@@ -64,6 +64,12 @@ Answer: I see, because you factor out E / ρ, this is saying that you can have a
 
 A *simple graph* is a multigraph that is really just a regular graph: the incidence function ρ is injective (one to one) and always returns two distinct nodes. 
 
+#### More formal defns...
+
+- Defn. 4: clique, diamond, cycle
+
+- Defn. 5: Weighted graph, really weighted *multi* graph is $(G,)
+
 ## Example: Star Queries
 
 Consider the star queries, which are queries that look like this:
