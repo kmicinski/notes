@@ -13,6 +13,7 @@ bibtex: |
         primaryClass={cs.DB},
         url={https://arxiv.org/abs/2509.14144}, 
   }
+pdf: wang:icdt26.pdf
 ---
 
 ## Summary
@@ -32,8 +33,20 @@ bibtex: |
     -> (Question): This result seems compelling, because gamma-acylic plans are the most general of the class of acylic plans.
 
 ## Definition: Join Hypergraph
-
 [Remy's blog](https://remy.wang/blog/join-tree.html)
+
+**Intution**: a hypergraph is a *venn diagram* with vertices = variables in the query.
+
+![Viz](https://remy.wang/blog/assets/hypergraph.svg)
+
+The hypergraph of a query has:
+- *Variables* (used in the query) as its vertices 
+- *hyper-edges* connecting multiple variables when used in one of the atoms of the clause.
+
+Given a conjunctive (Datalog) query Q, its associated hypergraph has a vertex vₓ for each variable x appearing in Q, and a hyperedge {vₓ, vᵧ, v_z, …} for each atom R(x, y, z, …) in the body of Q.
+
+(Open Question): What do you do with negation? We're assuming a positive fragment? 
+(Open Question): What if the query uses ground atoms?
 
 ## Example: Star Queries
 
@@ -48,7 +61,9 @@ The general case is that we have N body clauses, all sharing some unique variabl
 If we draw the hypergraph:
  - One hyperedge per atom
  - All hyperedges intersect in x
- - 
+ - Thus, we literally get a star: a diagram where `x` is in the center and there are y_k for each
+
+In this case, if the arity of all relations is two, then the *hyperedges* are really just **edges**. However, if we have relations with arity >2, then we see the more general hypergraph structure and you have more of a venn diagram shape to the hypergraph.
+
 
 ## Notes
-
