@@ -82,7 +82,7 @@ we have:
     S(b,c,d)  V(f,g,h)
 ```
 
-Notice how 
+
 
 ## Notes
 
