@@ -49,7 +49,9 @@ Given a conjunctive (Datalog) query Q, its associated hypergraph has a vertex v�
 
 ### Formal Definition (Defn. 1)
 
-A hypergraph H = (X,R,χ) consists of a set of vertices *X*, a set of hyperedges *R 
+A hypergraph H = (X,R,χ) consists of a set of vertices *X*, a set of hyperedges *R*, and an incidence function χ : R → ℘(X). (Comment): *I guess R is a finite set and so basically this is just a finitely-supported map into a finite range of ℘(X)*. 
+
+I don't really understand deeply the relevance of explicating R vs. χ--I think there must be some formalization-related reasons later for doing this.
 
 ## Example: Star Queries
 
