@@ -53,6 +53,15 @@ A hypergraph H = (X,R,χ) consists of a set of vertices *X*, a set of hyperedges
 
 I don't really understand deeply the relevance of explicating R vs. χ--I think there must be some formalization-related reasons later for doing this.
 
+### Formal Definition (Defn. 2) -- Multigraph
+
+A *multigraph G = (R,E,ρ)* consists of a set of vertices R, a set of edges E, and and an incidence function ρ : E → ℘(R) such that ℘(e) = 1 or 2 relations Rs for any e in E. An edge is a self-loop if |℘(e)| = 1. The idea is that you are taking a ton of body clauses which share variables, and you are connecting them when they *do* share a variable, which would give you two different reltaions R being joined together as part of the edge E? Edges e1, e2 are parallel if ℘(e1) = ℘(e2). 
+
+3:45PM 1/26 -- I'm confused to be blunt about what makes this different than just a regular graph in this case.
+Answer: I see, because you factor out E / ρ, this is saying that you can have a bag of edes. 
+
+
+
 ## Example: Star Queries
 
 Consider the star queries, which are queries that look like this:
