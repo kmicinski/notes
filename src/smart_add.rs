@@ -196,9 +196,9 @@ pub fn search_local_for_match(
         }
     }
 
-    // Fuzzy title match (for papers, check title + authors + year)
+    // Fuzzy title match (for papers, check title match)
     for note in notes {
-        if let NoteType::Paper(ref paper) = note.note_type {
+        if let NoteType::Paper(_) = note.note_type {
             let note_title_lower = note.title.to_lowercase();
 
             // Check if input contains significant portion of title
@@ -212,33 +212,12 @@ pub fn search_local_for_match(
                     .count();
 
                 if matching_words >= title_words.len() * 2 / 3 {
-                    // Also check author/year if available
-                    let mut score = matching_words;
-                    if let Some(ref authors) = paper.authors {
-                        if input_lower.contains(
-                            &authors
-                                .to_lowercase()
-                                .split(',')
-                                .next()
-                                .unwrap_or("")
-                                .trim()
-                                .to_lowercase(),
-                        ) {
-                            score += 2;
-                        }
-                    }
-                    if let Some(year) = paper.year {
-                        if input.contains(&year.to_string()) {
-                            score += 2;
-                        }
-                    }
-                    if score >= title_words.len() * 2 / 3 + 2 {
-                        return Some(LocalMatch {
-                            key: note.key.clone(),
-                            title: note.title.clone(),
-                            match_type: "title".to_string(),
-                        });
-                    }
+                    // Good title match found
+                    return Some(LocalMatch {
+                        key: note.key.clone(),
+                        title: note.title.clone(),
+                        match_type: "title".to_string(),
+                    });
                 }
             }
         }

@@ -88,4 +88,4 @@ pub use smart_add::{
     query_crossref_by_title, search_local_for_match,
 };
 
-pub use templates::{base_html, nav_bar, render_editor, smart_add_html, STYLE};
+pub use templates::{base_html, nav_bar, render_editor, render_viewer, smart_add_html, STYLE};
