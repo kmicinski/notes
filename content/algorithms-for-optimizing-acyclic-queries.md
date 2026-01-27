@@ -18,8 +18,6 @@ pdf: wang:icdt26.pdf
 
 ## Summary
 
-- This paper presents methods for optimizing *acylic* joins using the Yannakakis-style algorithms.
-
 ### Introductory Comments (Jan '26)
 
 - First off: there's a methodological difference between *operator* trees and *join* trees. For example, you might have R ⋈ (Q ⋈ P) or (R ⋈ Q) ⋈ P--both of these implicitly materialize the result of an inner relation, which presumes you are materializing a subordinate result. By contrast, a join tree enables doing more optimal evaluation by avoiding intermediate tuple materialization, eliminating "dangling tuples" by using semijoins.
@@ -36,7 +34,8 @@ pdf: wang:icdt26.pdf
   - "Finally, we prove that a simple algorithm by Hu et al. converts any connected left-deep linear plan of a gamma-acylic query into a join tree, allowing reuse of optimizers developed for binary joins."
     -> (Question): This result seems compelling, because gamma-acylic plans are the most general of the class of acylic plans.
 
-## Definition: Join Hypergraph
+## Section 3: Preliminaries
+
 [Remy's blog](https://remy.wang/blog/join-tree.html)
 
 **Intution**: a hypergraph is a *venn diagram* with vertices = variables in the query. 
@@ -50,8 +49,6 @@ The hypergraph of a query has:
 Given a conjunctive (Datalog) query Q, its associated hypergraph has a vertex vₓ for each variable x appearing in Q, and a hyperedge {vₓ, vᵧ, v_z, …} for each atom R(x, y, z, …) in the body of Q.
 (Open Question): What do you do with negation? We're assuming a positive fragment? 
 (Open Question): What if the query uses ground atoms?
-
-
 
 ### Formal Definition (Defn. 1)
 
@@ -79,6 +76,19 @@ A *simple graph* is a multigraph that is really just a regular graph: the incide
 #### Formal Definition (Defn 6) -- Line Graph
 
 This one is important, look at Figure 1(b): the line graph is is **not just a straight line**, it is a big weighted clique, which counts--for each pair of relations--how many variables they share, I believe. Higher edge weights correspond to higher interactions between relations (multiple variables / columns?)
+
+### Important Defn (Defn. 9): Join Tree
+
+- A join tree T of hypergraph H is a spanning tree of L(H) (the line graph, Defn. 6) such that forall x in the set of variables X(H), T|x (i.e., the neighborhood of x) forms a connected subtree in T. If a certain certex is specified as the root, T becomes a rooted join tree.
+
+- Reminder: a spanning tree is a tree decomposition (possibly rooted) that is comprised of edges from the graph, in this case it's the line graph L(H) of the join hypergraph.
+
+### α−acylic ⊇ β−acylic ⊇ γ−acyclic ⊇ Berge−acylic
+
+A hypergraph H is...
+
+- α−acylic if it admits a join tree as in the definition of Definition 9. I.e., a join tree such that it forms a spanning tree of the graph L(H) 
+
 
 ## Example: Star Queries
 
