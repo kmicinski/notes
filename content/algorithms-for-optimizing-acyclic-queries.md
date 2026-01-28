@@ -138,7 +138,7 @@ we have:
 
 ### Page 4
 
-> "Definition 10 (Hypergraph Acyclicity). A hypergraph H is:
+"Definition 10 (Hypergraph Acyclicity). A hypergraph H is:
 • α-acyclic if it admits a join tree as in Definition 9;
 • β-acyclic if every subgraph of H is α-acyclic;
 • γ-acyclic if it does not contain any γ cycle. A γ cycle is a sequence of length k ≥ 3 of distinct hyperedges
@@ -148,5 +148,5 @@ rj while xk−1 belongs to rk−1 ∩ r0 and possibly other hyperedges;
 distinct vertices and distinct hyperedges (r0, x0, . . . , rk−1, xk−1) such that ∀ i ∈ [k] : xi ∈ ri∩r(i+1) mod k"
 
 
-> — [[h:huns8lus]]
+— [[h:huns8lus]]
 
