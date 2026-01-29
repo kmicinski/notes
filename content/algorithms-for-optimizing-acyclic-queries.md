@@ -148,21 +148,8 @@ rj while xk−1 belongs to rk−1 ∩ r0 and possibly other hyperedges;
 distinct vertices and distinct hyperedges (r0, x0, . . . , rk−1, xk−1) such that ∀ i ∈ [k] : xi ∈ ri∩r(i+1) mod k"
 
 
-— [[h:huns8lus]]
-
-
-
-
-> "We use R(T ) to denote the set of nodes and E(T ) to denote the set of edges of tree T . The requirement
-that T |x∈X(H) be a"
-> — [[h:hq37kgfj]]
-
-> "Definition 10 (Hypergraph Acyclicity). A hypergraph H i"
-> —
-### Page 11
-
-> "n acyclic query can have exponentially many join trees with respect to its size. For example, the line graph
-of a cliq"
-> — [[h:hltpq68o]]
-
- [[h:h18myrsi]]
+- [(1/28/26 21:07) Definition, ""]
+- [(1/28/26 21:07) Begin study]
+- [(1/28/26 21:07) End study]
+- [(1/28/26 21:07) Highlight, ""]
+- [(1/28/26 21:07) Question, ""]
