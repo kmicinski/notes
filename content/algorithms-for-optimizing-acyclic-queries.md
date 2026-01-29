@@ -150,3 +150,10 @@ distinct vertices and distinct hyperedges (r0, x0, . . . , rk−1, xk−1) such 
 
 — [[h:huns8lus]]
 
+
+
+### Page 11
+
+> "n acyclic query can have exponentially many join trees with respect to its size. For example, the line graph
+of a cliq"
+> — [[h:hltpq68o]]
