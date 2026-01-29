@@ -153,3 +153,5 @@ distinct vertices and distinct hyperedges (r0, x0, . . . , rk−1, xk−1) such 
 - [(1/28/26 21:07) End study]
 - [(1/28/26 21:07) Highlight, ""]
 - [(1/28/26 21:07) Question, ""]
+
+- [(1/28/26 21:09) Definition, ""]
