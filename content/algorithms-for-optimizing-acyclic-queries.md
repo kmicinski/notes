@@ -156,8 +156,13 @@ distinct vertices and distinct hyperedges (r0, x0, . . . , rk−1, xk−1) such 
 > "We use R(T ) to denote the set of nodes and E(T ) to denote the set of edges of tree T . The requirement
 that T |x∈X(H) be a"
 > — [[h:hq37kgfj]]
+
+> "Definition 10 (Hypergraph Acyclicity). A hypergraph H i"
+> —
 ### Page 11
 
 > "n acyclic query can have exponentially many join trees with respect to its size. For example, the line graph
 of a cliq"
 > — [[h:hltpq68o]]
+
+ [[h:h18myrsi]]
