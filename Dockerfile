@@ -1,6 +1,6 @@
 # Multi-stage build for notes application
 # Stage 1: Build the Rust application
-FROM rust:1.75-slim-bookworm AS builder
+FROM rust:1.85-slim-bookworm AS builder
 
 WORKDIR /build
 
