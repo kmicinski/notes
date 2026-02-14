@@ -15,12 +15,14 @@ pub mod models;
 pub mod notes;
 pub mod smart_add;
 pub mod templates;
+pub mod url_validator;
 
 // ============================================================================
 // Configuration
 // ============================================================================
 
 pub const NOTES_DIR: &str = "content";
+pub const PDFS_DIR: &str = "pdfs";
 pub const DB_PATH: &str = ".notes_db";
 
 // ============================================================================
@@ -30,6 +32,7 @@ pub const DB_PATH: &str = ".notes_db";
 #[derive(Clone)]
 pub struct AppState {
     pub notes_dir: PathBuf,
+    pub pdfs_dir: PathBuf,
     #[allow(dead_code)]
     db: Db,
 }
@@ -39,9 +42,12 @@ impl AppState {
         let notes_dir = PathBuf::from(NOTES_DIR);
         fs::create_dir_all(&notes_dir).ok();
 
+        let pdfs_dir = PathBuf::from(PDFS_DIR);
+        fs::create_dir_all(&pdfs_dir).ok();
+
         let db = sled::open(DB_PATH).expect("Failed to open database");
 
-        Self { notes_dir, db }
+        Self { notes_dir, pdfs_dir, db }
     }
 
     pub fn load_notes(&self) -> Vec<models::Note> {
@@ -59,6 +65,36 @@ impl AppState {
 impl Default for AppState {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Validate that a constructed path stays within the given base directory.
+/// Returns the validated path on success, or an error message on failure.
+/// For new files (that don't yet exist), validates the parent directory.
+pub fn validate_path_within(base: &PathBuf, target: &PathBuf) -> Result<PathBuf, String> {
+    let canonical_base = fs::canonicalize(base)
+        .map_err(|e| format!("Cannot resolve base directory: {}", e))?;
+
+    if target.exists() {
+        let canonical = fs::canonicalize(target)
+            .map_err(|e| format!("Cannot resolve path: {}", e))?;
+        if canonical.starts_with(&canonical_base) {
+            Ok(canonical)
+        } else {
+            Err("Path escapes base directory".to_string())
+        }
+    } else {
+        // For new files, ensure the parent is within base
+        let parent = target.parent().ok_or("No parent directory")?;
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("Cannot create directory: {}", e))?;
+        let canonical_parent = fs::canonicalize(parent)
+            .map_err(|e| format!("Cannot resolve parent: {}", e))?;
+        if canonical_parent.starts_with(&canonical_base) {
+            Ok(target.clone())
+        } else {
+            Err("Path escapes base directory".to_string())
+        }
     }
 }
 
@@ -89,3 +125,5 @@ pub use smart_add::{
 };
 
 pub use templates::{base_html, nav_bar, render_editor, render_viewer, smart_add_html, STYLE};
+
+pub use url_validator::{validate_api_url, validate_url, UrlValidationError};

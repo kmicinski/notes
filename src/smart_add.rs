@@ -12,7 +12,7 @@ use crate::models::{
     SmartAddCreateRequest, SmartAddRequest, SmartAddResult,
 };
 use crate::notes::generate_key;
-use crate::AppState;
+use crate::{validate_path_within, AppState};
 use axum::{
     extract::State,
     response::{IntoResponse, Response},
@@ -26,6 +26,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Arc;
 use std::time::Duration;
+use crate::url_validator::validate_url;
 
 // ============================================================================
 // Input Detection
@@ -506,6 +507,11 @@ pub async fn query_crossref_by_title(title: &str) -> Option<ExternalResult> {
 
 /// Fetch a URL and extract paper metadata from HTML meta tags
 pub async fn fetch_and_extract_metadata(url: &str) -> Option<ExternalResult> {
+    // Validate URL for SSRF protection
+    if validate_url(url).is_err() {
+        return None;
+    }
+
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(15))
         .user_agent("Mozilla/5.0 (compatible; NotesApp/1.0)")
@@ -961,8 +967,8 @@ pub async fn smart_add_create(
         .into_response();
     }
 
-    // Check for path traversal
-    if filename.contains("..") {
+    // Check for path traversal: reject .., absolute paths, and null bytes
+    if filename.contains("..") || filename.starts_with('/') || filename.contains('\0') {
         return axum::Json(SmartAddCreateResponse {
             key: None,
             error: Some("Invalid filename".to_string()),
@@ -971,6 +977,15 @@ pub async fn smart_add_create(
     }
 
     let file_path = state.notes_dir.join(filename);
+
+    // Validate the path stays within notes_dir
+    if let Err(_) = validate_path_within(&state.notes_dir, &file_path) {
+        return axum::Json(SmartAddCreateResponse {
+            key: None,
+            error: Some("Invalid filename".to_string()),
+        })
+        .into_response();
+    }
 
     // Check if file exists
     if file_path.exists() {

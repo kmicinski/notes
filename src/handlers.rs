@@ -25,6 +25,9 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Arc;
 use reqwest;
+use subtle::ConstantTimeEq;
+use crate::url_validator::validate_url;
+use crate::validate_path_within;
 
 // ============================================================================
 // Index Handler
@@ -558,9 +561,9 @@ pub async fn view_note_history(
         "<a href=\"/note/{}\" class=\"back-link\">&larr; Back to current version</a>
         <h1>{} <small style=\"color: var(--muted); font-weight: normal;\">@ {}</small></h1>
         <div class=\"note-content\">{}</div>",
-        key,
+        html_escape(&key),
         html_escape(&note.title),
-        &commit,
+        html_escape(&commit),
         rendered
     );
 
@@ -607,7 +610,11 @@ pub async fn login_submit(axum::Form(form): axum::Form<LoginForm>) -> Response {
     }
 
     let password = std::env::var("NOTES_PASSWORD").unwrap_or_default();
-    if form.password != password {
+    let input_bytes = form.password.as_bytes();
+    let expected_bytes = password.as_bytes();
+    let password_matches = input_bytes.len() == expected_bytes.len()
+        && input_bytes.ct_eq(expected_bytes).unwrap_u8() == 1;
+    if !password_matches {
         let html = r#"
             <div class="login-form">
                 <div class="message error">Invalid password.</div>
@@ -630,7 +637,7 @@ pub async fn login_submit(axum::Form(form): axum::Form<LoginForm>) -> Response {
     };
 
     let cookie = format!(
-        "{}={}; Path=/; HttpOnly; SameSite=Strict; Max-Age={}",
+        "{}={}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age={}",
         SESSION_COOKIE,
         session_token,
         SESSION_TTL_HOURS * 3600
@@ -643,7 +650,7 @@ pub async fn login_submit(axum::Form(form): axum::Form<LoginForm>) -> Response {
 }
 
 pub async fn logout() -> Response {
-    let cookie = format!("{}=; Path=/; HttpOnly; Max-Age=0", SESSION_COOKIE);
+    let cookie = format!("{}=; Path=/; HttpOnly; Secure; Max-Age=0", SESSION_COOKIE);
 
     let mut headers = HeaderMap::new();
     headers.insert(SET_COOKIE, cookie.parse().unwrap());
@@ -792,13 +799,19 @@ pub async fn create_note(
         return Html(base_html("Error", html, None, true)).into_response();
     }
 
-    // Check for path traversal
-    if filename.contains("..") {
+    // Check for path traversal: reject .., absolute paths, and null bytes
+    if filename.contains("..") || filename.starts_with('/') || filename.contains('\0') {
         let html = r#"<div class="message error">Invalid filename.</div>"#;
         return Html(base_html("Error", html, None, true)).into_response();
     }
 
     let file_path = state.notes_dir.join(filename);
+
+    // Validate the path stays within notes_dir
+    if let Err(_) = validate_path_within(&state.notes_dir, &file_path) {
+        let html = r#"<div class="message error">Invalid filename.</div>"#;
+        return Html(base_html("Error", html, None, true)).into_response();
+    }
 
     // Check if file already exists
     if file_path.exists() {
@@ -1072,7 +1085,12 @@ pub async fn upload_pdf(
 
     // Sanitize filename
     let safe_filename = sanitize_pdf_filename(&filename);
-    let pdf_path = PathBuf::from("pdfs").join(&safe_filename);
+    let pdf_path = state.pdfs_dir.join(&safe_filename);
+
+    // Validate path stays within pdfs_dir
+    if let Err(_) = validate_path_within(&state.pdfs_dir, &pdf_path) {
+        return (StatusCode::BAD_REQUEST, "Invalid filename").into_response();
+    }
 
     // Save file
     if let Err(e) = fs::write(&pdf_path, &file_data) {
@@ -1103,6 +1121,11 @@ pub async fn download_pdf_from_url(
 ) -> Response {
     if !is_logged_in(&jar) {
         return (StatusCode::UNAUTHORIZED, "Not logged in").into_response();
+    }
+
+    // Validate URL for SSRF protection
+    if let Err(e) = validate_url(&body.url) {
+        return (StatusCode::BAD_REQUEST, format!("Invalid URL: {}", e)).into_response();
     }
 
     let notes_map = state.notes_map();
@@ -1141,7 +1164,12 @@ pub async fn download_pdf_from_url(
     };
 
     let safe_filename = sanitize_pdf_filename(&filename);
-    let pdf_path = PathBuf::from("pdfs").join(&safe_filename);
+    let pdf_path = state.pdfs_dir.join(&safe_filename);
+
+    // Validate path stays within pdfs_dir
+    if let Err(_) = validate_path_within(&state.pdfs_dir, &pdf_path) {
+        return (StatusCode::BAD_REQUEST, "Invalid filename").into_response();
+    }
 
     // Save file
     if let Err(e) = fs::write(&pdf_path, &bytes) {
@@ -1185,9 +1213,19 @@ pub async fn rename_pdf(
         None => return (StatusCode::BAD_REQUEST, "Note has no PDF attached").into_response(),
     };
 
+    // Sanitize both old (from frontmatter, could be tampered) and new filenames
+    let old_filename_safe = sanitize_pdf_filename(&old_filename);
     let new_filename = sanitize_pdf_filename(&body.new_name);
-    let old_path = PathBuf::from("pdfs").join(&old_filename);
-    let new_path = PathBuf::from("pdfs").join(&new_filename);
+    let old_path = state.pdfs_dir.join(&old_filename_safe);
+    let new_path = state.pdfs_dir.join(&new_filename);
+
+    // Validate both paths stay within pdfs_dir
+    if let Err(_) = validate_path_within(&state.pdfs_dir, &old_path) {
+        return (StatusCode::BAD_REQUEST, "Invalid source filename").into_response();
+    }
+    if let Err(_) = validate_path_within(&state.pdfs_dir, &new_path) {
+        return (StatusCode::BAD_REQUEST, "Invalid target filename").into_response();
+    }
 
     if !old_path.exists() {
         return (StatusCode::NOT_FOUND, "PDF file not found").into_response();
@@ -1209,14 +1247,24 @@ pub async fn rename_pdf(
 }
 
 fn sanitize_pdf_filename(filename: &str) -> String {
-    let name = filename.trim();
-    // Remove path separators
-    let name = name.replace(['/', '\\'], "_");
-    // Ensure .pdf extension
-    if name.to_lowercase().ends_with(".pdf") {
-        name
+    // Allow only safe characters: alphanumeric, hyphen, underscore, dot
+    let safe: String = filename
+        .trim()
+        .chars()
+        .filter(|c| c.is_alphanumeric() || matches!(c, '-' | '_' | '.'))
+        .take(200) // Limit filename length
+        .collect();
+
+    let safe = if safe.is_empty() {
+        "document".to_string()
     } else {
-        format!("{}.pdf", name)
+        safe
+    };
+
+    if safe.to_lowercase().ends_with(".pdf") {
+        safe
+    } else {
+        format!("{}.pdf", safe)
     }
 }
 

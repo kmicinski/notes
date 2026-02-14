@@ -23,9 +23,6 @@ use notes::{auth, graph, handlers, smart_add, AppState, NOTES_DIR};
 
 #[tokio::main]
 async fn main() {
-    // Create pdfs directory if it doesn't exist
-    std::fs::create_dir_all("pdfs").expect("Failed to create pdfs directory");
-
     let state = Arc::new(AppState::new());
 
     let app = Router::new()
@@ -61,11 +58,11 @@ async fn main() {
         .route("/api/pdf/rename", axum::routing::post(handlers::rename_pdf))
         .with_state(state);
 
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:3000")
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:7000")
         .await
-        .expect("Failed to bind to port 3000");
+        .expect("Failed to bind to port 7000");
 
-    println!("Notes server running at http://127.0.0.1:3000");
+    println!("Notes server running at http://127.0.0.1:7000");
     println!("Notes directory: {}", NOTES_DIR);
 
     if auth::is_auth_enabled() {

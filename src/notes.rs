@@ -294,7 +294,7 @@ pub fn load_all_notes(notes_dir: &PathBuf) -> Vec<Note> {
     let mut notes = Vec::new();
 
     for entry in WalkDir::new(notes_dir)
-        .follow_links(true)
+        .follow_links(false)
         .into_iter()
         .filter_map(|e| e.ok())
     {
@@ -409,7 +409,8 @@ pub fn render_markdown(content: &str) -> String {
     let parser = Parser::new(content);
     let mut html_output = String::new();
     pulldown_cmark::html::push_html(&mut html_output, parser);
-    html_output
+    // Sanitize HTML to prevent XSS from raw HTML in markdown
+    ammonia::clean(&html_output)
 }
 
 // ============================================================================
@@ -457,6 +458,15 @@ pub fn get_file_at_commit(
     commit_hash: &str,
     notes_dir: &PathBuf,
 ) -> Option<String> {
+    // Validate commit_hash is a hex string (short or full SHA)
+    // to prevent git argument injection or ref traversal
+    if commit_hash.is_empty()
+        || commit_hash.len() > 40
+        || !commit_hash.chars().all(|c| c.is_ascii_hexdigit())
+    {
+        return None;
+    }
+
     let output = Command::new("git")
         .args(["show", &format!("{}:{}", commit_hash, file_path.display())])
         .current_dir(notes_dir)

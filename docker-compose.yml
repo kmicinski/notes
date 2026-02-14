@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  notes:
+    build: .
+    container_name: notes-app
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      - NOTES_PASSWORD=${NOTES_PASSWORD:?NOTES_PASSWORD environment variable is required}
+    volumes:
+      # Notes content (read-write for editing)
+      - ./content:/app/content:rw
+      # PDF files (read-write for uploads)
+      - ./pdfs:/app/pdfs:rw
+      # Git repository (read-write for version history)
+      - ./.git:/app/.git:ro
+      # Temporary storage for session database (tmpfs)
+    tmpfs:
+      - /tmp:size=64M,mode=1777
+      - /app/.notes_db:size=32M,mode=0700,uid=1000,gid=1000
+
+    # Security hardening
+    security_opt:
+      - no-new-privileges:true
+      - seccomp:seccomp-profile.json
+    cap_drop:
+      - ALL
+    read_only: true
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  default:
+    driver: bridge

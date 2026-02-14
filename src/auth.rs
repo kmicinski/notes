@@ -4,12 +4,14 @@
 //! and enabled by setting the NOTES_PASSWORD environment variable.
 
 use axum_extra::extract::CookieJar;
+use base64::{engine::general_purpose::STANDARD, Engine};
 use chrono::Utc;
 use hmac::{Hmac, Mac};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use std::env;
+use subtle::ConstantTimeEq;
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -89,7 +91,13 @@ pub fn verify_session(token: &str, secret: &[u8]) -> bool {
     mac.update(session_json.as_bytes());
     let expected_sig = hex_encode(mac.finalize().into_bytes().as_slice());
 
-    if parts[1] != expected_sig {
+    // Constant-time comparison to prevent timing attacks
+    let sig_bytes = parts[1].as_bytes();
+    let expected_bytes = expected_sig.as_bytes();
+    if sig_bytes.len() != expected_bytes.len() {
+        return false;
+    }
+    if sig_bytes.ct_eq(expected_bytes).unwrap_u8() != 1 {
         return false;
     }
 
@@ -121,51 +129,13 @@ pub fn is_logged_in(jar: &CookieJar) -> bool {
 
 /// Encode a string as base64
 pub fn base64_encode(s: &str) -> String {
-    const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let bytes = s.as_bytes();
-    let mut result = String::new();
-
-    for chunk in bytes.chunks(3) {
-        let mut n: u32 = 0;
-        for (i, &byte) in chunk.iter().enumerate() {
-            n |= (byte as u32) << (16 - i * 8);
-        }
-
-        let chars_to_add = chunk.len() + 1;
-        for i in 0..4 {
-            if i < chars_to_add {
-                result.push(CHARS[((n >> (18 - i * 6)) & 0x3F) as usize] as char);
-            } else {
-                result.push('=');
-            }
-        }
-    }
-
-    result
+    STANDARD.encode(s.as_bytes())
 }
 
 /// Decode a base64 string
 pub fn base64_decode(s: &str) -> Option<String> {
-    const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let s = s.trim_end_matches('=');
-    let mut result = Vec::new();
-
-    let mut buffer: u32 = 0;
-    let mut bits: u32 = 0;
-
-    for c in s.chars() {
-        let val = CHARS.iter().position(|&x| x == c as u8)? as u32;
-        buffer = (buffer << 6) | val;
-        bits += 6;
-
-        if bits >= 8 {
-            bits -= 8;
-            result.push((buffer >> bits) as u8);
-            buffer &= (1 << bits) - 1;
-        }
-    }
-
-    String::from_utf8(result).ok()
+    let bytes = STANDARD.decode(s).ok()?;
+    String::from_utf8(bytes).ok()
 }
 
 /// Encode bytes as hexadecimal
