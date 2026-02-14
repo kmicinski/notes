@@ -20,6 +20,7 @@ bibtex: |
   pages = {651–665},
   numpages = {15}
   }
+pdf: micinski2024datalog.pdf
 ---
 
 ## Summary
@@ -34,4 +35,3 @@ This is our VLDB paper on Slog
 - Scaling experiments on subsets of reasoning benchmarks
 
 ## Notes
-

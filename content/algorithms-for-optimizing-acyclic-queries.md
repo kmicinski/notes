@@ -1,6 +1,3 @@
-
-
-
 ---
 title: Algorithms for Optimizing Acyclic Queries
 date: 2026-01-26

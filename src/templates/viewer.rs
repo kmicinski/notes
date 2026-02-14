@@ -53,7 +53,7 @@ pub fn render_viewer(
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>{title}</title>
     <style>
         :root {{
@@ -196,6 +196,35 @@ pub fn render_viewer(
             text-decoration: underline;
         }}
 
+        /* Font Size Controls */
+        .font-size-controls {{
+            display: flex;
+            align-items: baseline;
+            gap: 0.15rem;
+            font-family: Georgia, 'Times New Roman', serif;
+            color: var(--muted);
+        }}
+        .font-size-controls label {{
+            cursor: pointer;
+            padding: 0.2rem 0.35rem;
+            border-radius: 3px;
+            transition: all 0.15s ease;
+            line-height: 1;
+        }}
+        .font-size-controls label:hover {{
+            color: var(--fg);
+        }}
+        .font-size-controls input[type="radio"] {{
+            display: none;
+        }}
+        .font-size-controls input[type="radio"]:checked + span {{
+            color: var(--link);
+        }}
+        .font-size-controls .size-tiny {{ font-size: 0.7rem; }}
+        .font-size-controls .size-small {{ font-size: 0.85rem; }}
+        .font-size-controls .size-normal {{ font-size: 1rem; font-weight: 500; }}
+        .font-size-controls .size-large {{ font-size: 1.2rem; font-weight: 500; }}
+
         .viewer-main {{
             flex: 1;
             display: flex;
@@ -214,13 +243,30 @@ pub fn render_viewer(
             margin: 0 auto;
         }}
 
+        /* Resizable Split Divider */
+        #split-divider {{
+            width: 6px;
+            background: var(--border);
+            cursor: col-resize;
+            flex-shrink: 0;
+            display: none;
+            transition: background 0.15s;
+        }}
+        #split-divider:hover,
+        #split-divider.dragging {{
+            background: var(--link);
+        }}
+        #split-divider.active {{
+            display: block;
+        }}
+
         /* PDF Viewer Pane */
         #pdf-viewer-pane {{
             width: 50%;
             display: none;
-            border-left: 1px solid var(--border);
             background: #586e75;
             flex-direction: column;
+            flex-shrink: 0;
         }}
         #pdf-viewer-pane.active {{
             display: flex;
@@ -259,53 +305,77 @@ pub fn render_viewer(
         .pdf-page-info {{
             font-size: 0.8rem;
             color: var(--fg);
-            margin: 0 0.5rem;
-        }}
-
-        .pdf-scale-controls {{
-            display: flex;
-            align-items: baseline;
-            gap: 0.1rem;
             margin-left: auto;
-            font-family: Georgia, 'Times New Roman', serif;
-            color: var(--muted);
         }}
-        .pdf-scale-controls label {{
-            cursor: pointer;
-            padding: 0.2rem 0.3rem;
-            border-radius: 3px;
-            transition: all 0.15s ease;
-            line-height: 1;
-        }}
-        .pdf-scale-controls label:hover {{
-            color: var(--fg);
-        }}
-        .pdf-scale-controls input[type="radio"] {{
-            display: none;
-        }}
-        .pdf-scale-controls input[type="radio"]:checked + span {{
-            color: var(--link);
-        }}
-        .pdf-scale-controls .scale-75 {{ font-size: 0.7rem; }}
-        .pdf-scale-controls .scale-100 {{ font-size: 0.85rem; }}
-        .pdf-scale-controls .scale-125 {{ font-size: 1rem; font-weight: 500; }}
-        .pdf-scale-controls .scale-150 {{ font-size: 1.15rem; font-weight: 500; }}
 
         /* PDF Canvas Container */
         .pdf-canvas-container {{
             flex: 1;
             overflow: auto;
             background: #586e75;
+            touch-action: pan-x pan-y; /* Allow scroll, capture pinch for custom zoom */
+            position: relative;
+            -webkit-overflow-scrolling: touch;
+            overscroll-behavior: contain;
+        }}
+
+        /* Inner wrapper for zoom transform */
+        .pdf-zoom-wrapper {{
             display: flex;
             flex-direction: column;
             align-items: center;
             padding: 1rem;
             gap: 1rem;
+            transform-origin: center top;
+            min-width: 100%;
+            will-change: transform;
         }}
 
-        .pdf-canvas-container canvas {{
+        /* PDF Page wrapper for canvas + text layer */
+        .pdf-page-wrapper {{
+            position: relative;
             background: white;
             box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            contain: layout style;
+        }}
+
+        .pdf-page-wrapper canvas {{
+            display: block;
+        }}
+
+        /* Text layer for selection */
+        .textLayer {{
+            position: absolute;
+            left: 0;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            overflow: hidden;
+            opacity: 0.2;
+            line-height: 1.0;
+        }}
+
+        .textLayer > span {{
+            color: transparent;
+            position: absolute;
+            white-space: pre;
+            cursor: text;
+            transform-origin: 0% 0%;
+        }}
+
+        .textLayer .highlight {{
+            margin: -1px;
+            padding: 1px;
+            background-color: rgba(180, 0, 170, 0.2);
+            border-radius: 4px;
+        }}
+
+        .textLayer .highlight.selected {{
+            background-color: rgba(0, 100, 0, 0.2);
+        }}
+
+        .textLayer ::selection {{
+            background: rgba(0, 0, 255, 0.3);
         }}
 
         .pdf-loading {{
@@ -454,6 +524,7 @@ pub fn render_viewer(
             font-size: 0.9em;
         }}
 
+
         .time-table {{ width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 1rem; }}
         .time-table th, .time-table td {{ padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border); }}
         .time-table th {{ font-weight: 600; }}
@@ -472,11 +543,17 @@ pub fn render_viewer(
         <div class="viewer-header">
             <a href="/" class="back-link">&larr; All Notes</a>
             <h1>{title}</h1>
+            <div class="font-size-controls" title="Font size">
+                <label><input type="radio" name="font-size" value="14" onchange="setFontSize(14)"><span class="size-tiny">A</span></label>
+                <label><input type="radio" name="font-size" value="16" onchange="setFontSize(16)"><span class="size-small">A</span></label>
+                <label><input type="radio" name="font-size" value="18" onchange="setFontSize(18)"><span class="size-normal">A</span></label>
+                <label><input type="radio" name="font-size" value="22" onchange="setFontSize(22)"><span class="size-large">A</span></label>
+            </div>
             <div class="pdf-status" id="pdf-status">{pdf_status_html}</div>
             {mode_toggle}
         </div>
         <div class="viewer-main">
-            <div class="content-pane">
+            <div class="content-pane" id="content-pane">
                 <div class="content-wrapper">
                     {meta_html}
                     <div class="note-content">{rendered_content}</div>
@@ -485,22 +562,20 @@ pub fn render_viewer(
                     {history_html}
                 </div>
             </div>
+            <div id="split-divider"></div>
             <div id="pdf-viewer-pane">
                 <div class="pdf-toolbar">
                     <button onclick="pdfPrevPage()" id="pdf-prev-btn" disabled>&larr; Prev</button>
                     <button onclick="pdfNextPage()" id="pdf-next-btn" disabled>Next &rarr;</button>
+                    <button onclick="pdfFitToWidth()" title="Fit to width">Fit</button>
                     <span class="pdf-page-info" id="pdf-page-info">Page 1 of 1</span>
-                    <div class="pdf-scale-controls" title="PDF Scale">
-                        <label><input type="radio" name="pdf-scale" value="0.75" onchange="setPdfScale(0.75)"><span class="scale-75">A</span></label>
-                        <label><input type="radio" name="pdf-scale" value="1.0" onchange="setPdfScale(1.0)"><span class="scale-100">A</span></label>
-                        <label><input type="radio" name="pdf-scale" value="1.25" onchange="setPdfScale(1.25)"><span class="scale-125">A</span></label>
-                        <label><input type="radio" name="pdf-scale" value="1.5" onchange="setPdfScale(1.5)"><span class="scale-150">A</span></label>
-                    </div>
                 </div>
                 <div class="pdf-canvas-container" id="pdf-canvas-container">
-                    <div class="pdf-loading" id="pdf-loading">
-                        <div class="spinner"></div>
-                        <span>Loading PDF...</span>
+                    <div class="pdf-zoom-wrapper" id="pdf-zoom-wrapper">
+                        <div class="pdf-loading" id="pdf-loading">
+                            <div class="spinner"></div>
+                            <span>Loading PDF...</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -515,29 +590,58 @@ pub fn render_viewer(
         const noteKey = "{key}";
         const pdfFilename = {pdf_filename_json};
 
+        // Font size handling - shared with editor via localStorage
+        // Editor uses Monaco sizes (11, 13, 15, 18), viewer scales up by 1.2x for readability
+        const fontSizeMap = {{ 11: 14, 13: 16, 15: 18, 18: 22 }};
+        const reverseFontSizeMap = {{ 14: 11, 16: 13, 18: 15, 22: 18 }};
+        let editorFontSize = parseInt(localStorage.getItem('editorFontSize')) || 15;
+        let currentFontSize = fontSizeMap[editorFontSize] || 18;
+
+        function setFontSize(size) {{
+            currentFontSize = size;
+            // Save as editor font size for sharing
+            const editorSize = reverseFontSizeMap[size] || 15;
+            localStorage.setItem('editorFontSize', editorSize);
+            applyFontSize();
+        }}
+
+        function applyFontSize() {{
+            const content = document.querySelector('.note-content');
+            if (content) {{
+                content.style.fontSize = currentFontSize + 'px';
+            }}
+        }}
+
+        function initFontSizeControls() {{
+            const radios = document.querySelectorAll('input[name="font-size"]');
+            radios.forEach(radio => {{
+                if (parseInt(radio.value) === currentFontSize) {{
+                    radio.checked = true;
+                }}
+            }});
+            applyFontSize();
+        }}
+
         // PDF state
         let pdfDoc = null;
         let currentPdfPage = 1;
         let totalPdfPages = 0;
-        let currentPdfScale = parseFloat(localStorage.getItem('pdfScale')) || 1.0;
+        const PDF_SCALE = 1.5; // Fixed scale for good readability
         let renderedPages = [];
 
-        function initPdfScaleControls() {{
-            const radios = document.querySelectorAll('input[name="pdf-scale"]');
-            radios.forEach(radio => {{
-                if (parseFloat(radio.value) === currentPdfScale) {{
-                    radio.checked = true;
-                }}
-            }});
-        }}
+        // Pinch zoom state
+        let currentZoom = 1.0;
+        let initialPinchDistance = 0;
+        let initialZoom = 1.0;
 
         function savePdfState() {{
             if (!pdfFilename) return;
             const container = document.getElementById('pdf-canvas-container');
             const state = {{
                 page: currentPdfPage,
-                scale: currentPdfScale,
                 scrollTop: container ? container.scrollTop : 0,
+                scrollLeft: container ? container.scrollLeft : 0,
+                zoom: currentZoom,
                 visible: document.getElementById('pdf-viewer-pane').classList.contains('active'),
                 timestamp: Date.now()
             }};
@@ -565,33 +669,42 @@ pub fn render_viewer(
             if (!pdfFilename) return;
 
             const pane = document.getElementById('pdf-viewer-pane');
+            const divider = document.getElementById('split-divider');
             const btn = document.getElementById('pdf-toggle-btn');
 
             pane.classList.add('active');
+            if (divider) divider.classList.add('active');
             if (btn) btn.classList.add('active');
+
+            // Apply saved split position
+            applySplitPosition();
 
             // Restore state
             const savedState = restorePdfState();
-            if (savedState) {{
-                currentPdfScale = savedState.scale;
-                initPdfScaleControls();
-            }}
 
             // Load PDF if not already loaded
             if (!pdfDoc) {{
                 await loadPdf();
-                // After loading, restore page and scroll position
-                if (savedState && savedState.page) {{
-                    currentPdfPage = Math.min(savedState.page, totalPdfPages);
+                // After loading, restore page, zoom, and scroll position
+                if (savedState) {{
+                    if (savedState.page) {{
+                        currentPdfPage = Math.min(savedState.page, totalPdfPages);
+                    }}
+                    if (savedState.zoom) {{
+                        applyZoom(savedState.zoom);
+                    }}
                     await renderAllPages();
-                    // Restore scroll position
-                    if (savedState.scrollTop) {{
-                        const container = document.getElementById('pdf-canvas-container');
+                    // Restore scroll position after a delay to allow layout
+                    const container = document.getElementById('pdf-canvas-container');
+                    if (savedState.scrollTop || savedState.scrollLeft) {{
                         setTimeout(() => {{
-                            container.scrollTop = savedState.scrollTop;
-                        }}, 100);
+                            if (savedState.scrollTop) container.scrollTop = savedState.scrollTop;
+                            if (savedState.scrollLeft) container.scrollLeft = savedState.scrollLeft;
+                        }}, 150);
                     }}
                 }}
+                // Setup pinch-to-zoom handlers
+                setupPinchZoom();
             }}
 
             savePdfState();
@@ -601,9 +714,11 @@ pub fn render_viewer(
             savePdfState();
 
             const pane = document.getElementById('pdf-viewer-pane');
+            const divider = document.getElementById('split-divider');
             const btn = document.getElementById('pdf-toggle-btn');
 
             pane.classList.remove('active');
+            if (divider) divider.classList.remove('active');
             if (btn) btn.classList.remove('active');
         }}
 
@@ -618,11 +733,12 @@ pub fn render_viewer(
 
         async function loadPdf() {{
             const container = document.getElementById('pdf-canvas-container');
+            const zoomWrapper = document.getElementById('pdf-zoom-wrapper');
             const loading = document.getElementById('pdf-loading');
 
-            // Show loading
-            container.innerHTML = '';
-            container.appendChild(loading);
+            // Show loading - clear zoom wrapper but keep it
+            zoomWrapper.innerHTML = '';
+            zoomWrapper.appendChild(loading);
             loading.style.display = 'flex';
 
             try {{
@@ -636,48 +752,128 @@ pub fn render_viewer(
                 await renderAllPages();
             }} catch (error) {{
                 loading.style.display = 'none';
-                container.innerHTML = '<div class="pdf-error">Failed to load PDF: ' + error.message + '</div>';
+                zoomWrapper.innerHTML = '<div class="pdf-error">Failed to load PDF: ' + error.message + '</div>';
                 console.error('PDF load error:', error);
             }}
         }}
 
-        async function renderAllPages() {{
+        // Track which pages have been rendered
+        let renderedPageNums = new Set();
+        const RENDER_BUFFER = 1;  // Render 1 page before/after visible
+
+        // Setup placeholders for all pages (fast, no rendering)
+        async function setupPagePlaceholders() {{
             if (!pdfDoc) return;
 
-            const container = document.getElementById('pdf-canvas-container');
-            container.innerHTML = '';
+            const zoomWrapper = document.getElementById('pdf-zoom-wrapper');
+            zoomWrapper.innerHTML = '';
             renderedPages = [];
+            renderedPageNums.clear();
+
+            // Get first page to determine dimensions
+            const firstPage = await pdfDoc.getPage(1);
+            const defaultViewport = firstPage.getViewport({{ scale: PDF_SCALE }});
+
+            for (let pageNum = 1; pageNum <= totalPdfPages; pageNum++) {{
+                const wrapper = document.createElement('div');
+                wrapper.className = 'pdf-page-wrapper pdf-page-placeholder';
+                wrapper.id = 'pdf-page-' + pageNum;
+                wrapper.dataset.page = pageNum;
+                wrapper.style.width = Math.floor(defaultViewport.width) + 'px';
+                wrapper.style.height = Math.floor(defaultViewport.height) + 'px';
+                wrapper.style.background = '#f5f5f5';
+
+                zoomWrapper.appendChild(wrapper);
+                renderedPages.push({{ wrapper, pageNum }});
+            }}
+
+            zoomWrapper.style.transform = 'scale(' + currentZoom + ')';
+            updatePageInfo();
+            updateNavButtons();
+            await renderVisiblePages();
+        }}
+
+        // Render a single page on demand
+        async function renderPage(pageNum) {{
+            if (renderedPageNums.has(pageNum)) return;
+            if (pageNum < 1 || pageNum > totalPdfPages) return;
+
+            const wrapper = document.getElementById('pdf-page-' + pageNum);
+            if (!wrapper) return;
+
+            renderedPageNums.add(pageNum);
+            wrapper.classList.remove('pdf-page-placeholder');
+            wrapper.style.background = 'white';
+
+            const page = await pdfDoc.getPage(pageNum);
+            const viewport = page.getViewport({{ scale: PDF_SCALE }});
+
+            wrapper.style.width = Math.floor(viewport.width) + 'px';
+            wrapper.style.height = Math.floor(viewport.height) + 'px';
 
             const dpr = window.devicePixelRatio || 1;
 
-            for (let pageNum = 1; pageNum <= totalPdfPages; pageNum++) {{
-                const page = await pdfDoc.getPage(pageNum);
-                const viewport = page.getViewport({{ scale: currentPdfScale }});
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = Math.floor(viewport.width * dpr);
+            canvas.height = Math.floor(viewport.height * dpr);
+            canvas.style.width = Math.floor(viewport.width) + 'px';
+            canvas.style.height = Math.floor(viewport.height) + 'px';
+            ctx.scale(dpr, dpr);
+            wrapper.appendChild(canvas);
 
-                const canvas = document.createElement('canvas');
-                canvas.id = 'pdf-page-' + pageNum;
-                canvas.dataset.page = pageNum;
-                const ctx = canvas.getContext('2d');
+            const textLayerDiv = document.createElement('div');
+            textLayerDiv.className = 'textLayer';
+            wrapper.appendChild(textLayerDiv);
 
-                // High DPI support
-                canvas.width = Math.floor(viewport.width * dpr);
-                canvas.height = Math.floor(viewport.height * dpr);
-                canvas.style.width = Math.floor(viewport.width) + 'px';
-                canvas.style.height = Math.floor(viewport.height) + 'px';
+            await page.render({{
+                canvasContext: ctx,
+                viewport: viewport
+            }}).promise;
 
-                ctx.scale(dpr, dpr);
+            const textContent = await page.getTextContent();
+            pdfjsLib.renderTextLayer({{
+                textContent: textContent,
+                container: textLayerDiv,
+                viewport: viewport,
+                textDivs: []
+            }});
 
-                container.appendChild(canvas);
-                renderedPages.push({{ canvas, page, viewport }});
+            const idx = pageNum - 1;
+            renderedPages[idx] = {{ wrapper, canvas, page, viewport }};
+        }}
 
-                await page.render({{
-                    canvasContext: ctx,
-                    viewport: viewport
-                }}).promise;
+        // Render pages in/near the viewport
+        async function renderVisiblePages() {{
+            const container = document.getElementById('pdf-canvas-container');
+            if (!container || !pdfDoc) return;
+
+            const containerRect = container.getBoundingClientRect();
+            const visiblePages = [];
+
+            renderedPages.forEach(({{ wrapper }}, index) => {{
+                const pageNum = index + 1;
+                const rect = wrapper.getBoundingClientRect();
+                const buffer = containerRect.height;
+                if (rect.bottom > containerRect.top - buffer &&
+                    rect.top < containerRect.bottom + buffer) {{
+                    visiblePages.push(pageNum);
+                }}
+            }});
+
+            const minPage = Math.max(1, currentPdfPage - RENDER_BUFFER);
+            const maxPage = Math.min(totalPdfPages, currentPdfPage + RENDER_BUFFER);
+            for (let p = minPage; p <= maxPage; p++) {{
+                if (!visiblePages.includes(p)) visiblePages.push(p);
             }}
 
-            updatePageInfo();
-            updateNavButtons();
+            for (const pageNum of visiblePages) {{
+                await renderPage(pageNum);
+            }}
+        }}
+
+        async function renderAllPages() {{
+            await setupPagePlaceholders();
         }}
 
         function updatePageInfo() {{
@@ -694,41 +890,35 @@ pub fn render_viewer(
             if (nextBtn) nextBtn.disabled = currentPdfPage >= totalPdfPages;
         }}
 
-        function pdfPrevPage() {{
+        async function pdfPrevPage() {{
             if (currentPdfPage <= 1) return;
             currentPdfPage--;
-            scrollToPage(currentPdfPage);
+            await scrollToPage(currentPdfPage);
             updatePageInfo();
             updateNavButtons();
             savePdfState();
         }}
 
-        function pdfNextPage() {{
+        async function pdfNextPage() {{
             if (currentPdfPage >= totalPdfPages) return;
             currentPdfPage++;
-            scrollToPage(currentPdfPage);
+            await scrollToPage(currentPdfPage);
             updatePageInfo();
             updateNavButtons();
             savePdfState();
         }}
 
-        function scrollToPage(pageNum) {{
-            const canvas = document.getElementById('pdf-page-' + pageNum);
-            if (canvas) {{
-                canvas.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+        async function scrollToPage(pageNum) {{
+            await renderPage(pageNum);
+            const wrapper = document.getElementById('pdf-page-' + pageNum);
+            if (wrapper) {{
+                wrapper.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
             }}
-        }}
-
-        function setPdfScale(scale) {{
-            currentPdfScale = scale;
-            localStorage.setItem('pdfScale', scale);
-            if (pdfDoc) {{
-                renderAllPages();
-            }}
-            savePdfState();
         }}
 
         // Track current page based on scroll position
+        let scrollSaveTimeout = null;
+        let lazyRenderTimeout = null;
         function setupScrollTracking() {{
             const container = document.getElementById('pdf-canvas-container');
             if (!container) return;
@@ -742,8 +932,8 @@ pub fn render_viewer(
                 let closestPage = 1;
                 let closestDistance = Infinity;
 
-                renderedPages.forEach(({{ canvas }}, index) => {{
-                    const rect = canvas.getBoundingClientRect();
+                renderedPages.forEach(({{ wrapper }}, index) => {{
+                    const rect = wrapper.getBoundingClientRect();
                     const distance = Math.abs(rect.top - containerTop);
                     if (distance < closestDistance) {{
                         closestDistance = distance;
@@ -756,7 +946,190 @@ pub fn render_viewer(
                     updatePageInfo();
                     updateNavButtons();
                 }}
+
+                // Debounced lazy rendering
+                if (lazyRenderTimeout) clearTimeout(lazyRenderTimeout);
+                lazyRenderTimeout = setTimeout(renderVisiblePages, 100);
+
+                // Debounced save of scroll position
+                if (scrollSaveTimeout) clearTimeout(scrollSaveTimeout);
+                scrollSaveTimeout = setTimeout(savePdfState, 300);
             }});
+        }}
+
+        // Pinch-to-zoom handling - direct response during gesture
+        function setupPinchZoom() {{
+            const container = document.getElementById('pdf-canvas-container');
+            const zoomWrapper = document.getElementById('pdf-zoom-wrapper');
+            if (!container || !zoomWrapper) return;
+
+            let isPinching = false;
+
+            function getDistance(touches) {{
+                const dx = touches[0].clientX - touches[1].clientX;
+                const dy = touches[0].clientY - touches[1].clientY;
+                return Math.sqrt(dx * dx + dy * dy);
+            }}
+
+            function applyZoomDirect(zoom) {{
+                currentZoom = Math.min(Math.max(zoom, 0.5), 4.0);
+                zoomWrapper.style.transform = 'scale(' + currentZoom + ')';
+            }}
+
+            container.addEventListener('touchstart', function(e) {{
+                if (e.touches.length === 2) {{
+                    e.preventDefault();
+                    initialPinchDistance = getDistance(e.touches);
+                    initialZoom = currentZoom;
+                    isPinching = true;
+                }}
+            }}, {{ passive: false }});
+
+            container.addEventListener('touchmove', function(e) {{
+                if (e.touches.length === 2 && isPinching) {{
+                    e.preventDefault();
+                    const currentDistance = getDistance(e.touches);
+                    const rawScale = currentDistance / initialPinchDistance;
+                    // Amplify the scale change for faster zooming
+                    const amplifiedScale = 1 + (rawScale - 1) * 2.0;
+                    applyZoomDirect(initialZoom * amplifiedScale);
+                }}
+            }}, {{ passive: false }});
+
+            container.addEventListener('touchend', function(e) {{
+                if (e.touches.length < 2) {{
+                    isPinching = false;
+                    initialPinchDistance = 0;
+                    savePdfState();
+                }}
+            }});
+
+            // Also support mouse wheel zoom with ctrl/cmd
+            let wheelZoomTimeout = null;
+            container.addEventListener('wheel', function(e) {{
+                if (e.ctrlKey || e.metaKey) {{
+                    e.preventDefault();
+                    const delta = e.deltaY > 0 ? 0.95 : 1.05;
+                    applyZoomDirect(currentZoom * delta);
+                    // Debounced save of zoom state
+                    if (wheelZoomTimeout) clearTimeout(wheelZoomTimeout);
+                    wheelZoomTimeout = setTimeout(savePdfState, 300);
+                }}
+            }}, {{ passive: false }});
+        }}
+
+        function applyZoom(zoom) {{
+            currentZoom = zoom;
+            const zoomWrapper = document.getElementById('pdf-zoom-wrapper');
+            if (zoomWrapper) {{
+                zoomWrapper.style.transform = 'scale(' + currentZoom + ')';
+            }}
+        }}
+
+        // Fit PDF to container width
+        function pdfFitToWidth() {{
+            const container = document.getElementById('pdf-canvas-container');
+            const firstPage = document.getElementById('pdf-page-1');
+            if (!container || !firstPage) return;
+
+            const containerWidth = container.clientWidth - 32;
+            const pageWidth = firstPage.offsetWidth;
+
+            if (pageWidth > 0) {{
+                const newZoom = containerWidth / pageWidth;
+                currentZoom = Math.min(Math.max(newZoom, 0.5), 4.0);
+                const zoomWrapper = document.getElementById('pdf-zoom-wrapper');
+                if (zoomWrapper) {{
+                    zoomWrapper.style.transform = 'scale(' + currentZoom + ')';
+                }}
+                savePdfState();
+            }}
+        }}
+
+        // =====================================================================
+        // Resizable Split Pane
+        // =====================================================================
+
+        let splitPosition = parseFloat(localStorage.getItem('pdfSplitPosition')) || 50; // percentage for content pane
+
+        function setupSplitDivider() {{
+            const divider = document.getElementById('split-divider');
+            const contentPane = document.getElementById('content-pane');
+            const pdfPane = document.getElementById('pdf-viewer-pane');
+            const main = document.querySelector('.viewer-main');
+
+            if (!divider || !contentPane || !pdfPane || !main) return;
+
+            let isDragging = false;
+
+            function updateSplitPosition(percent) {{
+                splitPosition = Math.min(Math.max(percent, 20), 80); // Clamp between 20-80%
+                const pdfWidth = 100 - splitPosition;
+
+                contentPane.style.flex = '0 0 ' + splitPosition + '%';
+                pdfPane.style.width = pdfWidth + '%';
+            }}
+
+            function onMouseDown(e) {{
+                e.preventDefault();
+                isDragging = true;
+                divider.classList.add('dragging');
+                document.body.style.cursor = 'col-resize';
+                document.body.style.userSelect = 'none';
+            }}
+
+            function onMouseMove(e) {{
+                if (!isDragging) return;
+                const rect = main.getBoundingClientRect();
+                const percent = ((e.clientX - rect.left) / rect.width) * 100;
+                updateSplitPosition(percent);
+            }}
+
+            function onMouseUp() {{
+                if (!isDragging) return;
+                isDragging = false;
+                divider.classList.remove('dragging');
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+                localStorage.setItem('pdfSplitPosition', splitPosition.toString());
+            }}
+
+            divider.addEventListener('mousedown', onMouseDown);
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+
+            // Touch support
+            divider.addEventListener('touchstart', function(e) {{
+                e.preventDefault();
+                isDragging = true;
+                divider.classList.add('dragging');
+            }}, {{ passive: false }});
+
+            document.addEventListener('touchmove', function(e) {{
+                if (!isDragging) return;
+                const touch = e.touches[0];
+                const rect = main.getBoundingClientRect();
+                const percent = ((touch.clientX - rect.left) / rect.width) * 100;
+                updateSplitPosition(percent);
+            }}, {{ passive: true }});
+
+            document.addEventListener('touchend', function() {{
+                if (!isDragging) return;
+                isDragging = false;
+                divider.classList.remove('dragging');
+                localStorage.setItem('pdfSplitPosition', splitPosition.toString());
+            }});
+        }}
+
+        function applySplitPosition() {{
+            const contentPane = document.getElementById('content-pane');
+            const pdfPane = document.getElementById('pdf-viewer-pane');
+
+            if (!contentPane || !pdfPane) return;
+
+            const pdfWidth = 100 - splitPosition;
+            contentPane.style.flex = '0 0 ' + splitPosition + '%';
+            pdfPane.style.width = pdfWidth + '%';
         }}
 
         // Copy BibTeX to clipboard
@@ -803,8 +1176,9 @@ pub fn render_viewer(
 
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', function() {{
-            initPdfScaleControls();
             setupScrollTracking();
+            setupSplitDivider();
+            initFontSizeControls();
 
             // Restore PDF visibility from saved state
             const savedState = restorePdfState();
