@@ -1,0 +1,45 @@
+# Git
+.git
+.gitignore
+
+# Build artifacts
+target/
+*.rs.bk
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Sensitive files
+.notes_password
+.env
+.env.*
+*.pem
+*.key
+*.crt
+
+# Development files
+Dockerfile
+docker-compose*.yml
+seccomp-profile.json
+.dockerignore
+
+# Documentation
+*.md
+!content/*.md
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test files
+tests/
+*_test.rs
+
+# Temporary files
+tmp/
+*.tmp
+*.log
