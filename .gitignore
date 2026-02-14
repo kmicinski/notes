@@ -1,2 +1,5 @@
 /target
 .notes_db
+cookies.txt
+.notes_password
+.env
