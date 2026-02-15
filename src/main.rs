@@ -49,6 +49,7 @@ async fn main() {
         .route("/api/smart-add/lookup", axum::routing::post(smart_add::smart_add_lookup))
         .route("/api/smart-add/create", axum::routing::post(smart_add::smart_add_create))
         .route("/api/smart-add/attach", axum::routing::post(smart_add::smart_add_attach))
+        .route("/api/smart-add/quick-note", axum::routing::post(smart_add::quick_note_create))
         // Export routes
         .route("/bibliography.bib", get(handlers::bibliography))
         // PDF routes

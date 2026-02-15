@@ -9,9 +9,9 @@
 use crate::auth::is_logged_in;
 use crate::models::{
     AttachSourceRequest, ExternalResult, InputType, LocalMatch, Note, NoteType,
-    SmartAddCreateRequest, SmartAddRequest, SmartAddResult,
+    QuickNoteRequest, SmartAddCreateRequest, SmartAddRequest, SmartAddResult,
 };
-use crate::notes::generate_key;
+use crate::notes::{generate_key, parse_bibtex};
 use crate::{validate_path_within, AppState};
 use axum::{
     extract::State,
@@ -944,22 +944,32 @@ pub async fn smart_add_create(
         .into_response();
     }
 
-    // Validate required fields
-    if body.title.trim().is_empty()
-        || body.filename.trim().is_empty()
-        || body.bib_key.trim().is_empty()
-    {
+    // BibTeX is required and must be parseable
+    let bibtex = body.bibtex.trim().to_string();
+    if bibtex.is_empty() {
         return axum::Json(SmartAddCreateResponse {
             key: None,
-            error: Some("Title, filename, and bib_key are required".to_string()),
+            error: Some("BibTeX is required".to_string()),
         })
         .into_response();
     }
 
+    let parsed = match parse_bibtex(&bibtex) {
+        Some(p) => p,
+        None => {
+            return axum::Json(SmartAddCreateResponse {
+                key: None,
+                error: Some("Could not parse BibTeX entry".to_string()),
+            })
+            .into_response();
+        }
+    };
+
+    let title = parsed.title.unwrap_or_else(|| parsed.cite_key.clone());
     let filename = body.filename.trim();
 
     // Validate filename
-    if !filename.ends_with(".md") {
+    if filename.is_empty() || !filename.ends_with(".md") {
         return axum::Json(SmartAddCreateResponse {
             key: None,
             error: Some("Filename must end with .md".to_string()),
@@ -1010,33 +1020,15 @@ pub async fn smart_add_create(
         }
     }
 
-    // Build frontmatter
+    // Build frontmatter — title and bibtex are the key fields;
+    // all other metadata (authors, year, venue) is derived from bibtex at read time
     let today = Utc::now().format("%Y-%m-%d");
     let mut frontmatter = format!(
-        "---\ntitle: {}\ndate: {}\ntype: paper\nbib_key: {}\n",
-        body.title, today, body.bib_key
+        "---\ntitle: {}\ndate: {}\ntype: paper\nbibtex: |\n",
+        title, today
     );
-
-    if let Some(ref authors) = body.authors {
-        if !authors.is_empty() {
-            frontmatter.push_str(&format!("authors: {}\n", authors));
-        }
-    }
-    if let Some(year) = body.year {
-        frontmatter.push_str(&format!("year: {}\n", year));
-    }
-    if let Some(ref venue) = body.venue {
-        if !venue.is_empty() {
-            frontmatter.push_str(&format!("venue: {}\n", venue));
-        }
-    }
-    if let Some(ref bibtex) = body.bibtex {
-        if !bibtex.is_empty() {
-            frontmatter.push_str("bibtex: |\n");
-            for line in bibtex.lines() {
-                frontmatter.push_str(&format!("  {}\n", line));
-            }
-        }
+    for line in bibtex.lines() {
+        frontmatter.push_str(&format!("  {}\n", line));
     }
     if let Some(ref arxiv_id) = body.arxiv_id {
         if !arxiv_id.is_empty() {
@@ -1062,6 +1054,116 @@ pub async fn smart_add_create(
 
     // Generate key for the new note
     let relative_path = PathBuf::from(filename);
+    let key = generate_key(&relative_path);
+
+    axum::Json(SmartAddCreateResponse {
+        key: Some(key),
+        error: None,
+    })
+    .into_response()
+}
+
+pub async fn quick_note_create(
+    State(state): State<Arc<AppState>>,
+    jar: CookieJar,
+    axum::Json(body): axum::Json<QuickNoteRequest>,
+) -> Response {
+    if !is_logged_in(&jar) {
+        return axum::Json(SmartAddCreateResponse {
+            key: None,
+            error: Some("Not logged in".to_string()),
+        })
+        .into_response();
+    }
+
+    let title = body.title.trim().to_string();
+    if title.is_empty() {
+        return axum::Json(SmartAddCreateResponse {
+            key: None,
+            error: Some("Title is required".to_string()),
+        })
+        .into_response();
+    }
+
+    // Generate slug from title
+    let slug: String = title
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c } else { '-' })
+        .collect::<String>()
+        .split('-')
+        .filter(|s| !s.is_empty())
+        .take(8)
+        .collect::<Vec<_>>()
+        .join("-");
+
+    // Build filename with optional subdirectory
+    let filename = if let Some(ref subdir) = body.subdirectory {
+        let subdir = subdir.trim().trim_matches('/');
+        if subdir.is_empty() {
+            format!("{}.md", slug)
+        } else {
+            format!("{}/{}.md", subdir, slug)
+        }
+    } else {
+        format!("{}.md", slug)
+    };
+
+    // Validate filename
+    if filename.contains("..") || filename.starts_with('/') || filename.contains('\0') {
+        return axum::Json(SmartAddCreateResponse {
+            key: None,
+            error: Some("Invalid filename".to_string()),
+        })
+        .into_response();
+    }
+
+    let file_path = state.notes_dir.join(&filename);
+
+    if let Err(_) = validate_path_within(&state.notes_dir, &file_path) {
+        return axum::Json(SmartAddCreateResponse {
+            key: None,
+            error: Some("Invalid filename".to_string()),
+        })
+        .into_response();
+    }
+
+    if file_path.exists() {
+        return axum::Json(SmartAddCreateResponse {
+            key: None,
+            error: Some(format!("A note with filename '{}' already exists", filename)),
+        })
+        .into_response();
+    }
+
+    if let Some(parent) = file_path.parent() {
+        if let Err(e) = fs::create_dir_all(parent) {
+            return axum::Json(SmartAddCreateResponse {
+                key: None,
+                error: Some(format!("Failed to create directory: {}", e)),
+            })
+            .into_response();
+        }
+    }
+
+    let date = body
+        .date
+        .as_deref()
+        .filter(|d| !d.is_empty())
+        .unwrap_or(&Utc::now().format("%Y-%m-%d").to_string())
+        .to_string();
+
+    let frontmatter = format!("---\ntitle: {}\ndate: {}\n---\n\n", title, date);
+
+    if let Err(e) = fs::write(&file_path, &frontmatter) {
+        return axum::Json(SmartAddCreateResponse {
+            key: None,
+            error: Some(format!("Failed to create note: {}", e)),
+        })
+        .into_response();
+    }
+
+    let relative_path = PathBuf::from(&filename);
     let key = generate_key(&relative_path);
 
     axum::Json(SmartAddCreateResponse {

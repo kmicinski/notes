@@ -680,4 +680,62 @@ h1 { font-size: 1.5rem; }
     min-height: 100px;
     resize: vertical;
 }
+
+/* Smart Add Tabs */
+.smart-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    padding: 0 1.5rem;
+}
+.smart-tab {
+    padding: 0.6rem 1.2rem;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-family: inherit;
+    color: var(--muted);
+    transition: color 0.2s, border-color 0.2s;
+}
+.smart-tab:hover { color: var(--fg); }
+.smart-tab.active {
+    color: var(--link);
+    border-bottom-color: var(--link);
+    font-weight: 600;
+}
+
+/* BibTeX validation & preview */
+.bibtex-validation {
+    margin-bottom: 0.75rem;
+    font-size: 0.85rem;
+}
+.bib-valid { color: var(--green); }
+.bib-valid code {
+    font-size: 0.8rem;
+    background: var(--accent);
+    padding: 0.1rem 0.3rem;
+    border-radius: 2px;
+}
+.bib-invalid { color: var(--red); }
+
+.bibtex-preview { margin-bottom: 0.75rem; }
+.bib-preview-fields {
+    background: var(--accent);
+    border-radius: 4px;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.85rem;
+}
+.bib-field {
+    padding: 0.15rem 0;
+}
+.bib-label {
+    font-weight: 600;
+    color: var(--base01);
+    margin-right: 0.5rem;
+    display: inline-block;
+    min-width: 55px;
+}
+
+.required { color: var(--red); }
 "#;

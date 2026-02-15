@@ -56,7 +56,15 @@ pub fn smart_add_html() -> &'static str {
                 <h2>Smart Add</h2>
                 <button class="smart-modal-close" onclick="closeSmartAdd()">&times;</button>
             </div>
-            <div class="smart-modal-body">
+
+            <!-- Tabs -->
+            <div class="smart-tabs">
+                <button class="smart-tab active" onclick="switchTab('paper')" id="tab-paper">Add Paper</button>
+                <button class="smart-tab" onclick="switchTab('note')" id="tab-note">New Note</button>
+            </div>
+
+            <!-- Paper Tab -->
+            <div class="smart-modal-body" id="panel-paper">
                 <div class="smart-input-group">
                     <label for="smart-input">Paste URL, arXiv ID, DOI, or paper title</label>
                     <input type="text" id="smart-input" placeholder="https://arxiv.org/abs/... or 10.1000/... or paper title"
@@ -73,46 +81,57 @@ pub fn smart_add_html() -> &'static str {
 
                 <div class="smart-form" id="smart-form">
                     <h3>Create Paper Note</h3>
-                    <div class="smart-form-row">
-                        <div class="smart-input-group">
-                            <label for="smart-title">Title</label>
-                            <input type="text" id="smart-title">
-                        </div>
+
+                    <div class="smart-input-group">
+                        <label for="smart-bibtex">BibTeX <span class="required">*</span></label>
+                        <textarea id="smart-bibtex" rows="8" placeholder="@article{authorYYYYkeyword,
+  title = {Paper Title},
+  author = {First Author and Second Author},
+  year = {2024},
+  journal = {Journal Name},
+}"></textarea>
                     </div>
+
+                    <div id="bibtex-validation" class="bibtex-validation"></div>
+
+                    <div id="bibtex-preview" class="bibtex-preview"></div>
+
                     <div class="smart-form-row">
                         <div class="smart-input-group">
                             <label for="smart-filename">Filename</label>
-                            <input type="text" id="smart-filename" placeholder="paper-title.md">
-                        </div>
-                        <div class="smart-input-group">
-                            <label for="smart-bibkey">Bib Key</label>
-                            <input type="text" id="smart-bibkey" placeholder="author2024keyword">
+                            <input type="text" id="smart-filename" placeholder="authorYYYYkeyword.md">
+                            <small>Auto-generated from bib key; editable</small>
                         </div>
                     </div>
-                    <div class="smart-form-row">
-                        <div class="smart-input-group">
-                            <label for="smart-authors">Authors</label>
-                            <input type="text" id="smart-authors" placeholder="Author One and Author Two">
-                        </div>
-                    </div>
-                    <div class="smart-form-row">
-                        <div class="smart-input-group">
-                            <label for="smart-year">Year</label>
-                            <input type="number" id="smart-year" placeholder="2024">
-                        </div>
-                        <div class="smart-input-group">
-                            <label for="smart-venue">Venue</label>
-                            <input type="text" id="smart-venue" placeholder="Conference/Journal">
-                        </div>
-                    </div>
-                    <div class="smart-input-group">
-                        <label for="smart-bibtex">BibTeX</label>
-                        <textarea id="smart-bibtex" placeholder="@article{...}"></textarea>
-                    </div>
+
                     <div class="smart-result-actions">
-                        <button class="btn" onclick="createFromSmartAdd()">Create Note</button>
+                        <button class="btn" onclick="createFromSmartAdd()" id="btn-create-paper">Create Note</button>
                         <button class="btn secondary" onclick="closeSmartAdd()">Cancel</button>
                     </div>
+                </div>
+            </div>
+
+            <!-- Note Tab -->
+            <div class="smart-modal-body" id="panel-note" style="display:none">
+                <div class="smart-input-group">
+                    <label for="note-title">Title <span class="required">*</span></label>
+                    <input type="text" id="note-title" placeholder="My new note">
+                </div>
+                <div class="smart-form-row">
+                    <div class="smart-input-group">
+                        <label for="note-date">Date</label>
+                        <input type="date" id="note-date">
+                        <small>Defaults to today</small>
+                    </div>
+                    <div class="smart-input-group">
+                        <label for="note-subdir">Subdirectory</label>
+                        <input type="text" id="note-subdir" placeholder="projects/">
+                        <small>Optional subfolder</small>
+                    </div>
+                </div>
+                <div class="smart-result-actions">
+                    <button class="btn" onclick="createQuickNote()">Create Note</button>
+                    <button class="btn secondary" onclick="closeSmartAdd()">Cancel</button>
                 </div>
             </div>
         </div>
@@ -121,12 +140,31 @@ pub fn smart_add_html() -> &'static str {
     <script>
     let smartDebounceTimer = null;
 
+    function switchTab(tab) {
+        document.getElementById('tab-paper').classList.toggle('active', tab === 'paper');
+        document.getElementById('tab-note').classList.toggle('active', tab === 'note');
+        document.getElementById('panel-paper').style.display = tab === 'paper' ? '' : 'none';
+        document.getElementById('panel-note').style.display = tab === 'note' ? '' : 'none';
+        if (tab === 'note') document.getElementById('note-title').focus();
+        if (tab === 'paper') document.getElementById('smart-input').focus();
+    }
+
     function openSmartAdd() {
         document.getElementById('smart-modal-overlay').classList.add('active');
-        document.getElementById('smart-input').focus();
+        switchTab('paper');
         document.getElementById('smart-input').value = '';
+        document.getElementById('smart-bibtex').value = '';
+        document.getElementById('smart-filename').value = '';
+        document.getElementById('bibtex-validation').innerHTML = '';
+        document.getElementById('bibtex-preview').innerHTML = '';
         document.getElementById('smart-result').classList.remove('active');
         document.getElementById('smart-form').classList.remove('active');
+        document.getElementById('smart-input').focus();
+        document.getElementById('note-title').value = '';
+        document.getElementById('note-date').value = '';
+        document.getElementById('note-subdir').value = '';
+        window.detectedArxivId = null;
+        window.detectedDoi = null;
     }
 
     function closeSmartAdd() {
@@ -139,28 +177,63 @@ pub fn smart_add_html() -> &'static str {
         smartDebounceTimer = setTimeout(performSmartLookup, 800);
     });
 
-    // Auto-generate filename from title when typing manually
-    document.getElementById('smart-title').addEventListener('input', function() {
-        const title = this.value;
-        const slug = title.toLowerCase()
-            .replace(/[^a-z0-9\s-]/g, '')
-            .replace(/\s+/g, '-')
-            .replace(/-+/g, '-')
-            .substring(0, 50);
-        if (slug) {
-            document.getElementById('smart-filename').value = slug + '.md';
-            // Also generate a basic bib_key if year is set
-            const year = document.getElementById('smart-year').value;
-            const authors = document.getElementById('smart-authors').value;
-            const firstWord = title.split(/\s+/).find(w => w.length > 3 && !['the','and','for','with'].includes(w.toLowerCase())) || 'paper';
-            let bibkey = firstWord.toLowerCase().replace(/[^a-z]/g, '');
-            if (year) bibkey = year + bibkey;
-            if (authors) {
-                const lastName = authors.split(/[,\s]+/)[0].toLowerCase().replace(/[^a-z]/g, '');
-                if (lastName) bibkey = lastName + bibkey.replace(/^\d+/, year || '');
-            }
-            document.getElementById('smart-bibkey').value = bibkey;
+    // ---- Client-side BibTeX parser ----
+    function parseBibtex(text) {
+        text = text.trim();
+        if (!text) return null;
+        const entryMatch = text.match(/@(\w+)\s*\{\s*([^,\s]+)/);
+        if (!entryMatch) return null;
+        const entryType = entryMatch[1].toLowerCase();
+        const citeKey = entryMatch[2];
+
+        function extractField(name) {
+            const re = new RegExp(name + '\\s*=\\s*(?:\\{([^}]*)\\}|"([^"]*)"|([0-9]+))', 'i');
+            const m = text.match(re);
+            if (!m) return null;
+            return (m[1] || m[2] || m[3] || '').trim() || null;
         }
+
+        return {
+            entryType,
+            citeKey,
+            title: extractField('title'),
+            author: extractField('author'),
+            year: extractField('year'),
+            venue: extractField('journal') || extractField('booktitle') || extractField('howpublished')
+        };
+    }
+
+    document.getElementById('smart-bibtex').addEventListener('input', function() {
+        const parsed = parseBibtex(this.value);
+        const valEl = document.getElementById('bibtex-validation');
+        const prevEl = document.getElementById('bibtex-preview');
+
+        if (!this.value.trim()) {
+            valEl.innerHTML = '';
+            prevEl.innerHTML = '';
+            document.getElementById('smart-filename').value = '';
+            return;
+        }
+
+        if (!parsed) {
+            valEl.innerHTML = '<span class="bib-invalid">Invalid BibTeX</span>';
+            prevEl.innerHTML = '';
+            document.getElementById('smart-filename').value = '';
+            return;
+        }
+
+        valEl.innerHTML = '<span class="bib-valid">Valid BibTeX: <code>' + escapeHtml(parsed.citeKey) + '</code></span>';
+
+        let preview = '<div class="bib-preview-fields">';
+        if (parsed.title) preview += '<div class="bib-field"><span class="bib-label">Title</span> ' + escapeHtml(parsed.title) + '</div>';
+        if (parsed.author) preview += '<div class="bib-field"><span class="bib-label">Authors</span> ' + escapeHtml(parsed.author) + '</div>';
+        if (parsed.year) preview += '<div class="bib-field"><span class="bib-label">Year</span> ' + escapeHtml(parsed.year) + '</div>';
+        if (parsed.venue) preview += '<div class="bib-field"><span class="bib-label">Venue</span> ' + escapeHtml(parsed.venue) + '</div>';
+        preview += '</div>';
+        prevEl.innerHTML = preview;
+
+        // Auto-fill filename from cite key
+        document.getElementById('smart-filename').value = parsed.citeKey + '.md';
     });
 
     async function performSmartLookup() {
@@ -182,14 +255,12 @@ pub fn smart_add_html() -> &'static str {
                 body: JSON.stringify({ input: input })
             });
 
-            // Handle non-OK responses
             if (!response.ok) {
                 loading.classList.remove('active');
                 showManualEntryOption(result, 'Server error: ' + response.status);
                 return;
             }
 
-            // Try to parse JSON, with fallback for invalid responses
             let data;
             try {
                 const text = await response.text();
@@ -214,7 +285,6 @@ pub fn smart_add_html() -> &'static str {
             }
 
             if (data.local_match) {
-                // Check if we have a new source to attach
                 const canAttach = data.external_result && data.input_type !== 'text';
                 const sourceInfo = data.input_type === 'arxiv' ? 'arXiv' :
                                    data.input_type === 'doi' ? 'DOI' : 'source';
@@ -237,12 +307,10 @@ pub fn smart_add_html() -> &'static str {
                 `;
                 result.className = 'smart-result active match';
 
-                // Store match info for potential attachment
                 window.currentMatch = data.local_match;
                 window.currentInputType = data.input_type;
                 window.currentInput = document.getElementById('smart-input').value.trim();
 
-                // Still populate form in case user wants to add anyway
                 if (data.external_result) {
                     populateForm(data.external_result);
                 }
@@ -252,7 +320,6 @@ pub fn smart_add_html() -> &'static str {
             if (data.external_result) {
                 populateForm(data.external_result);
 
-                // Store source identifiers for when we create the note
                 window.detectedArxivId = null;
                 window.detectedDoi = null;
                 if (data.input_type === 'arxiv') {
@@ -274,13 +341,11 @@ pub fn smart_add_html() -> &'static str {
                 return;
             }
 
-            // No external result, offer manual entry or regular note
             result.innerHTML = `
                 <h3>No paper metadata found</h3>
-                <p>External APIs didn't return results. You can enter details manually or create a regular note.</p>
+                <p>External APIs didn't return results. You can enter BibTeX manually below.</p>
                 <div class="smart-result-actions">
-                    <button class="btn" onclick="showFormForManualEntry()">Enter Paper Details</button>
-                    <a href="/new" class="btn secondary">Create Regular Note</a>
+                    <button class="btn" onclick="showFormForManualEntry()">Enter BibTeX Manually</button>
                 </div>
             `;
             result.className = 'smart-result active';
@@ -300,10 +365,9 @@ pub fn smart_add_html() -> &'static str {
         result.innerHTML = `
             <h3>Lookup unavailable</h3>
             <p>${escapeHtml(message)}</p>
-            <p>You can still create a note manually:</p>
+            <p>You can still enter BibTeX manually:</p>
             <div class="smart-result-actions">
-                <button class="btn" onclick="showFormForManualEntry()">Enter Details Manually</button>
-                <a href="/new" class="btn secondary">Use Simple Form</a>
+                <button class="btn" onclick="showFormForManualEntry()">Enter BibTeX Manually</button>
             </div>
         `;
         result.className = 'smart-result active';
@@ -312,11 +376,9 @@ pub fn smart_add_html() -> &'static str {
     function getSourceIdentifier(data) {
         const input = document.getElementById('smart-input').value.trim();
         if (data.input_type === 'arxiv') {
-            // Extract arxiv ID from URL or raw input
             const match = input.match(/(\d{4}\.\d{4,5})/);
             return match ? match[1] : input;
         } else if (data.input_type === 'doi') {
-            // Extract DOI
             const match = input.match(/(10\.\d{4,}\/[^\s]+)/);
             return match ? match[1] : input;
         }
@@ -362,39 +424,80 @@ pub fn smart_add_html() -> &'static str {
     function showFormForManualEntry() {
         document.getElementById('smart-result').classList.remove('active');
         document.getElementById('smart-form').classList.add('active');
-        document.getElementById('smart-title').focus();
+        document.getElementById('smart-bibtex').focus();
     }
 
     function populateForm(ext) {
-        document.getElementById('smart-title').value = ext.title || '';
-        document.getElementById('smart-filename').value = ext.suggested_filename || '';
-        document.getElementById('smart-bibkey').value = ext.bib_key || '';
-        document.getElementById('smart-authors').value = ext.authors || '';
-        document.getElementById('smart-year').value = ext.year || '';
-        document.getElementById('smart-venue').value = ext.venue || '';
+        // Populate BibTeX textarea — this is the primary input now
         document.getElementById('smart-bibtex').value = ext.bibtex || '';
+        // Trigger parsing to update preview and filename
+        document.getElementById('smart-bibtex').dispatchEvent(new Event('input'));
     }
 
     async function createFromSmartAdd() {
+        const bibtex = document.getElementById('smart-bibtex').value.trim();
+        const filename = document.getElementById('smart-filename').value.trim();
+
+        if (!bibtex) {
+            alert('BibTeX is required');
+            return;
+        }
+
+        const parsed = parseBibtex(bibtex);
+        if (!parsed) {
+            alert('Could not parse BibTeX entry');
+            return;
+        }
+
+        if (!filename) {
+            alert('Filename is required');
+            return;
+        }
+
         const data = {
-            title: document.getElementById('smart-title').value,
-            filename: document.getElementById('smart-filename').value,
-            bib_key: document.getElementById('smart-bibkey').value,
-            authors: document.getElementById('smart-authors').value || null,
-            year: parseInt(document.getElementById('smart-year').value) || null,
-            venue: document.getElementById('smart-venue').value || null,
-            bibtex: document.getElementById('smart-bibtex').value || null,
+            bibtex: bibtex,
+            filename: filename,
             arxiv_id: window.detectedArxivId || null,
             doi: window.detectedDoi || null
         };
 
-        if (!data.title || !data.filename || !data.bib_key) {
-            alert('Title, filename, and bib_key are required');
+        try {
+            const response = await fetch('/api/smart-add/create', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+
+            const result = await response.json();
+
+            if (result.error) {
+                alert('Error: ' + result.error);
+                return;
+            }
+
+            if (result.key) {
+                window.location.href = '/note/' + result.key + '?edit=true';
+            }
+        } catch (e) {
+            alert('Failed to create note: ' + e.message);
+        }
+    }
+
+    async function createQuickNote() {
+        const title = document.getElementById('note-title').value.trim();
+        if (!title) {
+            alert('Title is required');
             return;
         }
 
+        const data = {
+            title: title,
+            date: document.getElementById('note-date').value || null,
+            subdirectory: document.getElementById('note-subdir').value || null
+        };
+
         try {
-            const response = await fetch('/api/smart-add/create', {
+            const response = await fetch('/api/smart-add/quick-note', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)

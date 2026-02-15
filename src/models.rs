@@ -408,15 +408,17 @@ pub struct SmartAddResult {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct SmartAddCreateRequest {
-    pub title: String,
+    pub bibtex: String,
     pub filename: String,
-    pub bib_key: String,
-    pub authors: Option<String>,
-    pub year: Option<i32>,
-    pub venue: Option<String>,
-    pub bibtex: Option<String>,
     pub arxiv_id: Option<String>,
     pub doi: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct QuickNoteRequest {
+    pub title: String,
+    pub date: Option<String>,
+    pub subdirectory: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
