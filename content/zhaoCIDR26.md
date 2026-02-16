@@ -18,7 +18,6 @@ bibtex: |
 - In conclusion, SQL server implicitly considers all Yannakakis-style plans for acylic joins!
 
 
-
 ## Key Contributions
 
 ## Questions
