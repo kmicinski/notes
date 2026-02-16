@@ -17,6 +17,10 @@ bibtex: |
 - SQL server blends bitmap filters into a pull-based execution (Sec. 3) 
 - In conclusion, SQL server implicitly considers all Yannakakis-style plans for acylic joins!
 
+### 2.1 Yannakakis algorithm
+
+In YA, we have the running intersection property: if we take any attribute and look at the set of relations containing that attribute, they have to be a connected part of the join tree we choose. 
+
 
 ## Key Contributions
 
