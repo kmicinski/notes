@@ -38,6 +38,7 @@ async fn main() {
             "/api/note/{key}",
             axum::routing::post(handlers::save_note).delete(handlers::delete_note),
         )
+        .route("/api/note/{key}/toggle-hidden", axum::routing::post(handlers::toggle_hidden))
         .route("/note/{key}/history/{commit}", get(handlers::view_note_history))
         // List routes
         .route("/papers", get(handlers::papers))
@@ -50,6 +51,9 @@ async fn main() {
         .route("/api/smart-add/create", axum::routing::post(smart_add::smart_add_create))
         .route("/api/smart-add/attach", axum::routing::post(smart_add::smart_add_attach))
         .route("/api/smart-add/quick-note", axum::routing::post(smart_add::quick_note_create))
+        // BibTeX Import routes
+        .route("/api/bib-import/analyze", axum::routing::post(smart_add::bib_import_analyze))
+        .route("/api/bib-import/execute", axum::routing::post(smart_add::bib_import_execute))
         // Export routes
         .route("/bibliography.bib", get(handlers::bibliography))
         // PDF routes

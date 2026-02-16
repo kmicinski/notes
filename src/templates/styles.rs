@@ -738,4 +738,167 @@ h1 { font-size: 1.5rem; }
 }
 
 .required { color: var(--red); }
+
+/* BibTeX Import - Drop Overlay */
+.bib-drop-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(38, 139, 210, 0.15);
+    z-index: 2000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+}
+.bib-drop-overlay.active {
+    display: flex;
+}
+.bib-drop-message {
+    padding: 2rem 3rem;
+    background: var(--bg);
+    border: 3px dashed var(--link);
+    border-radius: 12px;
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--link);
+}
+
+/* BibTeX Import - Badges */
+.bib-badges {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+}
+.bib-badge {
+    display: inline-block;
+    padding: 0.2rem 0.6rem;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+.bib-badge.new { background: #d4edda; color: #155724; }
+.bib-badge.existing { background: var(--accent); color: var(--muted); }
+.bib-badge.conflict { background: #fff3cd; color: #856404; }
+.bib-badge.error { background: #f8d7da; color: #721c24; }
+
+/* BibTeX Import - Items */
+.bib-import-item {
+    padding: 0.5rem 0.75rem;
+    margin-bottom: 0.5rem;
+    border-radius: 4px;
+    background: var(--accent);
+    border-left: 3px solid transparent;
+    font-size: 0.9rem;
+}
+.bib-import-item.new { border-left-color: var(--green); }
+.bib-import-item.conflict { border-left-color: var(--orange); }
+.bib-import-item.existing { border-left-color: var(--muted); }
+.bib-import-item.error-item { border-left-color: var(--red); }
+
+.bib-import-item code {
+    font-size: 0.8rem;
+    background: var(--bg);
+    padding: 0.1rem 0.3rem;
+    border-radius: 2px;
+}
+
+.bib-filename-row {
+    margin-top: 0.4rem;
+    font-size: 0.85rem;
+}
+.bib-filename-row input {
+    padding: 0.25rem 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: var(--bg);
+    color: var(--fg);
+    font-size: 0.8rem;
+    font-family: monospace;
+    width: 250px;
+}
+
+/* BibTeX Import - Conflict Actions */
+.bib-conflict-actions {
+    margin-top: 0.4rem;
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+.bib-conflict-actions select {
+    padding: 0.25rem 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: var(--bg);
+    color: var(--fg);
+    font-size: 0.8rem;
+}
+.bib-conflict-actions input {
+    padding: 0.25rem 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: var(--bg);
+    color: var(--fg);
+    font-size: 0.8rem;
+    font-family: monospace;
+    width: 200px;
+}
+
+.bib-existing-section {
+    margin: 0.75rem 0;
+    font-size: 0.9rem;
+}
+.bib-existing-section summary {
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 0.85rem;
+}
+
+/* Hidden Notes */
+.note-hide-btn {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 0.7rem;
+    font-family: inherit;
+    padding: 0.15rem 0.4rem;
+    border-radius: 3px;
+    opacity: 0;
+    transition: opacity 0.15s;
+    margin-right: 0.5rem;
+    vertical-align: middle;
+}
+.note-item:hover .note-hide-btn {
+    opacity: 1;
+}
+.note-hide-btn:hover {
+    background: var(--accent);
+    color: var(--fg);
+}
+
+.note-item.hidden-note {
+    opacity: 0.45;
+}
+.note-item.hidden-note .title {
+    text-decoration: line-through;
+}
+
+.hidden-toggle {
+    font-size: 0.8rem;
+    margin-bottom: 0.5rem;
+}
+.hidden-toggle a {
+    color: var(--muted);
+    background: var(--accent);
+    padding: 0.2rem 0.6rem;
+    border-radius: 10px;
+    font-size: 0.75rem;
+}
+.hidden-toggle a:hover {
+    color: var(--fg);
+    text-decoration: none;
+}
 "#;

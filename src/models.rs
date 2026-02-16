@@ -24,6 +24,7 @@ pub struct Note {
     pub full_file_content: String,
     pub modified: DateTime<Utc>,
     pub pdf: Option<String>,
+    pub hidden: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -426,4 +427,85 @@ pub struct AttachSourceRequest {
     pub note_key: String,
     pub source_type: String,
     pub identifier: String,
+}
+
+// ============================================================================
+// BibTeX Import Data Structures
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize)]
+pub struct BibImportAnalysis {
+    pub new_entries: Vec<BibImportEntry>,
+    pub existing_entries: Vec<BibImportExisting>,
+    pub conflicts: Vec<BibImportConflict>,
+    pub parse_errors: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct BibImportEntry {
+    pub index: usize,
+    pub bibtex: String,
+    pub cite_key: String,
+    pub title: Option<String>,
+    pub author: Option<String>,
+    pub year: Option<i32>,
+    pub suggested_filename: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct BibImportExisting {
+    pub index: usize,
+    pub cite_key: String,
+    pub note_key: String,
+    pub note_title: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct BibImportConflict {
+    pub index: usize,
+    pub bibtex: String,
+    pub cite_key: String,
+    pub title: Option<String>,
+    pub match_type: String,
+    pub matched_note_key: String,
+    pub matched_note_title: String,
+    pub existing_bibtex: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct BibImportExecuteRequest {
+    pub create: Vec<BibImportCreateItem>,
+    pub add_secondary: Vec<BibImportSecondaryItem>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct BibImportCreateItem {
+    pub bibtex: String,
+    pub filename: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct BibImportSecondaryItem {
+    pub note_key: String,
+    pub bibtex: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct BibImportExecuteResult {
+    pub created: Vec<BibImportCreatedNote>,
+    pub updated: Vec<BibImportUpdatedNote>,
+    pub errors: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct BibImportCreatedNote {
+    pub key: String,
+    pub filename: String,
+    pub title: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct BibImportUpdatedNote {
+    pub key: String,
+    pub title: String,
 }

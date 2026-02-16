@@ -61,6 +61,7 @@ pub fn smart_add_html() -> &'static str {
             <div class="smart-tabs">
                 <button class="smart-tab active" onclick="switchTab('paper')" id="tab-paper">Add Paper</button>
                 <button class="smart-tab" onclick="switchTab('note')" id="tab-note">New Note</button>
+                <button class="smart-tab" onclick="switchTab('bibimport')" id="tab-bibimport">Import .bib</button>
             </div>
 
             <!-- Paper Tab -->
@@ -134,7 +135,26 @@ pub fn smart_add_html() -> &'static str {
                     <button class="btn secondary" onclick="closeSmartAdd()">Cancel</button>
                 </div>
             </div>
+
+            <!-- Import .bib Tab -->
+            <div class="smart-modal-body" id="panel-bibimport" style="display:none">
+                <div class="smart-input-group">
+                    <label for="bib-file-input">Select .bib file</label>
+                    <input type="file" id="bib-file-input" accept=".bib" onchange="handleBibFile(this.files[0])">
+                    <small>Or drag-and-drop a .bib file anywhere on the page</small>
+                </div>
+                <div class="smart-loading" id="bib-loading">
+                    <div class="smart-spinner"></div>
+                    <span>Analyzing entries...</span>
+                </div>
+                <div id="bib-review"></div>
+            </div>
         </div>
+    </div>
+
+    <!-- Drag-drop overlay -->
+    <div class="bib-drop-overlay" id="bib-drop-overlay">
+        <div class="bib-drop-message">Drop .bib file to import</div>
     </div>
 
     <script>
@@ -143,8 +163,10 @@ pub fn smart_add_html() -> &'static str {
     function switchTab(tab) {
         document.getElementById('tab-paper').classList.toggle('active', tab === 'paper');
         document.getElementById('tab-note').classList.toggle('active', tab === 'note');
+        document.getElementById('tab-bibimport').classList.toggle('active', tab === 'bibimport');
         document.getElementById('panel-paper').style.display = tab === 'paper' ? '' : 'none';
         document.getElementById('panel-note').style.display = tab === 'note' ? '' : 'none';
+        document.getElementById('panel-bibimport').style.display = tab === 'bibimport' ? '' : 'none';
         if (tab === 'note') document.getElementById('note-title').focus();
         if (tab === 'paper') document.getElementById('smart-input').focus();
     }
@@ -187,10 +209,31 @@ pub fn smart_add_html() -> &'static str {
         const citeKey = entryMatch[2];
 
         function extractField(name) {
-            const re = new RegExp(name + '\\s*=\\s*(?:\\{([^}]*)\\}|"([^"]*)"|([0-9]+))', 'i');
-            const m = text.match(re);
-            if (!m) return null;
-            return (m[1] || m[2] || m[3] || '').trim() || null;
+            // Find field = position
+            const fieldRe = new RegExp(name + '\\s*=\\s*', 'i');
+            const fm = fieldRe.exec(text);
+            if (!fm) return null;
+            const rest = text.slice(fm.index + fm[0].length);
+            let val = null;
+            if (rest[0] === '{') {
+                // Brace-delimited: track depth
+                let depth = 0, end = 0;
+                for (let i = 0; i < rest.length; i++) {
+                    if (rest[i] === '{') depth++;
+                    else if (rest[i] === '}') { depth--; if (depth === 0) { end = i; break; } }
+                }
+                if (end > 1) val = rest.slice(1, end);
+            } else if (rest[0] === '"') {
+                const qi = rest.indexOf('"', 1);
+                if (qi > 0) val = rest.slice(1, qi);
+            } else {
+                const ei = rest.search(/[,}\n]/);
+                val = rest.slice(0, ei > 0 ? ei : undefined).trim();
+            }
+            if (val === null) return null;
+            // Strip BibTeX protection braces
+            val = val.replace(/[{}]/g, '').trim();
+            return val || null;
         }
 
         return {
@@ -517,6 +560,255 @@ pub fn smart_add_html() -> &'static str {
             alert('Failed to create note: ' + e.message);
         }
     }
+
+    // =========================================================================
+    // BibTeX Import
+    // =========================================================================
+
+    let bibDragCounter = 0;
+
+    document.addEventListener('dragenter', function(e) {
+        e.preventDefault();
+        bibDragCounter++;
+        if (bibDragCounter === 1) {
+            const items = e.dataTransfer && e.dataTransfer.items;
+            if (items && items.length > 0) {
+                document.getElementById('bib-drop-overlay').classList.add('active');
+            }
+        }
+    });
+
+    document.addEventListener('dragleave', function(e) {
+        e.preventDefault();
+        bibDragCounter--;
+        if (bibDragCounter === 0) {
+            document.getElementById('bib-drop-overlay').classList.remove('active');
+        }
+    });
+
+    document.addEventListener('dragover', function(e) {
+        e.preventDefault();
+    });
+
+    document.addEventListener('drop', function(e) {
+        e.preventDefault();
+        bibDragCounter = 0;
+        document.getElementById('bib-drop-overlay').classList.remove('active');
+
+        const files = e.dataTransfer && e.dataTransfer.files;
+        if (files && files.length > 0) {
+            const file = files[0];
+            if (file.name.endsWith('.bib')) {
+                openSmartAdd();
+                switchTab('bibimport');
+                handleBibFile(file);
+            }
+        }
+    });
+
+    async function handleBibFile(file) {
+        if (!file) return;
+        const loading = document.getElementById('bib-loading');
+        const review = document.getElementById('bib-review');
+
+        loading.classList.add('active');
+        review.innerHTML = '';
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            const response = await fetch('/api/bib-import/analyze', {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await response.json();
+            loading.classList.remove('active');
+            renderBibReview(data);
+        } catch (e) {
+            loading.classList.remove('active');
+            review.innerHTML = '<p class="message error">Failed to analyze file: ' + escapeHtml(e.message) + '</p>';
+        }
+    }
+
+    let bibAnalysisData = null;
+
+    function renderBibReview(data) {
+        bibAnalysisData = data;
+        const review = document.getElementById('bib-review');
+
+        const nNew = data.new_entries.length;
+        const nExisting = data.existing_entries.length;
+        const nConflict = data.conflicts.length;
+        const nErrors = data.parse_errors.length;
+
+        let html = '<div class="bib-badges">';
+        if (nNew > 0) html += '<span class="bib-badge new">' + nNew + ' new</span>';
+        if (nExisting > 0) html += '<span class="bib-badge existing">' + nExisting + ' already exist</span>';
+        if (nConflict > 0) html += '<span class="bib-badge conflict">' + nConflict + ' conflicts</span>';
+        if (nErrors > 0) html += '<span class="bib-badge error">' + nErrors + ' parse errors</span>';
+        html += '</div>';
+
+        // New entries
+        if (nNew > 0) {
+            html += '<h3>New Entries</h3>';
+            for (const entry of data.new_entries) {
+                html += '<div class="bib-import-item new">';
+                html += '<label><input type="checkbox" checked data-index="' + entry.index + '" class="bib-new-check"> ';
+                html += '<code>' + escapeHtml(entry.cite_key) + '</code></label>';
+                if (entry.title) html += ' &mdash; ' + escapeHtml(entry.title);
+                if (entry.author) html += '<br><small>' + escapeHtml(entry.author) + (entry.year ? ' (' + entry.year + ')' : '') + '</small>';
+                html += '<div class="bib-filename-row"><label>Filename: <input type="text" class="bib-filename" data-index="' + entry.index + '" value="' + escapeHtml(entry.suggested_filename) + '"></label></div>';
+                html += '</div>';
+            }
+        }
+
+        // Existing entries
+        if (nExisting > 0) {
+            html += '<details class="bib-existing-section"><summary>' + nExisting + ' entries already in your notes (skip)</summary>';
+            for (const entry of data.existing_entries) {
+                html += '<div class="bib-import-item existing">';
+                html += '<code>' + escapeHtml(entry.cite_key) + '</code> &rarr; ';
+                html += '<a href="/note/' + escapeHtml(entry.note_key) + '">' + escapeHtml(entry.note_title) + '</a>';
+                html += '</div>';
+            }
+            html += '</details>';
+        }
+
+        // Conflicts
+        if (nConflict > 0) {
+            html += '<h3>Conflicts</h3>';
+            for (const entry of data.conflicts) {
+                html += '<div class="bib-import-item conflict">';
+                html += '<code>' + escapeHtml(entry.cite_key) + '</code>';
+                if (entry.title) html += ' &mdash; ' + escapeHtml(entry.title);
+                html += '<br><small>Matches <a href="/note/' + escapeHtml(entry.matched_note_key) + '">' + escapeHtml(entry.matched_note_title) + '</a> (by ' + escapeHtml(entry.match_type) + ')</small>';
+                html += '<div class="bib-conflict-actions">';
+                html += '<select class="bib-conflict-action" data-index="' + entry.index + '" onchange="bibConflictChanged(this)">';
+                html += '<option value="skip">Skip</option>';
+                html += '<option value="secondary">Add as secondary key</option>';
+                html += '<option value="create">Create as new note</option>';
+                html += '</select>';
+                html += '<input type="text" class="bib-conflict-filename" data-index="' + entry.index + '" value="' + escapeHtml(entry.cite_key) + '.md" style="display:none">';
+                html += '</div>';
+                html += '</div>';
+            }
+        }
+
+        // Parse errors
+        if (nErrors > 0) {
+            html += '<details class="bib-existing-section"><summary>' + nErrors + ' parse errors</summary>';
+            for (const err of data.parse_errors) {
+                html += '<div class="bib-import-item error-item"><small>' + escapeHtml(err) + '</small></div>';
+            }
+            html += '</details>';
+        }
+
+        if (nNew > 0 || nConflict > 0) {
+            html += '<div class="smart-result-actions" style="margin-top:1rem">';
+            html += '<button class="btn" onclick="executeBibImport()">Import Selected</button>';
+            html += '<button class="btn secondary" onclick="closeSmartAdd()">Cancel</button>';
+            html += '</div>';
+        } else if (nExisting > 0 && nNew === 0 && nConflict === 0) {
+            html += '<p style="margin-top:1rem">All entries already exist in your notes.</p>';
+        }
+
+        review.innerHTML = html;
+    }
+
+    function bibConflictChanged(select) {
+        const idx = select.dataset.index;
+        const filenameInput = document.querySelector('.bib-conflict-filename[data-index="' + idx + '"]');
+        if (select.value === 'create') {
+            filenameInput.style.display = '';
+        } else {
+            filenameInput.style.display = 'none';
+        }
+    }
+
+    async function executeBibImport() {
+        if (!bibAnalysisData) return;
+
+        const createItems = [];
+        const secondaryItems = [];
+
+        // Gather checked new entries
+        document.querySelectorAll('.bib-new-check:checked').forEach(function(cb) {
+            const idx = parseInt(cb.dataset.index);
+            const entry = bibAnalysisData.new_entries.find(function(e) { return e.index === idx; });
+            if (!entry) return;
+            const filenameInput = document.querySelector('.bib-filename[data-index="' + idx + '"]');
+            const filename = filenameInput ? filenameInput.value.trim() : entry.suggested_filename;
+            createItems.push({ bibtex: entry.bibtex, filename: filename });
+        });
+
+        // Gather conflict decisions
+        document.querySelectorAll('.bib-conflict-action').forEach(function(select) {
+            const idx = parseInt(select.dataset.index);
+            const entry = bibAnalysisData.conflicts.find(function(e) { return e.index === idx; });
+            if (!entry) return;
+
+            if (select.value === 'secondary') {
+                secondaryItems.push({ note_key: entry.matched_note_key, bibtex: entry.bibtex });
+            } else if (select.value === 'create') {
+                const filenameInput = document.querySelector('.bib-conflict-filename[data-index="' + idx + '"]');
+                const filename = filenameInput ? filenameInput.value.trim() : (entry.cite_key + '.md');
+                createItems.push({ bibtex: entry.bibtex, filename: filename });
+            }
+        });
+
+        if (createItems.length === 0 && secondaryItems.length === 0) {
+            alert('No entries selected for import.');
+            return;
+        }
+
+        const review = document.getElementById('bib-review');
+        review.innerHTML = '<div class="smart-loading active"><div class="smart-spinner"></div><span>Importing...</span></div>';
+
+        try {
+            const response = await fetch('/api/bib-import/execute', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ create: createItems, add_secondary: secondaryItems })
+            });
+
+            const result = await response.json();
+            let html = '<h3>Import Complete</h3>';
+
+            if (result.created.length > 0) {
+                html += '<p>' + result.created.length + ' notes created:</p><ul>';
+                for (const n of result.created) {
+                    html += '<li><a href="/note/' + escapeHtml(n.key) + '">' + escapeHtml(n.title) + '</a></li>';
+                }
+                html += '</ul>';
+            }
+
+            if (result.updated.length > 0) {
+                html += '<p>' + result.updated.length + ' notes updated:</p><ul>';
+                for (const n of result.updated) {
+                    html += '<li><a href="/note/' + escapeHtml(n.key) + '">' + escapeHtml(n.title) + '</a></li>';
+                }
+                html += '</ul>';
+            }
+
+            if (result.errors.length > 0) {
+                html += '<p class="message error">' + result.errors.length + ' errors:</p><ul>';
+                for (const e of result.errors) {
+                    html += '<li>' + escapeHtml(e) + '</li>';
+                }
+                html += '</ul>';
+            }
+
+            html += '<div class="smart-result-actions" style="margin-top:1rem">';
+            html += '<button class="btn secondary" onclick="closeSmartAdd(); location.reload();">Close</button>';
+            html += '</div>';
+
+            review.innerHTML = html;
+        } catch (e) {
+            review.innerHTML = '<p class="message error">Import failed: ' + escapeHtml(e.message) + '</p>';
+        }
+    }
     </script>
     "##
 }
@@ -567,6 +859,43 @@ pub fn base_html(title: &str, content: &str, search_query: Option<&str>, logged_
                 }}, 2000);
             }}
         }});
+    }}
+
+    // Toggle hidden state on a note
+    async function toggleHidden(key, btn) {{
+        try {{
+            const response = await fetch('/api/note/' + key + '/toggle-hidden', {{
+                method: 'POST',
+                headers: {{ 'Content-Type': 'application/json' }}
+            }});
+            if (!response.ok) {{
+                const err = await response.text();
+                alert('Failed to toggle: ' + err);
+                return;
+            }}
+            const data = await response.json();
+            const li = btn.closest('.note-item');
+            if (data.hidden) {{
+                li.classList.add('hidden-note');
+                if (li.querySelector('.title')) li.querySelector('.title').style.textDecoration = 'line-through';
+                btn.textContent = 'unhide';
+                btn.title = 'unhide';
+                // If not showing hidden, fade out and remove
+                if (!window.location.search.includes('hidden=true')) {{
+                    li.style.transition = 'opacity 0.3s';
+                    li.style.opacity = '0';
+                    setTimeout(() => li.remove(), 300);
+                }}
+            }} else {{
+                li.classList.remove('hidden-note');
+                if (li.querySelector('.title')) li.querySelector('.title').style.textDecoration = '';
+                li.style.opacity = '';
+                btn.textContent = 'hide';
+                btn.title = 'hide';
+            }}
+        }} catch (e) {{
+            alert('Error toggling hidden: ' + e.message);
+        }}
     }}
 
     // Confirm and delete note

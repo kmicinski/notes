@@ -39,6 +39,7 @@ pub struct Frontmatter {
     pub time: Vec<TimeEntry>,
     pub sources: Vec<PaperSource>,
     pub pdf: Option<String>,
+    pub hidden: bool,
 }
 
 pub fn parse_frontmatter(content: &str) -> (Frontmatter, String) {
@@ -205,6 +206,9 @@ pub fn parse_frontmatter(content: &str) -> (Frontmatter, String) {
                         fm.pdf = Some(value.to_string());
                     }
                 }
+                "hidden" => {
+                    fm.hidden = value.eq_ignore_ascii_case("true");
+                }
                 // Legacy fields - ignore (bibtex is now the source of truth)
                 "bib_key" | "bibkey" | "authors" | "venue" | "year" => {}
                 _ => {}
@@ -287,6 +291,7 @@ pub fn load_note(path: &PathBuf, notes_dir: &PathBuf) -> Option<Note> {
         full_file_content: content,
         modified,
         pdf: fm.pdf,
+        hidden: fm.hidden,
     })
 }
 
@@ -514,24 +519,47 @@ pub fn parse_bibtex(bibtex: &str) -> Option<ParsedBibtex> {
         return None;
     }
 
-    // Helper to extract a field value
+    // Helper to extract a field value, handling nested braces
     fn extract_field(bibtex: &str, field: &str) -> Option<String> {
-        // Match: field = {value} or field = "value" or field = number
-        // Need to escape braces for format! macro: {{ becomes {, }} becomes }
-        let pattern = format!(
-            r#"(?i){}\s*=\s*(?:\{{([^}}]*)\}}|"([^"]*)"|(\d+))"#,
-            regex::escape(field)
-        );
+        // Find field = and then parse the value with brace-depth tracking
+        let pattern = format!(r#"(?i){}\s*=\s*"#, regex::escape(field));
         let re = regex::Regex::new(&pattern).ok()?;
-        if let Some(caps) = re.captures(bibtex) {
-            // Return first non-None capture group
-            caps.get(1)
-                .or_else(|| caps.get(2))
-                .or_else(|| caps.get(3))
-                .map(|m| m.as_str().trim().to_string())
+        let m = re.find(bibtex)?;
+        let rest = &bibtex[m.end()..];
+
+        let value = if rest.starts_with('{') {
+            // Brace-delimited value: track depth to find matching close
+            let mut depth = 0;
+            let mut end = 0;
+            for (i, ch) in rest.char_indices() {
+                if ch == '{' {
+                    depth += 1;
+                } else if ch == '}' {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = i;
+                        break;
+                    }
+                }
+            }
+            if end > 1 { Some(&rest[1..end]) } else { None }
+        } else if rest.starts_with('"') {
+            // Quote-delimited value
+            let end = rest[1..].find('"').map(|i| i + 1)?;
+            Some(&rest[1..end])
         } else {
-            None
-        }
+            // Bare value (number)
+            let end = rest.find(|c: char| c == ',' || c == '}' || c == '\n').unwrap_or(rest.len());
+            Some(rest[..end].trim())
+        };
+
+        value.map(|v| strip_bibtex_braces(v.trim()))
+    }
+
+    /// Strip BibTeX protection braces from a field value.
+    /// Removes all `{` and `}` characters that BibTeX uses for capitalization protection.
+    fn strip_bibtex_braces(s: &str) -> String {
+        s.chars().filter(|c| *c != '{' && *c != '}').collect()
     }
 
     result.title = extract_field(bibtex, "title");
@@ -549,6 +577,106 @@ pub fn parse_bibtex(bibtex: &str) -> Option<ParsedBibtex> {
         .or_else(|| extract_field(bibtex, "howpublished"));
 
     Some(result)
+}
+
+// ============================================================================
+// BibTeX File Splitting
+// ============================================================================
+
+/// Split a multi-entry .bib file into individual BibTeX entry strings.
+/// Tracks brace depth to handle nested braces correctly.
+/// Skips @comment, @preamble, and @string directives.
+pub fn split_bib_file(content: &str) -> Vec<String> {
+    let mut entries = Vec::new();
+    let mut chars = content.chars().peekable();
+    let skip_types = ["comment", "preamble", "string"];
+
+    while let Some(&ch) = chars.peek() {
+        if ch == '@' {
+            // Collect the entry type
+            let mut entry = String::new();
+            entry.push(chars.next().unwrap()); // '@'
+
+            // Read entry type
+            let mut entry_type = String::new();
+            while let Some(&c) = chars.peek() {
+                if c.is_alphanumeric() || c == '_' {
+                    entry_type.push(c);
+                    entry.push(chars.next().unwrap());
+                } else {
+                    break;
+                }
+            }
+
+            // Skip directives
+            if skip_types.contains(&entry_type.to_lowercase().as_str()) {
+                // Consume until matching brace or end
+                let mut depth = 0;
+                for c in chars.by_ref() {
+                    if c == '{' {
+                        depth += 1;
+                    } else if c == '}' {
+                        depth -= 1;
+                        if depth == 0 {
+                            break;
+                        }
+                    }
+                }
+                continue;
+            }
+
+            // Skip whitespace before opening brace
+            while let Some(&c) = chars.peek() {
+                if c.is_whitespace() {
+                    entry.push(chars.next().unwrap());
+                } else {
+                    break;
+                }
+            }
+
+            // Read until matching closing brace (tracking depth)
+            if chars.peek() == Some(&'{') {
+                entry.push(chars.next().unwrap()); // '{'
+                let mut depth = 1;
+                while let Some(c) = chars.next() {
+                    entry.push(c);
+                    if c == '{' {
+                        depth += 1;
+                    } else if c == '}' {
+                        depth -= 1;
+                        if depth == 0 {
+                            break;
+                        }
+                    }
+                }
+                let trimmed = entry.trim().to_string();
+                if !trimmed.is_empty() {
+                    entries.push(trimmed);
+                }
+            }
+        } else {
+            chars.next();
+        }
+    }
+
+    entries
+}
+
+/// Normalize a title for fuzzy matching: lowercase, strip punctuation, collapse whitespace.
+pub fn normalize_title(title: &str) -> String {
+    title
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c.is_whitespace() { c } else { ' ' })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Normalize BibTeX content for comparison: collapse all whitespace.
+pub fn normalize_bibtex(bibtex: &str) -> String {
+    bibtex.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 // ============================================================================

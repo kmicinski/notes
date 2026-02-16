@@ -33,37 +33,88 @@ use crate::validate_path_within;
 // Index Handler
 // ============================================================================
 
-pub async fn index(State(state): State<Arc<AppState>>, jar: CookieJar) -> Html<String> {
+#[derive(Deserialize)]
+pub struct IndexQuery {
+    pub hidden: Option<String>,
+}
+
+pub async fn index(
+    Query(query): Query<IndexQuery>,
+    State(state): State<Arc<AppState>>,
+    jar: CookieJar,
+) -> Html<String> {
     let logged_in = is_logged_in(&jar);
     let notes = state.load_notes();
+    let show_hidden = query.hidden.as_deref() == Some("true");
 
-    let mut list_html = String::from("<ul class=\"note-list\">");
+    let hidden_count = notes.iter().filter(|n| n.hidden).count();
+
+    let mut list_html = String::new();
+
+    // Hidden toggle badge
+    if hidden_count > 0 {
+        if show_hidden {
+            list_html.push_str(&format!(
+                r#"<div class="hidden-toggle"><a href="/">&larr; Hide {count} hidden</a></div>"#,
+                count = hidden_count
+            ));
+        } else {
+            list_html.push_str(&format!(
+                r#"<div class="hidden-toggle"><a href="/?hidden=true">{count} hidden</a></div>"#,
+                count = hidden_count
+            ));
+        }
+    }
+
+    list_html.push_str("<ul class=\"note-list\">");
 
     for note in &notes {
+        if note.hidden && !show_hidden {
+            continue;
+        }
+
         let is_paper = matches!(note.note_type, NoteType::Paper(_));
-        let class = if is_paper {
-            "note-item paper"
-        } else {
-            "note-item"
-        };
+        let mut classes = String::new();
+        classes.push_str("note-item");
+        if is_paper {
+            classes.push_str(" paper");
+        }
+        if note.hidden {
+            classes.push_str(" hidden-note");
+        }
+
         let type_badge = if is_paper {
             "<span class=\"type-badge\">paper</span>"
         } else {
             ""
         };
 
+        let hide_btn = if logged_in {
+            let label = if note.hidden { "unhide" } else { "hide" };
+            format!(
+                r#"<button class="note-hide-btn" onclick="toggleHidden('{}', this)" title="{}">{}</button>"#,
+                note.key, label, label
+            )
+        } else {
+            String::new()
+        };
+
         list_html.push_str(&format!(
-            r#"<li class="{class}">
+            r#"<li class="{class}" data-key="{key}">
                 <span>
                     {type_badge}
                     <a href="/note/{key}" class="title">{title}</a>
                     <span class="key">[@{key}]</span>
                 </span>
-                <span class="meta">{modified}</span>
+                <span class="meta">
+                    {hide_btn}
+                    {modified}
+                </span>
             </li>"#,
-            class = class,
+            class = classes,
             key = note.key,
             title = html_escape(&note.title),
+            hide_btn = hide_btn,
             modified = note.modified.format("%Y-%m-%d %H:%M"),
         ));
     }
@@ -887,38 +938,171 @@ pub async fn create_note(
 }
 
 // ============================================================================
+// Toggle Hidden Handler
+// ============================================================================
+
+pub async fn toggle_hidden(
+    Path(key): Path<String>,
+    State(state): State<Arc<AppState>>,
+    jar: CookieJar,
+) -> Response {
+    if !is_logged_in(&jar) {
+        return (StatusCode::UNAUTHORIZED, "Not logged in").into_response();
+    }
+
+    let notes_map = state.notes_map();
+
+    let note = match notes_map.get(&key) {
+        Some(n) => n,
+        None => return (StatusCode::NOT_FOUND, "Note not found").into_response(),
+    };
+
+    let full_path = state.notes_dir.join(&note.path);
+    let content = match fs::read_to_string(&full_path) {
+        Ok(c) => c,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to read note: {}", e),
+            )
+                .into_response()
+        }
+    };
+
+    let lines: Vec<&str> = content.lines().collect();
+
+    if lines.is_empty() || lines[0].trim() != "---" {
+        return (StatusCode::BAD_REQUEST, "Note has no frontmatter").into_response();
+    }
+
+    // Find end of frontmatter
+    let mut end_idx = None;
+    for (i, line) in lines.iter().enumerate().skip(1) {
+        if line.trim() == "---" {
+            end_idx = Some(i);
+            break;
+        }
+    }
+
+    let end_idx = match end_idx {
+        Some(i) => i,
+        None => return (StatusCode::BAD_REQUEST, "Invalid frontmatter").into_response(),
+    };
+
+    let mut new_hidden = true;
+    let mut found_hidden = false;
+    let mut new_lines: Vec<String> = Vec::new();
+
+    for (i, line) in lines.iter().enumerate() {
+        if i > 0 && i < end_idx && line.trim().starts_with("hidden:") {
+            found_hidden = true;
+            let current = line.trim().ends_with("true");
+            new_hidden = !current;
+            if new_hidden {
+                new_lines.push("hidden: true".to_string());
+            } else {
+                // Remove the hidden line entirely when setting to false
+                continue;
+            }
+        } else {
+            new_lines.push(line.to_string());
+        }
+    }
+
+    // If hidden: didn't exist, insert it before the closing ---
+    if !found_hidden {
+        new_hidden = true;
+        new_lines.insert(end_idx, "hidden: true".to_string());
+    }
+
+    let new_content = new_lines.join("\n");
+    if let Err(e) = fs::write(&full_path, &new_content) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to write note: {}", e),
+        )
+            .into_response();
+    }
+
+    axum::Json(serde_json::json!({ "hidden": new_hidden })).into_response()
+}
+
+// ============================================================================
 // Papers Handler
 // ============================================================================
 
-pub async fn papers(State(state): State<Arc<AppState>>, jar: CookieJar) -> Html<String> {
+pub async fn papers(
+    Query(query): Query<IndexQuery>,
+    State(state): State<Arc<AppState>>,
+    jar: CookieJar,
+) -> Html<String> {
     let logged_in = is_logged_in(&jar);
     let notes = state.load_notes();
+    let show_hidden = query.hidden.as_deref() == Some("true");
+
     let papers: Vec<_> = notes
         .iter()
         .filter(|n| matches!(n.note_type, NoteType::Paper(_)))
         .collect();
 
-    let mut html = String::from("<h1>Papers</h1><ul class=\"note-list\">");
+    let hidden_count = papers.iter().filter(|n| n.hidden).count();
+
+    let mut html = String::from("<h1>Papers</h1>");
+
+    if hidden_count > 0 {
+        if show_hidden {
+            html.push_str(&format!(
+                r#"<div class="hidden-toggle"><a href="/papers">&larr; Hide {count} hidden</a></div>"#,
+                count = hidden_count
+            ));
+        } else {
+            html.push_str(&format!(
+                r#"<div class="hidden-toggle"><a href="/papers?hidden=true">{count} hidden</a></div>"#,
+                count = hidden_count
+            ));
+        }
+    }
+
+    html.push_str("<ul class=\"note-list\">");
 
     for note in papers {
+        if note.hidden && !show_hidden {
+            continue;
+        }
+
         if let NoteType::Paper(ref paper) = note.note_type {
             let meta = paper.effective_metadata(&note.title);
             let authors = meta.authors.as_deref().unwrap_or("Unknown");
             let year = meta.year.map(|y| y.to_string()).unwrap_or_default();
 
+            let hidden_class = if note.hidden { " hidden-note" } else { "" };
+
+            let hide_btn = if logged_in {
+                let label = if note.hidden { "unhide" } else { "hide" };
+                format!(
+                    r#"<button class="note-hide-btn" onclick="toggleHidden('{}', this)" title="{}">{}</button>"#,
+                    note.key, label, label
+                )
+            } else {
+                String::new()
+            };
+
             html.push_str(&format!(
-                r#"<li class="note-item paper">
+                r#"<li class="note-item paper{hidden_class}" data-key="{key}">
                     <span>
-                        <a href="/note/{}" class="title">{}</a>
-                        <br><small>{} {}</small>
-                        <br><code class="key">{}</code>
+                        <a href="/note/{key}" class="title">{title}</a>
+                        <br><small>{authors} {year}</small>
+                        <br><code class="key">{bib_key}</code>
                     </span>
+                    <span class="meta">{hide_btn}</span>
                 </li>"#,
-                note.key,
-                html_escape(&note.title),
-                html_escape(authors),
-                year,
-                meta.bib_key
+                hidden_class = hidden_class,
+                key = note.key,
+                title = html_escape(&note.title),
+                authors = html_escape(authors),
+                year = year,
+                bib_key = meta.bib_key,
+                hide_btn = hide_btn,
             ));
         }
     }
