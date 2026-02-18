@@ -10,13 +10,18 @@ A personal knowledge management system for academic papers and research notes, b
 - Git (for version history features)
 - Optional: [Claude CLI](https://docs.anthropic.com/en/docs/claude-cli) (used as a fallback for metadata extraction from URLs)
 
-### Security Warning
+### Important Security Warnings
 
 This application is designed for **local, single-user use**. It binds to `127.0.0.1` (localhost only) by default. Before running, understand the following:
 
 - **Without `NOTES_PASSWORD`**: The server runs in read-only mode. Anyone who can reach the port can view your notes.
-- **With `NOTES_PASSWORD`**: Editing is gated behind a password, but authentication uses simple cookie-based sessions stored in a local sled database. This is **not** designed for public-facing deployment.
-- **Do not expose this server to the internet** without additional hardening (reverse proxy, TLS, proper auth, etc.).
+- **With `NOTES_PASSWORD`**: Editing is gated behind password authentication:
+  - **Argon2id** password hashing (random salt, computed at startup)
+  - **Server-side sessions** stored in sled DB with 32-byte cryptographic random IDs
+  - **CSRF protection** on the login form (one-time tokens, 10-min TTL)
+  - **Rate limiting** with exponential backoff after 5 failed login attempts (capped at 64s)
+  - **Server-side logout** — session revocation, not just cookie deletion
+- **Do not expose this server to the internet** without additional hardening (reverse proxy, TLS, etc.).
 
 ### Build & Run
 
@@ -140,7 +145,7 @@ notes/
 ### Architecture Decisions
 
 - **No database for notes** — notes are markdown files, git is the version history
-- **Sled DB** — only used for session management
+- **Sled DB** — used for server-side sessions and CSRF tokens
 - **Inline CSS/JS** — no build step, everything served from Rust template strings
 - **In-memory note index** — notes are re-loaded from disk on each request (simple, no cache invalidation)
 
