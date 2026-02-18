@@ -31,6 +31,7 @@ pub fn render_editor(note: &Note, notes_map: &HashMap<String, Note>, _logged_in:
         format!(
             r#"<a href="/pdfs/{}" target="_blank" class="pdf-link" title="Open PDF in new tab">📄 {}</a>
                <button class="pdf-toggle-btn" id="pdf-toggle-btn" onclick="togglePdfViewer()" title="Toggle PDF viewer">View</button>
+               <button class="pdf-toggle-btn" onclick="unlinkPdf()" title="Remove PDF link from this note">Unlink</button>
                <div class="note-type-dropdown" id="note-type-dropdown">
                    <button class="dropdown-btn" onclick="toggleNoteDropdown(event)">+ Note</button>
                    <div class="dropdown-content">
@@ -1512,6 +1513,25 @@ pub fn render_editor(note: &Note, notes_map: &HashMap<String, Note>, _logged_in:
         // PDF Upload Functions
         // =====================================================================
 
+        async function unlinkPdf() {{
+            if (!confirm('Unlink PDF from this note? The PDF file will remain in the pdfs folder.')) return;
+            try {{
+                const resp = await fetch('/api/pdf/unlink', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{ note_key: noteKey }})
+                }});
+                if (resp.ok) {{
+                    window.location.reload();
+                }} else {{
+                    const err = await resp.text();
+                    alert('Failed to unlink PDF: ' + err);
+                }}
+            }} catch (e) {{
+                alert('Error unlinking PDF: ' + e.message);
+            }}
+        }}
+
         function openPdfUpload() {{
             document.getElementById('pdf-upload-overlay').classList.add('active');
             document.getElementById('pdf-url-input').value = '';
@@ -1576,38 +1596,39 @@ pub fn render_editor(note: &Note, notes_map: &HashMap<String, Note>, _logged_in:
                     body: formData
                 }});
 
-                const result = await response.json();
-
-                if (result.success) {{
-                    showUploadStatus('success', 'Uploaded: ' + result.filename);
-                    pdfFilename = result.filename;
-                    pdfDoc = null; // Reset to force reload
-
-                    // Update the PDF status display
-                    const pdfStatus = document.getElementById('pdf-status');
-                    pdfStatus.innerHTML = `
-                        <a href="/pdfs/${{encodeURIComponent(result.filename)}}" target="_blank" class="pdf-link">📄 ${{result.filename}}</a>
-                        <button class="pdf-toggle-btn" id="pdf-toggle-btn" onclick="togglePdfViewer()">View</button>
-                        <div class="note-type-dropdown" id="note-type-dropdown">
-                            <button class="dropdown-btn" onclick="toggleNoteDropdown(event)">+ Note</button>
-                            <div class="dropdown-content">
-                                <button class="dropdown-item" onclick="addTypedNote('Definition')">Definition</button>
-                                <button class="dropdown-item" onclick="addTypedNote('Question')">Question</button>
-                                <button class="dropdown-item" onclick="addTypedNote('Highlight')">Highlight</button>
-                                <button class="dropdown-item" onclick="addTypedNote('Begin study')">Begin study</button>
-                                <button class="dropdown-item" onclick="addTypedNote('End study')">End study</button>
-                            </div>
-                        </div>
-                    `;
-
-                    // Close modal and show PDF
-                    setTimeout(() => {{
-                        closePdfUpload();
-                        showPdfViewer();
-                    }}, 1000);
-                }} else {{
-                    showUploadStatus('error', result.error || 'Upload failed');
+                if (!response.ok) {{
+                    const errText = await response.text();
+                    showUploadStatus('error', errText || 'Upload failed');
+                    return;
                 }}
+
+                const result = await response.json();
+                showUploadStatus('success', 'Uploaded: ' + result.filename);
+                pdfFilename = result.filename;
+                pdfDoc = null; // Reset to force reload
+
+                // Update the PDF status display
+                const pdfStatus = document.getElementById('pdf-status');
+                pdfStatus.innerHTML = `
+                    <a href="/pdfs/${{encodeURIComponent(result.filename)}}" target="_blank" class="pdf-link">📄 ${{result.filename}}</a>
+                    <button class="pdf-toggle-btn" id="pdf-toggle-btn" onclick="togglePdfViewer()">View</button>
+                    <div class="note-type-dropdown" id="note-type-dropdown">
+                        <button class="dropdown-btn" onclick="toggleNoteDropdown(event)">+ Note</button>
+                        <div class="dropdown-content">
+                            <button class="dropdown-item" onclick="addTypedNote('Definition')">Definition</button>
+                            <button class="dropdown-item" onclick="addTypedNote('Question')">Question</button>
+                            <button class="dropdown-item" onclick="addTypedNote('Highlight')">Highlight</button>
+                            <button class="dropdown-item" onclick="addTypedNote('Begin study')">Begin study</button>
+                            <button class="dropdown-item" onclick="addTypedNote('End study')">End study</button>
+                        </div>
+                    </div>
+                `;
+
+                // Close modal and show PDF
+                setTimeout(() => {{
+                    closePdfUpload();
+                    showPdfViewer();
+                }}, 1000);
             }} catch (e) {{
                 showUploadStatus('error', 'Upload failed: ' + e.message);
             }}
@@ -1629,38 +1650,39 @@ pub fn render_editor(note: &Note, notes_map: &HashMap<String, Note>, _logged_in:
                     body: JSON.stringify({{ note_key: noteKey, url: url }})
                 }});
 
-                const result = await response.json();
-
-                if (result.success) {{
-                    showUploadStatus('success', 'Downloaded: ' + result.filename);
-                    pdfFilename = result.filename;
-                    pdfDoc = null; // Reset to force reload
-
-                    // Update the PDF status display
-                    const pdfStatus = document.getElementById('pdf-status');
-                    pdfStatus.innerHTML = `
-                        <a href="/pdfs/${{encodeURIComponent(result.filename)}}" target="_blank" class="pdf-link">📄 ${{result.filename}}</a>
-                        <button class="pdf-toggle-btn" id="pdf-toggle-btn" onclick="togglePdfViewer()">View</button>
-                        <div class="note-type-dropdown" id="note-type-dropdown">
-                            <button class="dropdown-btn" onclick="toggleNoteDropdown(event)">+ Note</button>
-                            <div class="dropdown-content">
-                                <button class="dropdown-item" onclick="addTypedNote('Definition')">Definition</button>
-                                <button class="dropdown-item" onclick="addTypedNote('Question')">Question</button>
-                                <button class="dropdown-item" onclick="addTypedNote('Highlight')">Highlight</button>
-                                <button class="dropdown-item" onclick="addTypedNote('Begin study')">Begin study</button>
-                                <button class="dropdown-item" onclick="addTypedNote('End study')">End study</button>
-                            </div>
-                        </div>
-                    `;
-
-                    // Close modal and show PDF
-                    setTimeout(() => {{
-                        closePdfUpload();
-                        showPdfViewer();
-                    }}, 1000);
-                }} else {{
-                    showUploadStatus('error', result.error || 'Download failed');
+                if (!response.ok) {{
+                    const errText = await response.text();
+                    showUploadStatus('error', errText || 'Download failed');
+                    return;
                 }}
+
+                const result = await response.json();
+                showUploadStatus('success', 'Downloaded: ' + result.filename);
+                pdfFilename = result.filename;
+                pdfDoc = null; // Reset to force reload
+
+                // Update the PDF status display
+                const pdfStatus = document.getElementById('pdf-status');
+                pdfStatus.innerHTML = `
+                    <a href="/pdfs/${{encodeURIComponent(result.filename)}}" target="_blank" class="pdf-link">📄 ${{result.filename}}</a>
+                    <button class="pdf-toggle-btn" id="pdf-toggle-btn" onclick="togglePdfViewer()">View</button>
+                    <div class="note-type-dropdown" id="note-type-dropdown">
+                        <button class="dropdown-btn" onclick="toggleNoteDropdown(event)">+ Note</button>
+                        <div class="dropdown-content">
+                            <button class="dropdown-item" onclick="addTypedNote('Definition')">Definition</button>
+                            <button class="dropdown-item" onclick="addTypedNote('Question')">Question</button>
+                            <button class="dropdown-item" onclick="addTypedNote('Highlight')">Highlight</button>
+                            <button class="dropdown-item" onclick="addTypedNote('Begin study')">Begin study</button>
+                            <button class="dropdown-item" onclick="addTypedNote('End study')">End study</button>
+                        </div>
+                    </div>
+                `;
+
+                // Close modal and show PDF
+                setTimeout(() => {{
+                    closePdfUpload();
+                    showPdfViewer();
+                }}, 1000);
             }} catch (e) {{
                 showUploadStatus('error', 'Download failed: ' + e.message);
             }}

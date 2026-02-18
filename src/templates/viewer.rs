@@ -17,18 +17,28 @@ pub fn render_viewer(
     sub_notes_html: &str,
     history_html: &str,
     logged_in: bool,
+    is_paper: bool,
 ) -> String {
     let pdf_filename = note.pdf.as_deref().unwrap_or("");
     let pdf_filename_json = serde_json::to_string(pdf_filename)
         .unwrap_or_else(|_| "\"\"".to_string());
+    let has_pdf = note.pdf.is_some();
 
     let pdf_status_html = if let Some(ref pdf) = note.pdf {
+        let unlink_btn = if logged_in {
+            r#" <button class="pdf-toggle-btn" onclick="unlinkPdf()" title="Remove PDF link from this note">Unlink</button>"#
+        } else {
+            ""
+        };
         format!(
             r#"<a href="/pdfs/{}" target="_blank">📄 {}</a>
-               <button class="pdf-toggle-btn" id="pdf-toggle-btn" onclick="togglePdfViewer()">View PDF</button>"#,
+               <button class="pdf-toggle-btn" id="pdf-toggle-btn" onclick="togglePdfViewer()">View PDF</button>{}"#,
             html_escape(pdf),
-            html_escape(pdf)
+            html_escape(pdf),
+            unlink_btn
         )
+    } else if is_paper && logged_in {
+        r#"<button class="pdf-toggle-btn" id="pdf-toggle-btn" onclick="togglePdfViewer()">Find PDF</button>"#.to_string()
     } else {
         String::new()
     };
@@ -412,6 +422,115 @@ pub fn render_viewer(
             text-align: center;
         }}
 
+        /* PDF Dropzone */
+        #pdf-dropzone-viewer {{
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            padding: 2rem;
+            text-align: center;
+            color: var(--base1);
+        }}
+        #pdf-dropzone-viewer.drag-over {{
+            background: rgba(38, 139, 210, 0.1);
+            border: 2px dashed var(--link);
+        }}
+        .pdf-drop-icon {{
+            font-size: 1.2rem;
+            margin-bottom: 0.75rem;
+            color: var(--base1);
+        }}
+        .pdf-drop-or {{
+            font-size: 0.85rem;
+            color: var(--base01);
+            margin: 0.75rem 0;
+        }}
+        #smart-find-btn {{
+            padding: 0.5rem 1.25rem;
+            border: 1px solid var(--link);
+            border-radius: 4px;
+            background: var(--link);
+            color: white;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-family: inherit;
+        }}
+        #smart-find-btn:hover {{
+            background: var(--cyan);
+            border-color: var(--cyan);
+        }}
+        #smart-find-btn:disabled {{
+            opacity: 0.6;
+            cursor: default;
+        }}
+        #smart-find-status {{
+            margin-top: 1rem;
+            font-size: 0.85rem;
+            color: var(--base1);
+            min-height: 1.5em;
+        }}
+        .smart-find-spinner {{
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #93a1a1;
+            border-top-color: #fdf6e3;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            vertical-align: middle;
+            margin-right: 0.4rem;
+        }}
+        .smart-find-result {{
+            background: rgba(133, 153, 0, 0.15);
+            border: 1px solid var(--green);
+            border-radius: 6px;
+            padding: 1rem;
+            margin-top: 1rem;
+            text-align: left;
+            max-width: 400px;
+        }}
+        .smart-find-result .source-badge {{
+            display: inline-block;
+            font-size: 0.7rem;
+            padding: 0.15rem 0.4rem;
+            border-radius: 3px;
+            background: var(--green);
+            color: white;
+            text-transform: uppercase;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }}
+        .smart-find-result .found-url {{
+            font-size: 0.8rem;
+            color: var(--base1);
+            word-break: break-all;
+            margin: 0.5rem 0;
+        }}
+        .smart-find-actions {{
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.75rem;
+        }}
+        .smart-find-actions button {{
+            padding: 0.4rem 0.8rem;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-family: inherit;
+        }}
+        .btn-accept {{
+            background: var(--green) !important;
+            color: white !important;
+            border-color: var(--green) !important;
+        }}
+        .btn-cancel {{
+            background: var(--bg);
+            color: var(--fg);
+        }}
+
         /* Content Styling */
         a {{ color: var(--link); text-decoration: none; }}
         a:hover {{ color: var(--link-hover); text-decoration: underline; }}
@@ -564,7 +683,7 @@ pub fn render_viewer(
             </div>
             <div id="split-divider"></div>
             <div id="pdf-viewer-pane">
-                <div class="pdf-toolbar">
+                <div class="pdf-toolbar" id="pdf-toolbar">
                     <button onclick="pdfPrevPage()" id="pdf-prev-btn" disabled>&larr; Prev</button>
                     <button onclick="pdfNextPage()" id="pdf-next-btn" disabled>Next &rarr;</button>
                     <button onclick="pdfFitToWidth()" title="Fit to width">Fit</button>
@@ -578,6 +697,12 @@ pub fn render_viewer(
                         </div>
                     </div>
                 </div>
+                <div id="pdf-dropzone-viewer" style="display:none;">
+                    <div class="pdf-drop-icon">Drop PDF here</div>
+                    <div class="pdf-drop-or">or</div>
+                    <button id="smart-find-btn" onclick="startSmartFind()">Find PDF automatically</button>
+                    <div id="smart-find-status"></div>
+                </div>
             </div>
         </div>
     </div>
@@ -589,6 +714,9 @@ pub fn render_viewer(
 
         const noteKey = "{key}";
         const pdfFilename = {pdf_filename_json};
+        const hasPdf = {has_pdf_json};
+        const isPaper = {is_paper_json};
+        const loggedIn = {logged_in_json};
 
         // Font size handling - shared with editor via localStorage
         // Editor uses Monaco sizes (11, 13, 15, 18), viewer scales up by 1.2x for readability
@@ -666,8 +794,6 @@ pub fn render_viewer(
         }}
 
         async function showPdfViewer() {{
-            if (!pdfFilename) return;
-
             const pane = document.getElementById('pdf-viewer-pane');
             const divider = document.getElementById('split-divider');
             const btn = document.getElementById('pdf-toggle-btn');
@@ -679,35 +805,49 @@ pub fn render_viewer(
             // Apply saved split position
             applySplitPosition();
 
-            // Restore state
-            const savedState = restorePdfState();
+            if (pdfFilename) {{
+                // Show PDF viewer, hide dropzone
+                document.getElementById('pdf-canvas-container').style.display = '';
+                document.getElementById('pdf-toolbar').style.display = '';
+                const dropzone = document.getElementById('pdf-dropzone-viewer');
+                if (dropzone) dropzone.style.display = 'none';
 
-            // Load PDF if not already loaded
-            if (!pdfDoc) {{
-                await loadPdf();
-                // After loading, restore page, zoom, and scroll position
-                if (savedState) {{
-                    if (savedState.page) {{
-                        currentPdfPage = Math.min(savedState.page, totalPdfPages);
+                // Restore state
+                const savedState = restorePdfState();
+
+                // Load PDF if not already loaded
+                if (!pdfDoc) {{
+                    await loadPdf();
+                    // After loading, restore page, zoom, and scroll position
+                    if (savedState) {{
+                        if (savedState.page) {{
+                            currentPdfPage = Math.min(savedState.page, totalPdfPages);
+                        }}
+                        if (savedState.zoom) {{
+                            applyZoom(savedState.zoom);
+                        }}
+                        await renderAllPages();
+                        // Restore scroll position after a delay to allow layout
+                        const container = document.getElementById('pdf-canvas-container');
+                        if (savedState.scrollTop || savedState.scrollLeft) {{
+                            setTimeout(() => {{
+                                if (savedState.scrollTop) container.scrollTop = savedState.scrollTop;
+                                if (savedState.scrollLeft) container.scrollLeft = savedState.scrollLeft;
+                            }}, 150);
+                        }}
                     }}
-                    if (savedState.zoom) {{
-                        applyZoom(savedState.zoom);
-                    }}
-                    await renderAllPages();
-                    // Restore scroll position after a delay to allow layout
-                    const container = document.getElementById('pdf-canvas-container');
-                    if (savedState.scrollTop || savedState.scrollLeft) {{
-                        setTimeout(() => {{
-                            if (savedState.scrollTop) container.scrollTop = savedState.scrollTop;
-                            if (savedState.scrollLeft) container.scrollLeft = savedState.scrollLeft;
-                        }}, 150);
-                    }}
+                    // Setup pinch-to-zoom handlers
+                    setupPinchZoom();
                 }}
-                // Setup pinch-to-zoom handlers
-                setupPinchZoom();
-            }}
 
-            savePdfState();
+                savePdfState();
+            }} else if (isPaper && loggedIn) {{
+                // Show dropzone, hide PDF viewer
+                document.getElementById('pdf-canvas-container').style.display = 'none';
+                document.getElementById('pdf-toolbar').style.display = 'none';
+                const dropzone = document.getElementById('pdf-dropzone-viewer');
+                if (dropzone) dropzone.style.display = 'flex';
+            }}
         }}
 
         function hidePdfViewer() {{
@@ -1174,15 +1314,181 @@ pub fn render_viewer(
             }}
         }}
 
+        // =====================================================================
+        // Unlink PDF
+        // =====================================================================
+
+        async function unlinkPdf() {{
+            if (!confirm('Unlink PDF from this note? The PDF file will remain in the pdfs folder.')) return;
+            try {{
+                const resp = await fetch('/api/pdf/unlink', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{ note_key: noteKey }})
+                }});
+                if (resp.ok) {{
+                    window.location.reload();
+                }} else {{
+                    const err = await resp.text();
+                    alert('Failed to unlink PDF: ' + err);
+                }}
+            }} catch (e) {{
+                alert('Error unlinking PDF: ' + e.message);
+            }}
+        }}
+
+        // =====================================================================
+        // Drag-and-Drop PDF Upload
+        // =====================================================================
+
+        function setupDropzone() {{
+            const dropzone = document.getElementById('pdf-dropzone-viewer');
+            if (!dropzone) return;
+
+            dropzone.addEventListener('dragover', function(e) {{
+                e.preventDefault();
+                dropzone.classList.add('drag-over');
+            }});
+            dropzone.addEventListener('dragleave', function(e) {{
+                e.preventDefault();
+                dropzone.classList.remove('drag-over');
+            }});
+            dropzone.addEventListener('drop', function(e) {{
+                e.preventDefault();
+                dropzone.classList.remove('drag-over');
+                const files = e.dataTransfer.files;
+                if (files.length === 0) return;
+                const file = files[0];
+                if (!file.name.toLowerCase().endsWith('.pdf')) {{
+                    alert('Please drop a PDF file.');
+                    return;
+                }}
+                uploadPdfFile(file);
+            }});
+        }}
+
+        async function uploadPdfFile(file) {{
+            const status = document.getElementById('smart-find-status');
+            if (status) status.innerHTML = '<span class="smart-find-spinner"></span> Uploading...';
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {{
+                const resp = await fetch('/api/pdf/upload?note_key=' + encodeURIComponent(noteKey), {{
+                    method: 'POST',
+                    body: formData
+                }});
+                if (resp.ok) {{
+                    window.location.reload();
+                }} else {{
+                    const err = await resp.text();
+                    if (status) status.textContent = 'Upload failed: ' + err;
+                }}
+            }} catch (e) {{
+                if (status) status.textContent = 'Upload error: ' + e.message;
+            }}
+        }}
+
+        // =====================================================================
+        // Smart Find PDF
+        // =====================================================================
+
+        let smartFindInterval = null;
+
+        async function startSmartFind() {{
+            const btn = document.getElementById('smart-find-btn');
+            const status = document.getElementById('smart-find-status');
+            if (btn) btn.disabled = true;
+
+            // Animated progress: cycle through source names so the UI feels alive
+            const sources = ['arXiv', 'Semantic Scholar', 'Unpaywall'];
+            let srcIdx = 0;
+            if (status) status.innerHTML = '<span class="smart-find-spinner"></span> Checking ' + sources[0] + '...';
+            smartFindInterval = setInterval(() => {{
+                srcIdx = (srcIdx + 1) % sources.length;
+                if (status) status.innerHTML = '<span class="smart-find-spinner"></span> Checking ' + sources[srcIdx] + '...';
+            }}, 1500);
+
+            try {{
+                const resp = await fetch('/api/pdf/smart-find', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{ note_key: noteKey }})
+                }});
+
+                clearInterval(smartFindInterval);
+                const data = await resp.json();
+
+                if (data.status === 'found') {{
+                    const truncUrl = data.url.length > 60 ? data.url.substring(0, 60) + '...' : data.url;
+                    if (status) {{
+                        status.innerHTML = '<div class="smart-find-result">' +
+                            '<span class="source-badge">' + (data.source || 'found') + '</span>' +
+                            '<div class="found-url">' + truncUrl + '</div>' +
+                            '<div class="smart-find-actions">' +
+                            '<button class="btn-accept" onclick="acceptSmartFind(\'' + data.url.replace(/'/g, "\\'") + '\')">Download &amp; Attach</button>' +
+                            '<button class="btn-cancel" onclick="cancelSmartFind()">Cancel</button>' +
+                            '</div></div>';
+                    }}
+                }} else {{
+                    if (status) status.textContent = data.error || 'Could not find PDF';
+                    setTimeout(() => {{
+                        if (status) status.textContent = '';
+                        if (btn) btn.disabled = false;
+                    }}, 3000);
+                }}
+            }} catch (e) {{
+                clearInterval(smartFindInterval);
+                if (status) status.textContent = 'Error: ' + e.message;
+                if (btn) btn.disabled = false;
+            }}
+        }}
+
+        async function acceptSmartFind(url) {{
+            const status = document.getElementById('smart-find-status');
+            if (status) status.innerHTML = '<span class="smart-find-spinner"></span> Downloading PDF...';
+
+            try {{
+                const resp = await fetch('/api/pdf/download-url', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{ note_key: noteKey, url: url }})
+                }});
+
+                if (resp.ok) {{
+                    window.location.reload();
+                }} else {{
+                    const err = await resp.text();
+                    if (status) status.textContent = 'Download failed: ' + err;
+                }}
+            }} catch (e) {{
+                if (status) status.textContent = 'Error: ' + e.message;
+            }}
+        }}
+
+        function cancelSmartFind() {{
+            const status = document.getElementById('smart-find-status');
+            const btn = document.getElementById('smart-find-btn');
+            if (status) status.innerHTML = '';
+            if (btn) btn.disabled = false;
+        }}
+
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', function() {{
             setupScrollTracking();
             setupSplitDivider();
             initFontSizeControls();
+            setupDropzone();
 
-            // Restore PDF visibility from saved state
-            const savedState = restorePdfState();
-            if (pdfFilename && savedState && savedState.visible) {{
+            if (pdfFilename) {{
+                // Auto-open PDF pane (unless user explicitly closed it)
+                const savedState = restorePdfState();
+                if (!savedState || savedState.visible !== false) {{
+                    showPdfViewer();
+                }}
+            }} else if (isPaper && loggedIn) {{
+                // Auto-open dropzone pane for paper notes without PDF
                 showPdfViewer();
             }}
         }});
@@ -1197,6 +1503,9 @@ pub fn render_viewer(
         title = html_escape(&note.title),
         key = note.key,
         pdf_filename_json = pdf_filename_json,
+        has_pdf_json = if has_pdf { "true" } else { "false" },
+        is_paper_json = if is_paper { "true" } else { "false" },
+        logged_in_json = if logged_in { "true" } else { "false" },
         pdf_status_html = pdf_status_html,
         mode_toggle = mode_toggle,
         meta_html = meta_html,

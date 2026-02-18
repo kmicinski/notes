@@ -11,7 +11,7 @@
 //! - `smart_add`: Smart paper/reference addition feature
 //! - `handlers`: HTTP route handlers
 
-use axum::{routing::get, Router};
+use axum::{extract::DefaultBodyLimit, routing::get, Router};
 use std::sync::Arc;
 use tower_http::services::ServeDir;
 
@@ -52,22 +52,26 @@ async fn main() {
         .route("/api/smart-add/attach", axum::routing::post(smart_add::smart_add_attach))
         .route("/api/smart-add/quick-note", axum::routing::post(smart_add::quick_note_create))
         // BibTeX Import routes
-        .route("/api/bib-import/analyze", axum::routing::post(smart_add::bib_import_analyze))
+        .route("/api/bib-import/analyze", axum::routing::post(smart_add::bib_import_analyze)
+            .layer(DefaultBodyLimit::max(10 * 1024 * 1024)))
         .route("/api/bib-import/execute", axum::routing::post(smart_add::bib_import_execute))
         // Export routes
         .route("/bibliography.bib", get(handlers::bibliography))
         // PDF routes
         .nest_service("/pdfs", ServeDir::new("pdfs"))
-        .route("/api/pdf/upload", axum::routing::post(handlers::upload_pdf))
+        .route("/api/pdf/upload", axum::routing::post(handlers::upload_pdf)
+            .layer(DefaultBodyLimit::max(50 * 1024 * 1024)))
         .route("/api/pdf/download-url", axum::routing::post(handlers::download_pdf_from_url))
         .route("/api/pdf/rename", axum::routing::post(handlers::rename_pdf))
+        .route("/api/pdf/unlink", axum::routing::post(handlers::unlink_pdf))
+        .route("/api/pdf/smart-find", axum::routing::post(handlers::smart_pdf_find))
         .with_state(state);
 
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:7000")
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:7000")
         .await
         .expect("Failed to bind to port 7000");
 
-    println!("Notes server running at http://127.0.0.1:7000");
+    println!("Notes server running at http://0.0.0.0:7000");
     println!("Notes directory: {}", NOTES_DIR);
 
     if auth::is_auth_enabled() {

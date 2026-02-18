@@ -26,7 +26,6 @@ use std::process::Command;
 use std::sync::Arc;
 use reqwest;
 use subtle::ConstantTimeEq;
-use crate::url_validator::validate_url;
 use crate::validate_path_within;
 
 // ============================================================================
@@ -407,8 +406,9 @@ fn render_view(
         String::new()
     };
 
-    // Use full-page viewer layout if note has a PDF (for split view)
-    if note.pdf.is_some() {
+    // Use full-page viewer layout if note has a PDF or is a paper (for split view / smart find)
+    let is_paper = matches!(note.note_type, NoteType::Paper(_));
+    if note.pdf.is_some() || is_paper {
         return Html(render_viewer(
             note,
             &rendered_content,
@@ -417,6 +417,7 @@ fn render_view(
             &sub_notes_html,
             &history_html,
             logged_in,
+            is_paper,
         ));
     }
 
@@ -1307,8 +1308,11 @@ pub async fn download_pdf_from_url(
         return (StatusCode::UNAUTHORIZED, "Not logged in").into_response();
     }
 
-    // Validate URL for SSRF protection
-    if let Err(e) = validate_url(&body.url) {
+    // Validate URL: must be absolute HTTP(S) and not targeting internal IPs.
+    // We skip the domain allowlist here because PDF URLs from smart-find
+    // can point to any academic publisher/CDN (github.io, usenix.org CDN, etc.)
+    // and the user explicitly clicks "Download & Attach".
+    if let Err(e) = validate_pdf_download_url(&body.url) {
         return (StatusCode::BAD_REQUEST, format!("Invalid URL: {}", e)).into_response();
     }
 
@@ -1318,9 +1322,19 @@ pub async fn download_pdf_from_url(
         None => return (StatusCode::NOT_FOUND, "Note not found").into_response(),
     };
 
-    // Download the PDF
-    let client = reqwest::Client::new();
-    let response = match client.get(&body.url).send().await {
+    // Download the PDF with browser-like headers (many academic servers block bare requests)
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .redirect(reqwest::redirect::Policy::limited(10))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
+    let response = match client
+        .get(&body.url)
+        .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        .header("Accept", "application/pdf,*/*")
+        .send()
+        .await
+    {
         Ok(r) => r,
         Err(e) => return (StatusCode::BAD_REQUEST, format!("Failed to download: {}", e)).into_response(),
     };
@@ -1450,6 +1464,338 @@ fn sanitize_pdf_filename(filename: &str) -> String {
     } else {
         format!("{}.pdf", safe)
     }
+}
+
+// ============================================================================
+// Smart PDF Find Handler
+// ============================================================================
+
+#[derive(Deserialize)]
+pub struct UnlinkPdfRequest {
+    pub note_key: String,
+}
+
+#[derive(Deserialize)]
+pub struct SmartPdfFindRequest {
+    pub note_key: String,
+}
+
+pub async fn smart_pdf_find(
+    State(state): State<Arc<AppState>>,
+    jar: CookieJar,
+    axum::Json(body): axum::Json<SmartPdfFindRequest>,
+) -> Response {
+    if !is_logged_in(&jar) {
+        return (StatusCode::UNAUTHORIZED, "Not logged in").into_response();
+    }
+
+    let notes_map = state.notes_map();
+    let note = match notes_map.get(&body.note_key) {
+        Some(n) => n.clone(),
+        None => return axum::Json(serde_json::json!({
+            "status": "error",
+            "error": "Note not found"
+        })).into_response(),
+    };
+
+    let paper = match &note.note_type {
+        NoteType::Paper(p) => p,
+        _ => return axum::Json(serde_json::json!({
+            "status": "error",
+            "error": "Note is not a paper"
+        })).into_response(),
+    };
+
+    // Extract metadata from bibtex
+    let effective = paper.effective_metadata(&note.title);
+    let title = effective.title.unwrap_or_else(|| note.title.clone());
+    let authors = effective.authors.clone();
+
+    // Extract DOI and arXiv ID from sources
+    let mut doi: Option<String> = None;
+    let mut arxiv_id: Option<String> = None;
+    for source in &paper.sources {
+        match source.source_type.as_str() {
+            "doi" => doi = Some(source.identifier.clone()),
+            "arxiv" => arxiv_id = Some(source.identifier.clone()),
+            _ => {}
+        }
+    }
+
+    // Also try extracting from bibtex fields
+    if doi.is_none() || arxiv_id.is_none() {
+        for entry in &paper.bibtex_entries {
+            if let Some(parsed) = crate::notes::parse_bibtex(entry) {
+                if doi.is_none() {
+                    if let Some(ref d) = parsed.doi {
+                        doi = Some(d.clone());
+                    }
+                }
+                if arxiv_id.is_none() {
+                    if let Some(ref eprint) = parsed.eprint {
+                        arxiv_id = Some(eprint.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    // Also check if DOI contains arxiv
+    if arxiv_id.is_none() {
+        if let Some(ref d) = doi {
+            if d.to_lowercase().contains("arxiv") {
+                if let Some(aid) = crate::smart_add::extract_arxiv_id(d) {
+                    arxiv_id = Some(aid);
+                }
+            }
+        }
+    }
+
+    // Helper: only accept absolute HTTPS URLs
+    fn is_valid_pdf_url(url: &str) -> bool {
+        url.starts_with("https://") || url.starts_with("http://")
+    }
+
+    // Build a short-timeout client for the fast API lookups
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(6))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
+
+    // --- Phase 1: Run all fast API lookups in parallel ---
+
+    // arXiv (just a HEAD check — very fast)
+    let arxiv_fut = {
+        let client = client.clone();
+        let aid = arxiv_id.clone();
+        async move {
+            let aid = aid?;
+            let pdf_url = format!("https://arxiv.org/pdf/{}.pdf", aid);
+            let resp = client.head(&pdf_url).send().await.ok()?;
+            if resp.status().is_success() || resp.status().is_redirection() {
+                Some(("arxiv".to_string(), pdf_url))
+            } else {
+                None
+            }
+        }
+    };
+
+    // Semantic Scholar by DOI
+    let ss_doi_fut = {
+        let client = client.clone();
+        let d = doi.clone();
+        async move {
+            let d = d?;
+            let url = format!(
+                "https://api.semanticscholar.org/graph/v1/paper/DOI:{}?fields=openAccessPdf",
+                d
+            );
+            let resp = client.get(&url).send().await.ok()?;
+            if !resp.status().is_success() { return None; }
+            let json: serde_json::Value = resp.json().await.ok()?;
+            let pdf_url = json.get("openAccessPdf")?.get("url")?.as_str()?;
+            if !is_valid_pdf_url(pdf_url) { return None; }
+            Some(("semanticscholar".to_string(), pdf_url.to_string()))
+        }
+    };
+
+    // Semantic Scholar by title (only if no DOI — avoids duplicate query)
+    let ss_title_fut = {
+        let client = client.clone();
+        let has_doi = doi.is_some();
+        let t = title.clone();
+        async move {
+            if has_doi { return None; }
+            let encoded = urlencoding::encode(&t);
+            let url = format!(
+                "https://api.semanticscholar.org/graph/v1/paper/search?query={}&limit=1&fields=openAccessPdf",
+                encoded
+            );
+            let resp = client.get(&url).send().await.ok()?;
+            if !resp.status().is_success() { return None; }
+            let json: serde_json::Value = resp.json().await.ok()?;
+            let pdf_url = json.get("data")?
+                .as_array()?.first()?
+                .get("openAccessPdf")?
+                .get("url")?.as_str()?;
+            if !is_valid_pdf_url(pdf_url) { return None; }
+            Some(("semanticscholar".to_string(), pdf_url.to_string()))
+        }
+    };
+
+    // Unpaywall
+    let unpaywall_fut = {
+        let client = client.clone();
+        let d = doi.clone();
+        async move {
+            let d = d?;
+            let url = format!(
+                "https://api.unpaywall.org/v2/{}?email=notes@example.com",
+                d
+            );
+            let resp = client.get(&url).send().await.ok()?;
+            if !resp.status().is_success() { return None; }
+            let json: serde_json::Value = resp.json().await.ok()?;
+            let pdf_url = json.get("best_oa_location")?
+                .get("url_for_pdf")?.as_str()?;
+            if !is_valid_pdf_url(pdf_url) { return None; }
+            Some(("unpaywall".to_string(), pdf_url.to_string()))
+        }
+    };
+
+    // Run all four in parallel, take the first Some result
+    let (r_arxiv, r_ss_doi, r_ss_title, r_unpaywall) = tokio::join!(
+        arxiv_fut, ss_doi_fut, ss_title_fut, unpaywall_fut
+    );
+
+    // Pick the best result: prefer arXiv > SS-DOI > Unpaywall > SS-title
+    let fast_result = r_arxiv
+        .or(r_ss_doi)
+        .or(r_unpaywall)
+        .or(r_ss_title);
+
+    if let Some((source, url)) = fast_result {
+        return axum::Json(serde_json::json!({
+            "status": "found",
+            "url": url,
+            "source": source
+        })).into_response();
+    }
+
+    // --- Phase 2: Claude CLI fallback (slow — only if fast sources all missed) ---
+    let search_title = title.clone();
+    let search_authors = authors.unwrap_or_default();
+    let claude_result = tokio::task::spawn_blocking(move || {
+        let prompt = format!(
+            "Find a direct PDF download URL for the paper: \"{}\" by {}. \
+             Return ONLY a JSON object: {{\"url\":\"...\"}} or {{\"error\":\"not found\"}}. \
+             No other text.",
+            search_title, search_authors
+        );
+        Command::new("claude")
+            .args(["-p", &prompt])
+            .output()
+    }).await;
+
+    if let Ok(Ok(output)) = claude_result {
+        if output.status.success() {
+            let response = String::from_utf8_lossy(&output.stdout);
+            if let Some(json_start) = response.find('{') {
+                if let Some(json_end) = response.rfind('}') {
+                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&response[json_start..=json_end]) {
+                        if let Some(url) = json.get("url").and_then(|u| u.as_str()) {
+                            if !url.is_empty() && url.starts_with("http") {
+                                return axum::Json(serde_json::json!({
+                                    "status": "found",
+                                    "url": url,
+                                    "source": "claude"
+                                })).into_response();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    axum::Json(serde_json::json!({
+        "status": "not_found",
+        "error": "Could not find a PDF for this paper"
+    })).into_response()
+}
+
+/// Permissive URL validation for PDF downloads: requires absolute HTTP(S) URL
+/// and blocks internal/private IPs, but does NOT enforce the domain allowlist.
+/// Used for user-initiated PDF downloads where the URL may come from any academic source.
+fn validate_pdf_download_url(url_str: &str) -> Result<(), String> {
+    let url = url::Url::parse(url_str)
+        .map_err(|e| format!("{}", e))?;
+
+    if url.scheme() != "https" && url.scheme() != "http" {
+        return Err("Only HTTP(S) URLs are allowed".to_string());
+    }
+
+    let host = url.host_str()
+        .ok_or_else(|| "No host in URL".to_string())?;
+
+    // Block internal IPs via DNS resolution
+    let port = url.port().unwrap_or(if url.scheme() == "https" { 443 } else { 80 });
+    let socket_addr = format!("{}:{}", host, port);
+    if let Ok(addrs) = std::net::ToSocketAddrs::to_socket_addrs(&socket_addr.as_str()) {
+        for addr in addrs {
+            let ip = addr.ip();
+            let is_internal = match ip {
+                std::net::IpAddr::V4(v4) => v4.is_loopback() || v4.is_private() || v4.is_link_local() || v4.is_unspecified(),
+                std::net::IpAddr::V6(v6) => v6.is_loopback() || v6.is_unspecified(),
+            };
+            if is_internal {
+                return Err(format!("Internal IP address not allowed: {}", ip));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+pub async fn unlink_pdf(
+    State(state): State<Arc<AppState>>,
+    jar: CookieJar,
+    axum::Json(body): axum::Json<UnlinkPdfRequest>,
+) -> Response {
+    if !is_logged_in(&jar) {
+        return (StatusCode::UNAUTHORIZED, "Not logged in").into_response();
+    }
+
+    let notes_map = state.notes_map();
+    let note = match notes_map.get(&body.note_key) {
+        Some(n) => n.clone(),
+        None => return (StatusCode::NOT_FOUND, "Note not found").into_response(),
+    };
+
+    if note.pdf.is_none() {
+        return (StatusCode::BAD_REQUEST, "Note has no PDF attached").into_response();
+    }
+
+    if let Err(e) = remove_note_pdf_frontmatter(&state.notes_dir, &note.path) {
+        return (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to update note: {}", e)).into_response();
+    }
+
+    axum::Json(serde_json::json!({
+        "success": true
+    })).into_response()
+}
+
+fn remove_note_pdf_frontmatter(notes_dir: &PathBuf, note_path: &PathBuf) -> Result<(), String> {
+    let full_path = notes_dir.join(note_path);
+    let content = fs::read_to_string(&full_path)
+        .map_err(|e| format!("Failed to read note: {}", e))?;
+
+    let lines: Vec<&str> = content.lines().collect();
+
+    if lines.is_empty() || lines[0].trim() != "---" {
+        return Err("Note has no frontmatter".to_string());
+    }
+
+    let mut end_idx = None;
+    for (i, line) in lines.iter().enumerate().skip(1) {
+        if line.trim() == "---" {
+            end_idx = Some(i);
+            break;
+        }
+    }
+
+    let end_idx = end_idx.ok_or("Invalid frontmatter")?;
+
+    let new_lines: Vec<String> = lines.iter().enumerate()
+        .filter(|(i, line)| !(*i > 0 && *i < end_idx && line.trim().starts_with("pdf:")))
+        .map(|(_, line)| line.to_string())
+        .collect();
+
+    let new_content = new_lines.join("\n");
+    fs::write(&full_path, new_content)
+        .map_err(|e| format!("Failed to write note: {}", e))?;
+
+    Ok(())
 }
 
 fn update_note_pdf_frontmatter(notes_dir: &PathBuf, note_path: &PathBuf, pdf_filename: &str) -> Result<(), String> {
