@@ -8,19 +8,22 @@
 
 use crate::auth::is_logged_in;
 use crate::models::{
-    AttachSourceRequest, ExternalResult, InputType, LocalMatch, Note, NoteType,
+    AttachSourceRequest, BibImportAnalysis, BibImportConflict, BibImportCreatedNote,
+    BibImportEntry, BibImportExecuteRequest, BibImportExecuteResult, BibImportExisting,
+    BibImportUpdatedNote, ExternalResult, InputType, LocalMatch, Note, NoteType,
     QuickNoteRequest, SmartAddCreateRequest, SmartAddRequest, SmartAddResult,
 };
-use crate::notes::{generate_key, parse_bibtex};
+use crate::notes::{generate_key, normalize_bibtex, normalize_title, parse_bibtex, split_bib_file};
 use crate::{validate_path_within, AppState};
 use axum::{
-    extract::State,
+    extract::{Multipart, State},
     response::{IntoResponse, Response},
 };
 use axum_extra::extract::CookieJar;
 use chrono::Utc;
 use regex::Regex;
 use serde::Serialize;
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
@@ -847,7 +850,7 @@ pub async fn smart_add_lookup(
     axum::Json(body): axum::Json<SmartAddRequest>,
 ) -> Response {
     // Always return JSON responses for consistency
-    if !is_logged_in(&jar) {
+    if !is_logged_in(&jar, &state.db) {
         let result = SmartAddResult {
             input_type: "error".to_string(),
             local_match: None,
@@ -936,7 +939,7 @@ pub async fn smart_add_create(
     jar: CookieJar,
     axum::Json(body): axum::Json<SmartAddCreateRequest>,
 ) -> Response {
-    if !is_logged_in(&jar) {
+    if !is_logged_in(&jar, &state.db) {
         return axum::Json(SmartAddCreateResponse {
             key: None,
             error: Some("Not logged in".to_string()),
@@ -1068,7 +1071,7 @@ pub async fn quick_note_create(
     jar: CookieJar,
     axum::Json(body): axum::Json<QuickNoteRequest>,
 ) -> Response {
-    if !is_logged_in(&jar) {
+    if !is_logged_in(&jar, &state.db) {
         return axum::Json(SmartAddCreateResponse {
             key: None,
             error: Some("Not logged in".to_string()),
@@ -1184,7 +1187,7 @@ pub async fn smart_add_attach(
     jar: CookieJar,
     axum::Json(body): axum::Json<AttachSourceRequest>,
 ) -> Response {
-    if !is_logged_in(&jar) {
+    if !is_logged_in(&jar, &state.db) {
         return axum::Json(AttachSourceResponse {
             success: false,
             error: Some("Not logged in".to_string()),
@@ -1261,4 +1264,341 @@ pub async fn smart_add_attach(
         error: None,
     })
     .into_response()
+}
+
+// ============================================================================
+// BibTeX Import Endpoints
+// ============================================================================
+
+/// Insert a text block before the closing `---` of frontmatter.
+fn insert_before_frontmatter_end(content: &str, block: &str) -> Option<String> {
+    let first = content.find("---")?;
+    let second = content[first + 3..].find("---").map(|i| first + 3 + i)?;
+    let mut new = content[..second].to_string();
+    if !new.ends_with('\n') {
+        new.push('\n');
+    }
+    new.push_str(block);
+    if !block.ends_with('\n') {
+        new.push('\n');
+    }
+    new.push_str(&content[second..]);
+    Some(new)
+}
+
+pub async fn bib_import_analyze(
+    State(state): State<Arc<AppState>>,
+    jar: CookieJar,
+    mut multipart: Multipart,
+) -> Response {
+    if !is_logged_in(&jar, &state.db) {
+        return (axum::http::StatusCode::UNAUTHORIZED, "Not logged in").into_response();
+    }
+
+    // Read the .bib file from multipart
+    let mut file_content = String::new();
+    while let Ok(Some(field)) = multipart.next_field().await {
+        if field.name() == Some("file") {
+            match field.text().await {
+                Ok(text) => {
+                    file_content = text;
+                    break;
+                }
+                Err(e) => {
+                    return axum::Json(BibImportAnalysis {
+                        new_entries: vec![],
+                        existing_entries: vec![],
+                        conflicts: vec![],
+                        parse_errors: vec![format!("Failed to read file: {}", e)],
+                    })
+                    .into_response();
+                }
+            }
+        }
+    }
+
+    if file_content.is_empty() {
+        return axum::Json(BibImportAnalysis {
+            new_entries: vec![],
+            existing_entries: vec![],
+            conflicts: vec![],
+            parse_errors: vec!["No file uploaded".to_string()],
+        })
+        .into_response();
+    }
+
+    let raw_entries = split_bib_file(&file_content);
+    let notes = state.load_notes();
+
+    // Build lookup indexes from existing notes
+    let mut cite_key_to_note: HashMap<String, (String, String, Option<String>)> = HashMap::new(); // cite_key -> (note_key, note_title, bibtex)
+    let mut doi_to_note: HashMap<String, (String, String)> = HashMap::new();
+    let mut title_to_note: HashMap<String, (String, String)> = HashMap::new(); // normalized_title -> (note_key, note_title)
+
+    for note in &notes {
+        if let NoteType::Paper(ref paper) = note.note_type {
+            for entry in &paper.bibtex_entries {
+                if let Some(parsed) = parse_bibtex(entry) {
+                    cite_key_to_note.insert(
+                        parsed.cite_key.clone(),
+                        (note.key.clone(), note.title.clone(), Some(entry.clone())),
+                    );
+                    if let Some(ref doi) = parsed.doi {
+                        doi_to_note.insert(doi.to_lowercase(), (note.key.clone(), note.title.clone()));
+                    }
+                    if let Some(ref title) = parsed.title {
+                        let norm = normalize_title(title);
+                        if !norm.is_empty() {
+                            title_to_note.insert(norm, (note.key.clone(), note.title.clone()));
+                        }
+                    }
+                }
+            }
+            // Also index the note title itself
+            let norm = normalize_title(&note.title);
+            if !norm.is_empty() {
+                title_to_note.entry(norm).or_insert_with(|| (note.key.clone(), note.title.clone()));
+            }
+        }
+    }
+
+    let mut analysis = BibImportAnalysis {
+        new_entries: vec![],
+        existing_entries: vec![],
+        conflicts: vec![],
+        parse_errors: vec![],
+    };
+
+    for (idx, raw) in raw_entries.into_iter().enumerate() {
+        let parsed = match parse_bibtex(&raw) {
+            Some(p) => p,
+            None => {
+                analysis.parse_errors.push(format!(
+                    "Entry {}: could not parse BibTeX",
+                    idx + 1
+                ));
+                continue;
+            }
+        };
+
+        let cite_key = &parsed.cite_key;
+
+        // Check cite key match
+        if let Some((note_key, note_title, existing_bib)) = cite_key_to_note.get(cite_key) {
+            // Same cite key exists - check if content is identical
+            if let Some(ref existing) = existing_bib {
+                if normalize_bibtex(existing) == normalize_bibtex(&raw) {
+                    // Identical — skip
+                    analysis.existing_entries.push(BibImportExisting {
+                        index: idx,
+                        cite_key: cite_key.clone(),
+                        note_key: note_key.clone(),
+                        note_title: note_title.clone(),
+                    });
+                    continue;
+                }
+            }
+            // Cite key matches but content differs — conflict
+            analysis.conflicts.push(BibImportConflict {
+                index: idx,
+                bibtex: raw,
+                cite_key: cite_key.clone(),
+                title: parsed.title.clone(),
+                match_type: "cite_key".to_string(),
+                matched_note_key: note_key.clone(),
+                matched_note_title: note_title.clone(),
+                existing_bibtex: existing_bib.clone(),
+            });
+            continue;
+        }
+
+        // Check DOI match
+        if let Some(ref doi) = parsed.doi {
+            if let Some((note_key, note_title)) = doi_to_note.get(&doi.to_lowercase()) {
+                analysis.conflicts.push(BibImportConflict {
+                    index: idx,
+                    bibtex: raw,
+                    cite_key: cite_key.clone(),
+                    title: parsed.title.clone(),
+                    match_type: "doi".to_string(),
+                    matched_note_key: note_key.clone(),
+                    matched_note_title: note_title.clone(),
+                    existing_bibtex: None,
+                });
+                continue;
+            }
+        }
+
+        // Check title match
+        if let Some(ref title) = parsed.title {
+            let norm = normalize_title(title);
+            if !norm.is_empty() {
+                if let Some((note_key, note_title)) = title_to_note.get(&norm) {
+                    analysis.conflicts.push(BibImportConflict {
+                        index: idx,
+                        bibtex: raw,
+                        cite_key: cite_key.clone(),
+                        title: parsed.title.clone(),
+                        match_type: "title".to_string(),
+                        matched_note_key: note_key.clone(),
+                        matched_note_title: note_title.clone(),
+                        existing_bibtex: None,
+                    });
+                    continue;
+                }
+            }
+        }
+
+        // New entry
+        analysis.new_entries.push(BibImportEntry {
+            index: idx,
+            bibtex: raw,
+            cite_key: cite_key.clone(),
+            title: parsed.title.clone(),
+            author: parsed.author.clone(),
+            year: parsed.year,
+            suggested_filename: format!("{}.md", cite_key),
+        });
+    }
+
+    axum::Json(analysis).into_response()
+}
+
+pub async fn bib_import_execute(
+    State(state): State<Arc<AppState>>,
+    jar: CookieJar,
+    axum::Json(body): axum::Json<BibImportExecuteRequest>,
+) -> Response {
+    if !is_logged_in(&jar, &state.db) {
+        return (axum::http::StatusCode::UNAUTHORIZED, "Not logged in").into_response();
+    }
+
+    let mut result = BibImportExecuteResult {
+        created: vec![],
+        updated: vec![],
+        errors: vec![],
+    };
+
+    // Process create items
+    for item in &body.create {
+        let bibtex = item.bibtex.trim();
+        let filename = item.filename.trim();
+
+        if filename.is_empty() || !filename.ends_with(".md") {
+            result.errors.push(format!("Invalid filename: {}", filename));
+            continue;
+        }
+
+        if filename.contains("..") || filename.starts_with('/') || filename.contains('\0') {
+            result.errors.push(format!("Invalid filename: {}", filename));
+            continue;
+        }
+
+        let parsed = match parse_bibtex(bibtex) {
+            Some(p) => p,
+            None => {
+                result.errors.push(format!("Could not parse BibTeX for {}", filename));
+                continue;
+            }
+        };
+
+        let title = parsed.title.unwrap_or_else(|| parsed.cite_key.clone());
+        let file_path = state.notes_dir.join(filename);
+
+        if let Err(_) = validate_path_within(&state.notes_dir, &file_path) {
+            result.errors.push(format!("Invalid filename: {}", filename));
+            continue;
+        }
+
+        if file_path.exists() {
+            result.errors.push(format!("File already exists: {}", filename));
+            continue;
+        }
+
+        if let Some(parent) = file_path.parent() {
+            if let Err(e) = fs::create_dir_all(parent) {
+                result.errors.push(format!("Failed to create directory for {}: {}", filename, e));
+                continue;
+            }
+        }
+
+        let today = chrono::Utc::now().format("%Y-%m-%d");
+        let mut frontmatter = format!(
+            "---\ntitle: {}\ndate: {}\ntype: paper\nbibtex: |\n",
+            title, today
+        );
+        for line in bibtex.lines() {
+            frontmatter.push_str(&format!("  {}\n", line));
+        }
+
+        // Extract DOI from bibtex if present
+        if let Some(ref doi) = parsed.doi {
+            if !doi.is_empty() {
+                frontmatter.push_str(&format!("doi: {}\n", doi));
+            }
+        }
+
+        frontmatter.push_str("---\n\n## Summary\n\n## Key Contributions\n\n## Notes\n\n");
+
+        if let Err(e) = fs::write(&file_path, &frontmatter) {
+            result.errors.push(format!("Failed to write {}: {}", filename, e));
+            continue;
+        }
+
+        let relative_path = PathBuf::from(filename);
+        let key = generate_key(&relative_path);
+
+        result.created.push(BibImportCreatedNote {
+            key,
+            filename: filename.to_string(),
+            title,
+        });
+    }
+
+    // Process secondary items (add bibtex to existing notes)
+    let notes_map = state.notes_map();
+    for item in &body.add_secondary {
+        let note = match notes_map.get(&item.note_key) {
+            Some(n) => n,
+            None => {
+                result.errors.push(format!("Note not found: {}", item.note_key));
+                continue;
+            }
+        };
+
+        let full_path = state.notes_dir.join(&note.path);
+        let content = match fs::read_to_string(&full_path) {
+            Ok(c) => c,
+            Err(e) => {
+                result.errors.push(format!("Failed to read {}: {}", note.title, e));
+                continue;
+            }
+        };
+
+        // Build the bibtex block to insert
+        let mut block = String::from("bibtex: |\n");
+        for line in item.bibtex.trim().lines() {
+            block.push_str(&format!("  {}\n", line));
+        }
+
+        let new_content = match insert_before_frontmatter_end(&content, &block) {
+            Some(c) => c,
+            None => {
+                result.errors.push(format!("Could not find frontmatter in {}", note.title));
+                continue;
+            }
+        };
+
+        if let Err(e) = fs::write(&full_path, &new_content) {
+            result.errors.push(format!("Failed to update {}: {}", note.title, e));
+            continue;
+        }
+
+        result.updated.push(BibImportUpdatedNote {
+            key: note.key.clone(),
+            title: note.title.clone(),
+        });
+    }
+
+    axum::Json(result).into_response()
 }

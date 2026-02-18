@@ -7,6 +7,9 @@ use sled::Db;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
+
+use chrono::{DateTime, Utc};
 
 pub mod auth;
 pub mod graph;
@@ -26,6 +29,50 @@ pub const PDFS_DIR: &str = "pdfs";
 pub const DB_PATH: &str = ".notes_db";
 
 // ============================================================================
+// Rate Limiting
+// ============================================================================
+
+/// Tracks login failures for rate limiting with exponential backoff.
+pub struct LoginRateLimit {
+    pub failures: u32,
+    pub locked_until: Option<DateTime<Utc>>,
+}
+
+impl LoginRateLimit {
+    pub fn new() -> Self {
+        Self {
+            failures: 0,
+            locked_until: None,
+        }
+    }
+
+    /// Check if login attempts are currently locked out.
+    pub fn is_locked(&self) -> bool {
+        if let Some(until) = self.locked_until {
+            Utc::now() < until
+        } else {
+            false
+        }
+    }
+
+    /// Record a failed login attempt. After 5 failures, apply exponential backoff capped at 64s.
+    pub fn record_failure(&mut self) {
+        self.failures += 1;
+        if self.failures >= 5 {
+            let delay_secs = std::cmp::min(1i64 << (self.failures - 5), 64);
+            self.locked_until =
+                Some(Utc::now() + chrono::Duration::seconds(delay_secs));
+        }
+    }
+
+    /// Reset on successful login.
+    pub fn reset(&mut self) {
+        self.failures = 0;
+        self.locked_until = None;
+    }
+}
+
+// ============================================================================
 // Application State
 // ============================================================================
 
@@ -33,8 +80,9 @@ pub const DB_PATH: &str = ".notes_db";
 pub struct AppState {
     pub notes_dir: PathBuf,
     pub pdfs_dir: PathBuf,
-    #[allow(dead_code)]
-    db: Db,
+    pub db: Db,
+    pub password_hash: Option<String>,
+    pub login_rate_limit: Arc<Mutex<LoginRateLimit>>,
 }
 
 impl AppState {
@@ -47,7 +95,19 @@ impl AppState {
 
         let db = sled::open(DB_PATH).expect("Failed to open database");
 
-        Self { notes_dir, pdfs_dir, db }
+        // Purge expired sessions/CSRF tokens from previous runs
+        auth::purge_expired_sessions(&db);
+
+        // Hash password at startup (Argon2id — ~100ms, done once)
+        let password_hash = auth::hash_password_at_startup();
+
+        Self {
+            notes_dir,
+            pdfs_dir,
+            db,
+            password_hash,
+            login_rate_limit: Arc::new(Mutex::new(LoginRateLimit::new())),
+        }
     }
 
     pub fn load_notes(&self) -> Vec<models::Note> {
@@ -107,21 +167,23 @@ pub use models::{
 
 pub use notes::{
     extract_references, generate_bibliography, generate_key, get_file_at_commit, get_git_history,
-    html_escape, load_all_notes, load_note, parse_bibtex, parse_frontmatter,
-    process_crosslinks, render_markdown, search_notes, Frontmatter, ParsedBibtex,
+    html_escape, load_all_notes, load_note, normalize_bibtex, normalize_title, parse_bibtex,
+    parse_frontmatter, process_crosslinks, render_markdown, search_notes, split_bib_file,
+    Frontmatter, ParsedBibtex,
 };
 
 pub use auth::{
-    base64_decode, base64_encode, create_session, get_secret_key, hex_encode, is_auth_enabled,
-    is_logged_in, verify_session, SESSION_COOKIE, SESSION_TTL_HOURS,
+    create_csrf_token, create_session, delete_session, hash_password_at_startup, is_auth_enabled,
+    is_logged_in, purge_expired_sessions, verify_and_consume_csrf_token, verify_password,
+    verify_session, SESSION_COOKIE, SESSION_TTL_HOURS,
 };
 
 pub use graph::{build_knowledge_graph, find_reachable, find_shortest_path};
 
 pub use smart_add::{
-    detect_input_type, extract_arxiv_id, extract_doi, fetch_and_extract_metadata, generate_bib_key,
-    generate_suggested_filename, query_arxiv_api, query_claude_for_url, query_crossref_api,
-    query_crossref_by_title, search_local_for_match,
+    bib_import_analyze, bib_import_execute, detect_input_type, extract_arxiv_id, extract_doi,
+    fetch_and_extract_metadata, generate_bib_key, generate_suggested_filename, query_arxiv_api,
+    query_claude_for_url, query_crossref_api, query_crossref_by_title, search_local_for_match,
 };
 
 pub use templates::{base_html, nav_bar, render_editor, render_viewer, smart_add_html, STYLE};

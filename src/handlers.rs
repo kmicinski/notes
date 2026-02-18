@@ -3,7 +3,10 @@
 //! This module contains all the route handlers for the notes application,
 //! including index, search, note viewing/editing, authentication, and more.
 
-use crate::auth::{create_session, is_logged_in, SESSION_COOKIE, SESSION_TTL_HOURS};
+use crate::auth::{
+    create_csrf_token, create_session, delete_session, is_logged_in,
+    verify_and_consume_csrf_token, verify_password, SESSION_COOKIE, SESSION_TTL_HOURS,
+};
 use crate::models::{Note, NoteType, TimeCategory};
 use crate::notes::{
     generate_bibliography, generate_key, get_file_at_commit, get_git_history, html_escape,
@@ -25,7 +28,6 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Arc;
 use reqwest;
-use subtle::ConstantTimeEq;
 use crate::validate_path_within;
 
 // ============================================================================
@@ -42,7 +44,7 @@ pub async fn index(
     State(state): State<Arc<AppState>>,
     jar: CookieJar,
 ) -> Html<String> {
-    let logged_in = is_logged_in(&jar);
+    let logged_in = is_logged_in(&jar, &state.db);
     let notes = state.load_notes();
     let show_hidden = query.hidden.as_deref() == Some("true");
 
@@ -137,7 +139,7 @@ pub async fn search(
     State(state): State<Arc<AppState>>,
     jar: CookieJar,
 ) -> Html<String> {
-    let logged_in = is_logged_in(&jar);
+    let logged_in = is_logged_in(&jar, &state.db);
     let q = query.q.unwrap_or_default();
 
     if q.is_empty() {
@@ -216,7 +218,7 @@ pub async fn view_note(
     State(state): State<Arc<AppState>>,
     jar: CookieJar,
 ) -> Response {
-    let logged_in = is_logged_in(&jar);
+    let logged_in = is_logged_in(&jar, &state.db);
     let notes_map = state.notes_map();
 
     let note = match notes_map.get(&key) {
@@ -459,7 +461,7 @@ pub async fn save_note(
     jar: CookieJar,
     axum::Json(body): axum::Json<SaveNoteBody>,
 ) -> Response {
-    if !is_logged_in(&jar) {
+    if !is_logged_in(&jar, &state.db) {
         return (StatusCode::UNAUTHORIZED, "Not logged in").into_response();
     }
 
@@ -524,7 +526,7 @@ pub async fn delete_note(
     jar: CookieJar,
     axum::Json(body): axum::Json<DeleteNoteBody>,
 ) -> Response {
-    if !is_logged_in(&jar) {
+    if !is_logged_in(&jar, &state.db) {
         return (StatusCode::UNAUTHORIZED, "Not logged in").into_response();
     }
 
@@ -593,7 +595,7 @@ pub async fn view_note_history(
     State(state): State<Arc<AppState>>,
     jar: CookieJar,
 ) -> Response {
-    let logged_in = is_logged_in(&jar);
+    let logged_in = is_logged_in(&jar, &state.db);
     let notes_map = state.notes_map();
 
     let note = match notes_map.get(&key) {
@@ -632,55 +634,94 @@ pub async fn view_note_history(
 // Authentication Handlers
 // ============================================================================
 
-pub async fn login_page(jar: CookieJar) -> Response {
-    if is_logged_in(&jar) {
+pub async fn login_page(
+    State(state): State<Arc<AppState>>,
+    jar: CookieJar,
+) -> Response {
+    if is_logged_in(&jar, &state.db) {
         return Redirect::to("/").into_response();
     }
 
-    let html = r#"
+    let csrf_token = create_csrf_token(&state.db);
+
+    let html = format!(
+        r#"
         <div class="login-form">
             <h1>Login</h1>
             <form method="POST" action="/login">
+                <input type="hidden" name="csrf_token" value="{}">
                 <input type="password" name="password" placeholder="Password" autofocus required>
                 <button type="submit">Login</button>
             </form>
         </div>
-    "#;
+    "#,
+        csrf_token
+    );
 
-    Html(base_html("Login", html, None, false)).into_response()
+    Html(base_html("Login", &html, None, false)).into_response()
 }
 
 #[derive(Deserialize)]
 pub struct LoginForm {
     pub password: String,
+    pub csrf_token: String,
 }
 
-pub async fn login_submit(axum::Form(form): axum::Form<LoginForm>) -> Response {
+pub async fn login_submit(
+    State(state): State<Arc<AppState>>,
+    axum::Form(form): axum::Form<LoginForm>,
+) -> Response {
     if !crate::auth::is_auth_enabled() {
         let html = r#"<div class="message error">Authentication not configured.</div>"#;
         return Html(base_html("Error", html, None, false)).into_response();
     }
 
-    let password = std::env::var("NOTES_PASSWORD").unwrap_or_default();
-    let input_bytes = form.password.as_bytes();
-    let expected_bytes = password.as_bytes();
-    let password_matches = input_bytes.len() == expected_bytes.len()
-        && input_bytes.ct_eq(expected_bytes).unwrap_u8() == 1;
-    if !password_matches {
-        let html = r#"
-            <div class="login-form">
-                <div class="message error">Invalid password.</div>
-                <h1>Login</h1>
-                <form method="POST" action="/login">
-                    <input type="password" name="password" placeholder="Password" autofocus required>
-                    <button type="submit">Login</button>
-                </form>
-            </div>
-        "#;
-        return Html(base_html("Login", html, None, false)).into_response();
+    // Check rate limit
+    {
+        let rl = state.login_rate_limit.lock().unwrap();
+        if rl.is_locked() {
+            return Redirect::to("/login").into_response();
+        }
     }
 
-    let session_token = match create_session() {
+    // Verify CSRF token
+    if !verify_and_consume_csrf_token(&form.csrf_token, &state.db) {
+        return Redirect::to("/login").into_response();
+    }
+
+    // Verify password via Argon2 on a blocking thread
+    let password_hash = match &state.password_hash {
+        Some(h) => h.clone(),
+        None => {
+            let html = r#"<div class="message error">Authentication not configured.</div>"#;
+            return Html(base_html("Error", html, None, false)).into_response();
+        }
+    };
+
+    let attempt = form.password.clone();
+    let password_matches = tokio::task::spawn_blocking(move || {
+        verify_password(&attempt, &password_hash)
+    })
+    .await
+    .unwrap_or(false);
+
+    if !password_matches {
+        // Record failure for rate limiting
+        {
+            let mut rl = state.login_rate_limit.lock().unwrap();
+            rl.record_failure();
+        }
+        // Redirect to GET /login so a fresh CSRF token is generated
+        return Redirect::to("/login").into_response();
+    }
+
+    // Reset rate limit on success
+    {
+        let mut rl = state.login_rate_limit.lock().unwrap();
+        rl.reset();
+    }
+
+    let session_token = match create_session(&state.db) {
         Some(t) => t,
         None => {
             let html = r#"<div class="message error">Failed to create session.</div>"#;
@@ -701,7 +742,15 @@ pub async fn login_submit(axum::Form(form): axum::Form<LoginForm>) -> Response {
     (headers, Redirect::to("/")).into_response()
 }
 
-pub async fn logout() -> Response {
+pub async fn logout(
+    State(state): State<Arc<AppState>>,
+    jar: CookieJar,
+) -> Response {
+    // Server-side session revocation
+    if let Some(cookie) = jar.get(SESSION_COOKIE) {
+        delete_session(cookie.value(), &state.db);
+    }
+
     let cookie = format!("{}=; Path=/; HttpOnly; Secure; Max-Age=0", SESSION_COOKIE);
 
     let mut headers = HeaderMap::new();
@@ -714,8 +763,11 @@ pub async fn logout() -> Response {
 // New Note Handlers
 // ============================================================================
 
-pub async fn new_note_page(jar: CookieJar) -> Response {
-    if !is_logged_in(&jar) {
+pub async fn new_note_page(
+    State(state): State<Arc<AppState>>,
+    jar: CookieJar,
+) -> Response {
+    if !is_logged_in(&jar, &state.db) {
         return Redirect::to("/login").into_response();
     }
 
@@ -840,7 +892,7 @@ pub async fn create_note(
     jar: CookieJar,
     axum::Form(form): axum::Form<NewNoteForm>,
 ) -> Response {
-    if !is_logged_in(&jar) {
+    if !is_logged_in(&jar, &state.db) {
         return Redirect::to("/login").into_response();
     }
 
@@ -947,7 +999,7 @@ pub async fn toggle_hidden(
     State(state): State<Arc<AppState>>,
     jar: CookieJar,
 ) -> Response {
-    if !is_logged_in(&jar) {
+    if !is_logged_in(&jar, &state.db) {
         return (StatusCode::UNAUTHORIZED, "Not logged in").into_response();
     }
 
@@ -1037,7 +1089,7 @@ pub async fn papers(
     State(state): State<Arc<AppState>>,
     jar: CookieJar,
 ) -> Html<String> {
-    let logged_in = is_logged_in(&jar);
+    let logged_in = is_logged_in(&jar, &state.db);
     let notes = state.load_notes();
     let show_hidden = query.hidden.as_deref() == Some("true");
 
@@ -1118,7 +1170,7 @@ pub async fn papers(
 // ============================================================================
 
 pub async fn time_tracking(State(state): State<Arc<AppState>>, jar: CookieJar) -> Html<String> {
-    let logged_in = is_logged_in(&jar);
+    let logged_in = is_logged_in(&jar, &state.db);
     let notes = state.load_notes();
 
     let mut totals: HashMap<TimeCategory, u32> = HashMap::new();
@@ -1235,7 +1287,7 @@ pub async fn upload_pdf(
     jar: CookieJar,
     mut multipart: Multipart,
 ) -> Response {
-    if !is_logged_in(&jar) {
+    if !is_logged_in(&jar, &state.db) {
         return (StatusCode::UNAUTHORIZED, "Not logged in").into_response();
     }
 
@@ -1304,7 +1356,7 @@ pub async fn download_pdf_from_url(
     jar: CookieJar,
     axum::Json(body): axum::Json<DownloadPdfRequest>,
 ) -> Response {
-    if !is_logged_in(&jar) {
+    if !is_logged_in(&jar, &state.db) {
         return (StatusCode::UNAUTHORIZED, "Not logged in").into_response();
     }
 
@@ -1396,7 +1448,7 @@ pub async fn rename_pdf(
     jar: CookieJar,
     axum::Json(body): axum::Json<RenamePdfRequest>,
 ) -> Response {
-    if !is_logged_in(&jar) {
+    if !is_logged_in(&jar, &state.db) {
         return (StatusCode::UNAUTHORIZED, "Not logged in").into_response();
     }
 
@@ -1485,7 +1537,7 @@ pub async fn smart_pdf_find(
     jar: CookieJar,
     axum::Json(body): axum::Json<SmartPdfFindRequest>,
 ) -> Response {
-    if !is_logged_in(&jar) {
+    if !is_logged_in(&jar, &state.db) {
         return (StatusCode::UNAUTHORIZED, "Not logged in").into_response();
     }
 
@@ -1742,7 +1794,7 @@ pub async fn unlink_pdf(
     jar: CookieJar,
     axum::Json(body): axum::Json<UnlinkPdfRequest>,
 ) -> Response {
-    if !is_logged_in(&jar) {
+    if !is_logged_in(&jar, &state.db) {
         return (StatusCode::UNAUTHORIZED, "Not logged in").into_response();
     }
 

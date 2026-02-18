@@ -302,7 +302,7 @@ pub async fn graph_page(
     State(state): State<Arc<AppState>>,
     jar: CookieJar,
 ) -> Html<String> {
-    let logged_in = is_logged_in(&jar);
+    let logged_in = is_logged_in(&jar, &state.db);
     let query_str = params.q.as_deref().unwrap_or("");
     let query = GraphQuery::parse(query_str);
     let notes = state.load_notes();

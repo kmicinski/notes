@@ -9,7 +9,6 @@
 //! - Git integration for version history
 //! - Bibliography generation
 
-use crate::auth::hex_encode;
 use crate::models::{
     GitCommit, Note, NoteType, PaperMeta, PaperSource, SearchMatch, SearchResult, TimeCategory,
     TimeEntry,
@@ -245,7 +244,7 @@ pub fn generate_key(path: &PathBuf) -> String {
     let mut hasher = sha2::Sha256::new();
     hasher.update(path.to_string_lossy().as_bytes());
     let result = hasher.finalize();
-    hex_encode(&result[..3])
+    result[..3].iter().map(|b| format!("{:02x}", b)).collect()
 }
 
 // ============================================================================
@@ -498,6 +497,7 @@ pub struct ParsedBibtex {
     pub year: Option<i32>,
     pub venue: Option<String>,
     pub doi: Option<String>,
+    pub eprint: Option<String>,
 }
 
 /// Parse a BibTeX entry string and extract structured fields.
@@ -575,6 +575,8 @@ pub fn parse_bibtex(bibtex: &str) -> Option<ParsedBibtex> {
     result.venue = extract_field(bibtex, "journal")
         .or_else(|| extract_field(bibtex, "booktitle"))
         .or_else(|| extract_field(bibtex, "howpublished"));
+
+    result.eprint = extract_field(bibtex, "eprint");
 
     Some(result)
 }
