@@ -209,6 +209,7 @@ pub struct GraphNode {
     pub id: String,
     pub title: String,
     pub node_type: String,           // "note" or "paper"
+    pub short_label: String,         // "Smith et al." for papers, short title for notes
     pub date: Option<String>,
     pub time_total: u32,             // Total minutes tracked
     pub primary_category: Option<String>,

@@ -159,10 +159,42 @@ pub fn build_knowledge_graph(notes: &[Note], query: &GraphQuery, db: &sled::Db) 
             }
         }
 
+        // Build short label: "LastName et al." for papers, truncated title for notes
+        let short_label = if let NoteType::Paper(ref meta) = note.note_type {
+            let eff = meta.effective_metadata(&note.title);
+            if let Some(ref authors) = eff.authors {
+                // Extract first author last name
+                let first_author = authors.split(" and ")
+                    .next()
+                    .unwrap_or(authors)
+                    .split(',')
+                    .next()
+                    .unwrap_or(authors)
+                    .trim();
+                // Extract just the last name (last capitalized word)
+                let last_name = first_author.split_whitespace()
+                    .filter(|w| w.chars().next().map(|c| c.is_uppercase()).unwrap_or(false))
+                    .last()
+                    .unwrap_or(first_author);
+                if authors.contains(" and ") {
+                    format!("{} et al.", last_name)
+                } else {
+                    last_name.to_string()
+                }
+            } else {
+                let t = &note.title;
+                if t.len() > 16 { format!("{}…", &t[..16]) } else { t.clone() }
+            }
+        } else {
+            let t = &note.title;
+            if t.len() > 16 { format!("{}…", &t[..16]) } else { t.clone() }
+        };
+
         graph_nodes.push(GraphNode {
             id: note.key.clone(),
             title: note.title.clone(),
             node_type: node_type.to_string(),
+            short_label,
             date: note.date.map(|d| d.to_string()),
             time_total,
             primary_category: primary_cat,

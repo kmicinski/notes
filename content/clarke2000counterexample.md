@@ -11,6 +11,7 @@ bibtex: |
     year={2000},
     organization={Springer}
   }
+pdf: cegar.pdf
 ---
 
 ## Summary
@@ -18,4 +19,3 @@ bibtex: |
 ## Key Contributions
 
 ## Notes
-

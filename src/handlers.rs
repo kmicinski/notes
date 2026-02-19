@@ -122,6 +122,30 @@ pub async fn index(
 
     list_html.push_str("</ul>");
 
+    // Rescan all citations button (unobtrusive, logged-in only)
+    if logged_in {
+        list_html.push_str(r#"
+        <div style="margin-top:1.5em;text-align:right;">
+            <button class="btn" id="rescan-all-btn" onclick="rescanAll()" style="font-size:0.8em;padding:4px 10px;opacity:0.7;">Rescan All Citations</button>
+        </div>
+        <script>
+        async function rescanAll() {
+            const btn = document.getElementById('rescan-all-btn');
+            btn.disabled = true;
+            btn.textContent = 'Scanning...';
+            try {
+                const resp = await fetch('/api/citations/scan-all', { method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}' });
+                const data = await resp.json();
+                btn.textContent = 'Done: ' + data.scanned + ' scanned, ' + data.total_matches + ' matches';
+                btn.style.opacity = '1';
+            } catch(e) {
+                btn.textContent = 'Error: ' + e.message;
+            }
+        }
+        </script>
+        "#);
+    }
+
     Html(base_html("Notes", &list_html, None, logged_in))
 }
 

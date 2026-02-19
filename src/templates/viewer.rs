@@ -667,8 +667,8 @@ pub fn render_viewer(
             position: fixed;
             bottom: 20px;
             right: 20px;
-            width: 480px;
-            height: 400px;
+            width: 960px;
+            height: 800px;
             background: var(--bg);
             border: 1px solid var(--border);
             border-radius: 8px;
@@ -709,9 +709,11 @@ pub fn render_viewer(
             overflow: hidden;
         }}
         .mini-graph-body svg {{ width: 100%; height: 100%; }}
-        .mini-graph-body .mg-link {{ stroke: var(--border); stroke-opacity: 0.35; }}
-        .mini-graph-body .mg-link.citation {{ stroke-dasharray: 4,2; stroke: #b58900; stroke-opacity: 0.4; }}
-        .mini-graph-body .mg-link.highlighted {{ stroke: var(--fg); stroke-opacity: 0.8; stroke-width: 2px; }}
+        .mini-graph-body .mg-link {{ stroke: #93a1a1; stroke-opacity: 0.3; }}
+        .mini-graph-body .mg-link.deg1 {{ stroke: #073642; stroke-opacity: 0.7; stroke-width: 1.5px; }}
+        .mini-graph-body .mg-link.citation {{ stroke-dasharray: 4,2; stroke: #b58900; stroke-opacity: 0.5; }}
+        .mini-graph-body .mg-link.citation.deg1 {{ stroke-opacity: 0.8; stroke-width: 1.5px; }}
+        .mini-graph-body .mg-link.highlighted {{ stroke: var(--fg); stroke-opacity: 0.9; stroke-width: 2.5px; }}
         .mini-graph-body .mg-node circle {{ cursor: pointer; stroke: var(--bg); stroke-width: 1.5px; }}
         .mini-graph-body .mg-node .mg-label {{
             font-size: 8px;
@@ -1838,57 +1840,124 @@ pub fn render_viewer(
                 n._dist = dist[n.id] !== undefined ? dist[n.id] : 99;
             }});
 
+            // --- Prune distant nodes when graph is too large ---
+            // Always keep center + all 1st degree. If > 30 nodes, trim from furthest distance inward.
+            const MAX_NODES = 30;
+            const firstDegreeNodes = data.nodes.filter(n => n._dist <= 1);
+            let keepNodes;
+            if (data.nodes.length <= MAX_NODES) {{
+                keepNodes = data.nodes;
+            }} else {{
+                // Always keep dist 0 and 1. Fill remaining budget from dist 2, then 3, etc.
+                const budget = Math.max(MAX_NODES, firstDegreeNodes.length);
+                const byDist = {{}};
+                data.nodes.forEach(n => {{
+                    if (n._dist > 1) {{
+                        if (!byDist[n._dist]) byDist[n._dist] = [];
+                        byDist[n._dist].push(n);
+                    }}
+                }});
+                keepNodes = [...firstDegreeNodes];
+                const distances = Object.keys(byDist).map(Number).sort((a, b) => a - b);
+                for (const d of distances) {{
+                    if (keepNodes.length >= budget) break;
+                    const remaining = budget - keepNodes.length;
+                    const candidates = byDist[d];
+                    if (candidates.length <= remaining) {{
+                        keepNodes.push(...candidates);
+                    }} else {{
+                        // Take a random sample to avoid bias
+                        candidates.sort(() => Math.random() - 0.5);
+                        keepNodes.push(...candidates.slice(0, remaining));
+                    }}
+                }}
+            }}
+            const keepIds = new Set(keepNodes.map(n => n.id));
+            data.nodes = keepNodes;
+            data.edges = data.edges.filter(e => {{
+                const sid = typeof e.source === 'object' ? e.source.id : e.source;
+                const tid = typeof e.target === 'object' ? e.target.id : e.target;
+                return keepIds.has(sid) && keepIds.has(tid);
+            }});
+
             // --- Color palette by distance ---
-            // 0=center, 1=1st degree, 2=2nd, 3+=3rd
             const distColors = ['#dc322f', '#cb4b16', '#268bd2', '#93a1a1'];
             function nodeColor(d) {{
                 return distColors[Math.min(d._dist, distColors.length - 1)];
             }}
             function nodeRadius(d) {{
-                if (d._dist === 0) return 14;
-                if (d._dist === 1) return 9;
+                if (d._dist === 0) return 16;
+                if (d._dist === 1) return 10;
                 if (d._dist === 2) return 7;
                 return 5;
             }}
             function nodeOpacity(d) {{
                 if (d._dist === 0) return 1;
                 if (d._dist === 1) return 0.95;
-                if (d._dist === 2) return 0.75;
-                return 0.5;
+                if (d._dist === 2) return 0.7;
+                return 0.45;
             }}
 
             const svg = d3.select(container).append('svg');
-            const g = svg.append('g'); // Single transform group for zoom
+            const g = svg.append('g');
 
             // Tooltip
             const tip = d3.select(container).append('div')
                 .attr('class', 'mg-tooltip')
                 .style('display', 'none');
 
-            // Pin center node
+            // Pin center node to middle
             const centerNode = data.nodes.find(n => n.id === noteKey);
             if (centerNode) {{
                 centerNode.fx = width / 2;
                 centerNode.fy = height / 2;
             }}
 
-            // Simulation — spread by distance
+            // Count 1st degree neighbors for link distance tuning
+            const deg1Count = firstDegreeNodes.length - 1; // exclude center
+            // Spread 1st degree nodes in a ring that fits the viewport
+            const ringRadius = Math.min(width, height) * 0.3;
+            const linkDist1 = Math.max(60, ringRadius);
+
+            // Simulation tuned so 1st degree fills viewport nicely
             const sim = d3.forceSimulation(data.nodes)
                 .force('link', d3.forceLink(data.edges).id(d => d.id).distance(d => {{
                     const s = d.source._dist !== undefined ? d.source._dist : 1;
                     const t = d.target._dist !== undefined ? d.target._dist : 1;
-                    return 40 + Math.max(s, t) * 25;
+                    const maxDist = Math.max(s, t);
+                    if (maxDist <= 1) return linkDist1;
+                    return linkDist1 * 0.6 + maxDist * 20;
+                }}).strength(d => {{
+                    const s = d.source._dist !== undefined ? d.source._dist : 1;
+                    const t = d.target._dist !== undefined ? d.target._dist : 1;
+                    return Math.max(s, t) <= 1 ? 1.0 : 0.3;
                 }}))
-                .force('charge', d3.forceManyBody().strength(d => d._dist === 0 ? -300 : -100))
-                .force('center', d3.forceCenter(width / 2, height / 2))
-                .force('collision', d3.forceCollide().radius(d => nodeRadius(d) + 4));
+                .force('charge', d3.forceManyBody().strength(d => {{
+                    if (d._dist === 0) return -400;
+                    if (d._dist === 1) return -200;
+                    return -60;
+                }}))
+                .force('center', d3.forceCenter(width / 2, height / 2).strength(0.05))
+                .force('collision', d3.forceCollide().radius(d => nodeRadius(d) + 6))
+                .force('radial', d3.forceRadial(d => {{
+                    if (d._dist === 0) return 0;
+                    if (d._dist === 1) return ringRadius;
+                    return ringRadius + d._dist * 60;
+                }}, width / 2, height / 2).strength(d => d._dist <= 1 ? 0.6 : 0.2));
             miniGraphSim = sim;
 
-            // Links
+            // Links — 1st degree edges (touching center) get 'deg1' class for visibility
             const link = g.append('g').selectAll('line')
                 .data(data.edges).join('line')
-                .attr('class', d => 'mg-link' + (d.edge_type === 'citation' ? ' citation' : ''))
-                .attr('stroke-width', 1);
+                .attr('class', d => {{
+                    const sid = typeof d.source === 'object' ? d.source.id : d.source;
+                    const tid = typeof d.target === 'object' ? d.target.id : d.target;
+                    const isDeg1 = sid === noteKey || tid === noteKey;
+                    let cls = 'mg-link';
+                    if (isDeg1) cls += ' deg1';
+                    if (d.edge_type === 'citation') cls += ' citation';
+                    return cls;
+                }});
 
             // Nodes — sorted so center renders on top
             const sortedNodes = [...data.nodes].sort((a, b) => b._dist - a._dist);
@@ -1901,7 +1970,6 @@ pub fn render_viewer(
                     .on('drag', (e, d) => {{ d.fx = e.x; d.fy = e.y; }})
                     .on('end', (e, d) => {{
                         if (!e.active) sim.alphaTarget(0);
-                        // Keep center pinned
                         if (d.id !== noteKey) {{ d.fx = null; d.fy = null; }}
                     }}));
 
@@ -1909,18 +1977,22 @@ pub fn render_viewer(
                 .attr('r', d => nodeRadius(d))
                 .attr('fill', d => nodeColor(d));
 
-            // Labels — always visible, truncated by distance
+            // Labels — "Smith et al." style, hide for 3rd+ degree to reduce clutter
             node.append('text')
                 .attr('class', 'mg-label')
                 .text(d => {{
-                    const maxLen = d._dist === 0 ? 30 : d._dist === 1 ? 18 : 12;
-                    return d.title.length > maxLen ? d.title.substring(0, maxLen) + '\u2026' : d.title;
+                    if (d._dist >= 3) return '';
+                    return d.short_label || d.title.substring(0, 14);
                 }})
                 .attr('dy', d => -(nodeRadius(d) + 3));
 
             // Hover
             node.on('mouseover', function(event, d) {{
                 d3.select(this).raise().select('circle').attr('stroke', 'var(--fg)').attr('stroke-width', 2.5);
+                // Show label on hover for nodes without one
+                if (d._dist >= 3) {{
+                    d3.select(this).select('text').text(d.short_label || d.title.substring(0, 20));
+                }}
                 link.classed('highlighted', l => l.source.id === d.id || l.target.id === d.id);
                 const distLabel = d._dist === 0 ? 'center' : d._dist + (d._dist === 1 ? 'st' : d._dist === 2 ? 'nd' : d._dist === 3 ? 'rd' : 'th') + ' degree';
                 tip.style('display', 'block')
@@ -1930,6 +2002,9 @@ pub fn render_viewer(
             }})
             .on('mouseout', function(event, d) {{
                 d3.select(this).select('circle').attr('stroke', 'var(--bg)').attr('stroke-width', 1.5);
+                if (d._dist >= 3) {{
+                    d3.select(this).select('text').text('');
+                }}
                 link.classed('highlighted', false);
                 tip.style('display', 'none');
             }})
@@ -1942,15 +2017,39 @@ pub fn render_viewer(
             sim.on('tick', () => {{
                 link.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
                     .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
-                node.attr('transform', d => {{
-                    d.x = Math.max(15, Math.min(width - 15, d.x));
-                    d.y = Math.max(15, Math.min(height - 15, d.y));
-                    return 'translate(' + d.x + ',' + d.y + ')';
+                node.attr('transform', d => 'translate(' + d.x + ',' + d.y + ')');
+            }});
+
+            // After simulation stabilizes, auto-fit so 1st degree nodes fill viewport
+            sim.on('end', () => {{
+                // Compute bounding box of 1st degree nodes
+                const deg1Nodes = data.nodes.filter(n => n._dist <= 1);
+                if (deg1Nodes.length < 2) return;
+                let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+                deg1Nodes.forEach(n => {{
+                    minX = Math.min(minX, n.x);
+                    maxX = Math.max(maxX, n.x);
+                    minY = Math.min(minY, n.y);
+                    maxY = Math.max(maxY, n.y);
                 }});
+                const pad = 60;
+                const bw = (maxX - minX) + pad * 2;
+                const bh = (maxY - minY) + pad * 2;
+                const scale = Math.min(width / bw, height / bh, 2.0);
+                const cx = (minX + maxX) / 2;
+                const cy = (minY + maxY) / 2;
+                const tx = width / 2 - cx * scale;
+                const ty = height / 2 - cy * scale;
+                const transform = d3.zoomIdentity.translate(tx, ty).scale(scale);
+                svg.transition().duration(500).call(
+                    d3.zoom().scaleExtent([0.2, 5]).on('zoom', e => {{
+                        g.attr('transform', e.transform);
+                    }}).transform, transform
+                );
             }});
 
             // Zoom — apply to single group
-            svg.call(d3.zoom().scaleExtent([0.3, 4]).on('zoom', e => {{
+            svg.call(d3.zoom().scaleExtent([0.2, 5]).on('zoom', e => {{
                 g.attr('transform', e.transform);
             }}));
 

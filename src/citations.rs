@@ -62,15 +62,19 @@ fn extract_references_from_text(text: &str) -> Vec<String> {
     let lines: Vec<&str> = text.lines().collect();
 
     // Search backwards for a heading line that signals references.
+    // Matches optional section numbering: "7. REFERENCES", "VII. REFERENCES", "REFERENCES", etc.
+    let section_prefix = r"(?:\d+[\.\)]\s*|[IVXLC]+[\.\)]\s*)?";
     // Strict match: heading alone on the line.
-    let heading_strict =
-        Regex::new(r"(?i)^\s*(references|bibliography|works cited|cited references)\s*$")
-            .unwrap();
+    let heading_strict = Regex::new(&format!(
+        r"(?i)^\s*{section_prefix}(references|bibliography|works cited|cited references)\s*$"
+    ))
+    .unwrap();
     // Lenient match: heading at start of line (for multi-column PDFs where
     // column text may follow on the same line).
-    let heading_lenient =
-        Regex::new(r"(?i)^\s*(references|bibliography|works cited|cited references)\s")
-            .unwrap();
+    let heading_lenient = Regex::new(&format!(
+        r"(?i)^\s*{section_prefix}(references|bibliography|works cited|cited references)\s"
+    ))
+    .unwrap();
 
     let mut ref_start = None;
     // Search from the last 40% of the document

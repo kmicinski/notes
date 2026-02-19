@@ -8,6 +8,7 @@ bibtex: |
   	title = {Leapfrog Triejoin: A Simple, Worst-Case Optimal Join Algorithm},
   	year = {2014}
   }
+pdf: Veldhuizen14.pdf
 ---
 
 ## Summary
@@ -15,4 +16,3 @@ bibtex: |
 ## Key Contributions
 
 ## Notes
-
