@@ -1,0 +1,32 @@
+---
+title: Flan: An Expressive and Efficient Datalog Compiler for Program Analysis
+date: 2026-02-16
+type: paper
+bibtex: |
+  @article{flan,
+  author = {Abeysinghe, Supun and Xhebraj, Anxhelo and Rompf, Tiark},
+  title = {Flan: An Expressive and Efficient Datalog Compiler for Program Analysis},
+  year = {2024},
+  issue_date = {January 2024},
+  publisher = {Association for Computing Machinery},
+  address = {New York, NY, USA},
+  volume = {8},
+  number = {POPL},
+  url = {https://doi.org/10.1145/3632928},
+  doi = {10.1145/3632928},
+  abstract = {Datalog has gained prominence in program analysis due to its expressiveness and ease of use. Its generic fixpoint resolution algorithm over relational domains simplifies the expression of many complex analyses. The performance and scalability issues of early Datalog approaches have been addressed by tools such as Souffl\'{e} through specialized code generation. Still, while pure Datalog is expressive enough to support a wide range of analyses, there is a growing need for extensions to accommodate increasingly complex analyses. This has led to the development of various extensions, such as Flix, Datafun, and Formulog, which enhance Datalog with features like arbitrary lattices and SMT constraints. Most of these extensions recognize the need for full interoperability between Datalog and a full-fledged programming language, a functionality that high-performance systems like Souffl\'{e} lack. Specifically, in most cases, they construct languages from scratch with first-class Datalog support, allowing greater flexibility. However, this flexibility often comes at the cost of performance due to the conflicting requirements of prioritizing modularity and abstraction over efficiency. Consequently, achieving both flexibility and compilation to highly-performant specialized code poses a significant challenge. In this work, we reconcile the competing demands of expressiveness and performance with Flan, a Datalog compiler fully embedded in Scala that leverages multi-stage programming to generate specialized code for enhanced performance. Our approach combines the flexibility of Flix with Souffl\'{e}’s performance, offering seamless integration with the host language that enables the addition of powerful extensions while generating specialized code for the entire computation. Flan’s simple operator interface allows the addition of an extensive set of features, including arbitrary aggregates, user-defined functions, and lattices, with multiple execution strategies such as binary and multi-way joins, supported by different indexing structures like specialized trees and hash tables, with minimal effort. We evaluate our system on a variety of benchmarks and compare it to established Datalog engines. Our results demonstrate competitive performance and speedups in the range of 1.4\texttimes{} to 12.5\texttimes{} compared to state-of-the-art systems for workloads of practical importance.},
+  journal = {Proc. ACM Program. Lang.},
+  month = {jan},
+  articleno = {86},
+  numpages = {33},
+  keywords = {Datalog, Generative Programming, Logic Programming, Program Analysis}
+  }
+doi: 10.1145/3632928
+---
+
+## Summary
+
+## Key Contributions
+
+## Notes
+

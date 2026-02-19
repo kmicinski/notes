@@ -30,12 +30,18 @@ pub fn render_viewer(
         } else {
             ""
         };
+        let scan_btn = if is_paper && logged_in {
+            r#" <button class="pdf-toggle-btn" onclick="scanReferences()" title="Scan PDF for references to other papers">Scan Refs</button>"#
+        } else {
+            ""
+        };
         format!(
             r#"<a href="/pdfs/{}" target="_blank">📄 {}</a>
-               <button class="pdf-toggle-btn" id="pdf-toggle-btn" onclick="togglePdfViewer()">View PDF</button>{}"#,
+               <button class="pdf-toggle-btn" id="pdf-toggle-btn" onclick="togglePdfViewer()">View PDF</button>{}{}"#,
             html_escape(pdf),
             html_escape(pdf),
-            unlink_btn
+            unlink_btn,
+            scan_btn
         )
     } else if is_paper && logged_in {
         r#"<button class="pdf-toggle-btn" id="pdf-toggle-btn" onclick="togglePdfViewer()">Find PDF</button>"#.to_string()
@@ -655,6 +661,160 @@ pub fn render_viewer(
 
         .sub-notes {{ margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border); }}
         .sub-notes h3 {{ font-size: 1rem; margin-top: 0; }}
+
+        /* Mini knowledge graph panel */
+        .mini-graph-panel {{
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 480px;
+            height: 400px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+            z-index: 999;
+            display: none;
+            flex-direction: column;
+            overflow: hidden;
+            resize: both;
+        }}
+        .mini-graph-panel.active {{ display: flex; }}
+        .mini-graph-panel-header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.5rem 0.75rem;
+            background: var(--accent);
+            border-bottom: 1px solid var(--border);
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: move;
+        }}
+        .mini-graph-panel-header a {{
+            font-weight: normal;
+            font-size: 0.75rem;
+        }}
+        .mini-graph-panel-close {{
+            background: none;
+            border: none;
+            font-size: 1.1rem;
+            cursor: pointer;
+            color: var(--muted);
+            padding: 0 0.25rem;
+        }}
+        .mini-graph-body {{
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+        }}
+        .mini-graph-body svg {{ width: 100%; height: 100%; }}
+        .mini-graph-body .mg-link {{ stroke: var(--border); stroke-opacity: 0.5; }}
+        .mini-graph-body .mg-link.citation {{ stroke-dasharray: 4,2; stroke: #b58900; }}
+        .mini-graph-body .mg-link.highlighted {{ stroke: var(--link); stroke-opacity: 1; stroke-width: 2.5px; }}
+        .mini-graph-body .mg-node circle {{ cursor: pointer; stroke: var(--bg); stroke-width: 1.5px; }}
+        .mini-graph-body .mg-node.note circle {{ fill: var(--link); }}
+        .mini-graph-body .mg-node.paper circle {{ fill: #f4a460; }}
+        .mini-graph-body .mg-node.center circle {{ stroke: var(--fg); stroke-width: 3px; }}
+        .mini-graph-body .mg-node text {{
+            font-size: 9px;
+            fill: var(--fg);
+            pointer-events: none;
+            text-anchor: middle;
+        }}
+        .mg-tooltip {{
+            position: absolute;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 0.4rem 0.6rem;
+            font-size: 0.8rem;
+            pointer-events: none;
+            z-index: 1001;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+            max-width: 220px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }}
+
+        /* Citation scan results panel */
+        .citation-panel {{
+            position: fixed;
+            top: 60px;
+            right: 20px;
+            width: 380px;
+            max-height: 70vh;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+            z-index: 1000;
+            display: none;
+            flex-direction: column;
+            overflow: hidden;
+        }}
+        .citation-panel.active {{ display: flex; }}
+        .citation-panel-header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem 1rem;
+            background: var(--accent);
+            border-bottom: 1px solid var(--border);
+            font-weight: 600;
+            font-size: 0.9rem;
+        }}
+        .citation-panel-close {{
+            background: none;
+            border: none;
+            font-size: 1.1rem;
+            cursor: pointer;
+            color: var(--muted);
+            padding: 0 0.25rem;
+        }}
+        .citation-panel-body {{
+            overflow-y: auto;
+            padding: 0.75rem 1rem;
+            flex: 1;
+        }}
+        .citation-match {{
+            padding: 0.5rem 0;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.85rem;
+        }}
+        .citation-match:last-child {{ border-bottom: none; }}
+        .citation-match .cm-key {{
+            font-family: monospace;
+            color: var(--link);
+            font-size: 0.8rem;
+        }}
+        .citation-match .cm-type {{
+            display: inline-block;
+            font-size: 0.7rem;
+            padding: 0.1rem 0.3rem;
+            border-radius: 3px;
+            background: var(--accent);
+            color: var(--muted);
+            margin-left: 0.3rem;
+        }}
+        .citation-match .cm-title {{
+            display: block;
+            margin-top: 0.2rem;
+            color: var(--fg);
+        }}
+        .citation-panel-footer {{
+            padding: 0.75rem 1rem;
+            border-top: 1px solid var(--border);
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }}
+        .citation-panel-footer .citation-stats {{
+            flex: 1;
+            font-size: 0.8rem;
+            color: var(--muted);
+        }}
     </style>
 </head>
 <body>
@@ -668,7 +828,10 @@ pub fn render_viewer(
                 <label><input type="radio" name="font-size" value="18" onchange="setFontSize(18)"><span class="size-normal">A</span></label>
                 <label><input type="radio" name="font-size" value="22" onchange="setFontSize(22)"><span class="size-large">A</span></label>
             </div>
-            <div class="pdf-status" id="pdf-status">{pdf_status_html}</div>
+            <div class="pdf-status" id="pdf-status">
+                <button class="pdf-toggle-btn" id="mini-graph-btn" onclick="toggleMiniGraph()" title="Show local knowledge graph">Graph</button>
+                {pdf_status_html}
+            </div>
             {mode_toggle}
         </div>
         <div class="viewer-main">
@@ -705,8 +868,30 @@ pub fn render_viewer(
                 </div>
             </div>
         </div>
+        <div class="mini-graph-panel" id="mini-graph-panel">
+            <div class="mini-graph-panel-header" id="mini-graph-header">
+                <span>Local Graph</span>
+                <span>
+                    <a href="/graph?q=from:{key}+depth:3" title="Open full graph view">Full Graph</a>
+                    <button class="mini-graph-panel-close" onclick="closeMiniGraph()">&times;</button>
+                </span>
+            </div>
+            <div class="mini-graph-body" id="mini-graph-body"></div>
+        </div>
+        <div class="citation-panel" id="citation-panel">
+            <div class="citation-panel-header">
+                <span>Citation Scan Results</span>
+                <button class="citation-panel-close" onclick="closeCitationPanel()">&times;</button>
+            </div>
+            <div class="citation-panel-body" id="citation-panel-body"></div>
+            <div class="citation-panel-footer" id="citation-panel-footer" style="display:none;">
+                <span class="citation-stats" id="citation-stats"></span>
+                <button class="pdf-toggle-btn" onclick="writeCitations()" id="write-citations-btn">Write to note</button>
+            </div>
+        </div>
     </div>
 
+    <script src="https://d3js.org/d3.v7.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script>
         // Set pdf.js worker
@@ -1473,6 +1658,243 @@ pub fn render_viewer(
             if (status) status.innerHTML = '';
             if (btn) btn.disabled = false;
         }}
+
+        // =====================================================================
+        // Citation Scanning
+        // =====================================================================
+
+        async function scanReferences() {{
+            const panel = document.getElementById('citation-panel');
+            const body = document.getElementById('citation-panel-body');
+            const footer = document.getElementById('citation-panel-footer');
+            const stats = document.getElementById('citation-stats');
+
+            panel.classList.add('active');
+            body.innerHTML = '<div style="text-align:center;padding:1rem;color:var(--muted);"><span class="smart-find-spinner"></span> Scanning PDF references...</div>';
+            footer.style.display = 'none';
+
+            try {{
+                const resp = await fetch('/api/citations/scan', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{ note_key: noteKey, force: false }})
+                }});
+
+                if (!resp.ok) {{
+                    const err = await resp.text();
+                    body.innerHTML = '<div style="color:var(--red);padding:0.5rem;">' + err + '</div>';
+                    return;
+                }}
+
+                const data = await resp.json();
+
+                if (data.matches.length === 0) {{
+                    body.innerHTML = '<div style="padding:0.5rem;color:var(--muted);">No matches found among ' + data.unmatched_count + ' references.</div>';
+                    return;
+                }}
+
+                let html = '';
+                for (const m of data.matches) {{
+                    html += '<div class="citation-match">' +
+                        '<span class="cm-key">[@' + m.target_key + ']</span>' +
+                        '<span class="cm-type">' + m.match_type + ' ' + Math.round(m.confidence * 100) + '%</span>' +
+                        '<span class="cm-title">' + (m.raw_text.substring(0, 120)) + '</span>' +
+                        '</div>';
+                }}
+                body.innerHTML = html;
+
+                stats.textContent = data.matches.length + ' match(es), ' + data.unmatched_count + ' unmatched';
+                footer.style.display = 'flex';
+            }} catch (e) {{
+                body.innerHTML = '<div style="color:var(--red);padding:0.5rem;">Error: ' + e.message + '</div>';
+            }}
+        }}
+
+        async function writeCitations() {{
+            const btn = document.getElementById('write-citations-btn');
+            btn.disabled = true;
+            btn.textContent = 'Writing...';
+
+            try {{
+                const resp = await fetch('/api/citations/write', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{ note_key: noteKey }})
+                }});
+
+                if (resp.ok) {{
+                    window.location.reload();
+                }} else {{
+                    const err = await resp.text();
+                    alert('Failed to write citations: ' + err);
+                    btn.disabled = false;
+                    btn.textContent = 'Write to note';
+                }}
+            }} catch (e) {{
+                alert('Error: ' + e.message);
+                btn.disabled = false;
+                btn.textContent = 'Write to note';
+            }}
+        }}
+
+        function closeCitationPanel() {{
+            document.getElementById('citation-panel').classList.remove('active');
+        }}
+
+        // =====================================================================
+        // Mini Knowledge Graph
+        // =====================================================================
+
+        let miniGraphLoaded = false;
+        let miniGraphSim = null;
+
+        function toggleMiniGraph() {{
+            const panel = document.getElementById('mini-graph-panel');
+            const btn = document.getElementById('mini-graph-btn');
+            if (panel.classList.contains('active')) {{
+                closeMiniGraph();
+            }} else {{
+                panel.classList.add('active');
+                btn.classList.add('active');
+                if (!miniGraphLoaded) {{
+                    loadMiniGraph();
+                }}
+            }}
+        }}
+
+        function closeMiniGraph() {{
+            document.getElementById('mini-graph-panel').classList.remove('active');
+            document.getElementById('mini-graph-btn').classList.remove('active');
+            if (miniGraphSim) {{ miniGraphSim.stop(); }}
+        }}
+
+        async function loadMiniGraph() {{
+            const body = document.getElementById('mini-graph-body');
+            body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:0.85rem;"><span class="smart-find-spinner"></span> Loading graph...</div>';
+
+            try {{
+                const resp = await fetch('/api/graph?q=from:' + encodeURIComponent(noteKey) + '+depth:3');
+                if (!resp.ok) {{ body.innerHTML = '<div style="padding:1rem;color:var(--red);">Failed to load graph</div>'; return; }}
+
+                const data = await resp.json();
+                miniGraphLoaded = true;
+                renderMiniGraph(data);
+            }} catch (e) {{
+                body.innerHTML = '<div style="padding:1rem;color:var(--red);">Error: ' + e.message + '</div>';
+            }}
+        }}
+
+        function renderMiniGraph(data) {{
+            const container = document.getElementById('mini-graph-body');
+            container.innerHTML = '';
+
+            const rect = container.getBoundingClientRect();
+            const width = rect.width || 460;
+            const height = rect.height || 360;
+
+            const svg = d3.select(container).append('svg');
+
+            // Tooltip
+            const tip = d3.select(container).append('div')
+                .attr('class', 'mg-tooltip')
+                .style('display', 'none');
+
+            // Simulation
+            const sim = d3.forceSimulation(data.nodes)
+                .force('link', d3.forceLink(data.edges).id(d => d.id).distance(60))
+                .force('charge', d3.forceManyBody().strength(-150))
+                .force('center', d3.forceCenter(width / 2, height / 2))
+                .force('collision', d3.forceCollide().radius(20));
+            miniGraphSim = sim;
+
+            // Links
+            const link = svg.append('g').selectAll('line')
+                .data(data.edges).join('line')
+                .attr('class', d => 'mg-link' + (d.edge_type === 'citation' ? ' citation' : ''))
+                .attr('stroke-width', d => Math.sqrt(d.weight) * 1.2);
+
+            // Nodes
+            const node = svg.append('g').selectAll('g')
+                .data(data.nodes).join('g')
+                .attr('class', d => {{
+                    let cls = 'mg-node ' + d.node_type;
+                    if (d.id === noteKey) cls += ' center';
+                    return cls;
+                }})
+                .call(d3.drag()
+                    .on('start', (e, d) => {{ if (!e.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; }})
+                    .on('drag', (e, d) => {{ d.fx = e.x; d.fy = e.y; }})
+                    .on('end', (e, d) => {{ if (!e.active) sim.alphaTarget(0); d.fx = null; d.fy = null; }}));
+
+            node.append('circle')
+                .attr('r', d => d.id === noteKey ? 10 : 6 + Math.sqrt(d.in_degree + d.out_degree) * 1.5);
+
+            node.append('text')
+                .text(d => d.title.length > 18 ? d.title.substring(0, 18) + '\u2026' : d.title)
+                .attr('dy', d => -(10 + (d.id === noteKey ? 4 : Math.sqrt(d.in_degree + d.out_degree) * 1.5)));
+
+            // Hover
+            node.on('mouseover', function(event, d) {{
+                d3.select(this).select('circle').attr('stroke-width', 3);
+                link.classed('highlighted', l => l.source.id === d.id || l.target.id === d.id);
+                tip.style('display', 'block')
+                    .text(d.title + ' (' + d.node_type + ')')
+                    .style('left', (event.offsetX + 12) + 'px')
+                    .style('top', (event.offsetY - 8) + 'px');
+            }})
+            .on('mouseout', function() {{
+                d3.select(this).select('circle').attr('stroke-width', 1.5);
+                link.classed('highlighted', false);
+                tip.style('display', 'none');
+            }})
+            .on('click', function(event, d) {{
+                if (d.id !== noteKey) {{
+                    window.location.href = '/note/' + d.id;
+                }}
+            }});
+
+            sim.on('tick', () => {{
+                link.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+                    .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+                node.attr('transform', d => {{
+                    d.x = Math.max(15, Math.min(width - 15, d.x));
+                    d.y = Math.max(15, Math.min(height - 15, d.y));
+                    return 'translate(' + d.x + ',' + d.y + ')';
+                }});
+            }});
+
+            // Zoom
+            svg.call(d3.zoom().scaleExtent([0.4, 3]).on('zoom', e => {{
+                svg.selectAll('g').attr('transform', e.transform);
+            }}));
+        }}
+
+        // Draggable mini-graph panel
+        (function() {{
+            const panel = document.getElementById('mini-graph-panel');
+            const header = document.getElementById('mini-graph-header');
+            if (!panel || !header) return;
+            let dragging = false, startX, startY, origLeft, origTop;
+            header.addEventListener('mousedown', function(e) {{
+                if (e.target.tagName === 'A' || e.target.tagName === 'BUTTON') return;
+                dragging = true;
+                const r = panel.getBoundingClientRect();
+                startX = e.clientX; startY = e.clientY;
+                origLeft = r.left; origTop = r.top;
+                document.body.style.userSelect = 'none';
+            }});
+            document.addEventListener('mousemove', function(e) {{
+                if (!dragging) return;
+                panel.style.left = (origLeft + e.clientX - startX) + 'px';
+                panel.style.top = (origTop + e.clientY - startY) + 'px';
+                panel.style.right = 'auto';
+                panel.style.bottom = 'auto';
+            }});
+            document.addEventListener('mouseup', function() {{
+                dragging = false;
+                document.body.style.userSelect = '';
+            }});
+        }})();
 
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', function() {{

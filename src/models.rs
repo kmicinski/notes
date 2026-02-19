@@ -222,6 +222,7 @@ pub struct GraphEdge {
     pub source: String,
     pub target: String,
     pub weight: usize, // Number of times referenced
+    pub edge_type: String, // "crosslink", "parent", "citation"
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -508,4 +509,57 @@ pub struct BibImportCreatedNote {
 pub struct BibImportUpdatedNote {
     pub key: String,
     pub title: String,
+}
+
+// ============================================================================
+// Citation Scanning Data Structures
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExtractedReference {
+    pub raw_text: String,
+    pub index: usize,
+    pub doi: Option<String>,
+    pub arxiv_id: Option<String>,
+    pub title: Option<String>,
+    pub authors: Vec<String>,
+    pub year: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CitationMatch {
+    pub target_key: String,
+    pub match_type: String, // "doi", "arxiv", "title", "author_year"
+    pub confidence: f64,
+    pub raw_text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CitationScanResult {
+    pub source_key: String,
+    pub matches: Vec<CitationMatch>,
+    pub unmatched_count: usize,
+    pub timestamp: String,
+    pub pdf_hash: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CitationScanRequest {
+    pub note_key: String,
+    #[serde(default)]
+    pub force: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CitationWriteRequest {
+    pub note_key: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CitationScanAllResult {
+    pub scanned: usize,
+    pub skipped_cached: usize,
+    pub skipped_no_pdf: usize,
+    pub total_matches: usize,
+    pub errors: Vec<String>,
 }

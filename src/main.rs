@@ -15,7 +15,7 @@ use axum::{extract::DefaultBodyLimit, routing::get, Router};
 use std::sync::Arc;
 use tower_http::services::ServeDir;
 
-use notes::{auth, graph, handlers, smart_add, AppState, NOTES_DIR};
+use notes::{auth, citations, graph, handlers, smart_add, AppState, NOTES_DIR};
 
 // ============================================================================
 // Main
@@ -55,6 +55,10 @@ async fn main() {
         .route("/api/bib-import/analyze", axum::routing::post(smart_add::bib_import_analyze)
             .layer(DefaultBodyLimit::max(10 * 1024 * 1024)))
         .route("/api/bib-import/execute", axum::routing::post(smart_add::bib_import_execute))
+        // Citation routes
+        .route("/api/citations/scan", axum::routing::post(citations::citation_scan))
+        .route("/api/citations/write", axum::routing::post(citations::citation_write))
+        .route("/api/citations/scan-all", axum::routing::post(citations::citation_scan_all))
         // Export routes
         .route("/bibliography.bib", get(handlers::bibliography))
         // PDF routes

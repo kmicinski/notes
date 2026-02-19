@@ -1102,6 +1102,39 @@ pub async fn papers(
 
     let mut html = String::from("<h1>Papers</h1>");
 
+    if logged_in {
+        html.push_str(r#"<div style="margin-bottom:1rem;">
+            <button class="btn" id="scan-all-btn" onclick="scanAllPdfs()">Scan All PDFs for Citations</button>
+            <span id="scan-all-status" style="margin-left:0.75rem;font-size:0.85rem;color:var(--muted);"></span>
+        </div>
+        <script>
+        async function scanAllPdfs() {
+            const btn = document.getElementById('scan-all-btn');
+            const status = document.getElementById('scan-all-status');
+            btn.disabled = true;
+            status.textContent = 'Scanning...';
+            try {
+                const resp = await fetch('/api/citations/scan-all', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                if (resp.ok) {
+                    const data = await resp.json();
+                    status.textContent = 'Done: ' + data.scanned + ' scanned, '
+                        + data.skipped_cached + ' cached, '
+                        + data.total_matches + ' matches'
+                        + (data.errors.length > 0 ? ', ' + data.errors.length + ' errors' : '');
+                } else {
+                    status.textContent = 'Error: ' + await resp.text();
+                }
+            } catch (e) {
+                status.textContent = 'Error: ' + e.message;
+            }
+            btn.disabled = false;
+        }
+        </script>"#);
+    }
+
     if hidden_count > 0 {
         if show_hidden {
             html.push_str(&format!(

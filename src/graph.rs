@@ -23,24 +23,47 @@ use crate::AppState;
 // Graph Building
 // ============================================================================
 
-pub fn build_knowledge_graph(notes: &[Note], query: &GraphQuery) -> KnowledgeGraph {
+pub fn build_knowledge_graph(notes: &[Note], query: &GraphQuery, db: &sled::Db) -> KnowledgeGraph {
     let notes_map: HashMap<String, &Note> = notes.iter().map(|n| (n.key.clone(), n)).collect();
 
-    // Build raw edges with counts
+    // Build raw edges with counts and types
+    // Key: (source, target) -> (count, edge_type)
     let mut edge_counts: HashMap<(String, String), usize> = HashMap::new();
+    let mut edge_types: HashMap<(String, String), String> = HashMap::new();
+
     for note in notes {
         let refs = extract_references(&note.full_file_content);
         for r in refs {
             if notes_map.contains_key(&r) {
-                *edge_counts.entry((note.key.clone(), r)).or_insert(0) += 1;
+                let key = (note.key.clone(), r);
+                *edge_counts.entry(key.clone()).or_insert(0) += 1;
+                edge_types.entry(key).or_insert_with(|| "crosslink".to_string());
             }
         }
         // Also count parent relationships
         if let Some(ref parent) = note.parent_key {
             if notes_map.contains_key(parent) {
-                *edge_counts
-                    .entry((note.key.clone(), parent.clone()))
-                    .or_insert(0) += 1;
+                let key = (note.key.clone(), parent.clone());
+                *edge_counts.entry(key.clone()).or_insert(0) += 1;
+                edge_types.insert(key, "parent".to_string());
+            }
+        }
+    }
+
+    // Load citation edges from sled cache
+    if let Ok(tree) = db.open_tree("citations") {
+        for entry in tree.iter().flatten() {
+            if let Ok(result) = serde_json::from_slice::<crate::models::CitationScanResult>(&entry.1) {
+                for m in &result.matches {
+                    if notes_map.contains_key(&result.source_key) && notes_map.contains_key(&m.target_key) {
+                        let key = (result.source_key.clone(), m.target_key.clone());
+                        // Only add citation edge if no existing edge
+                        if !edge_counts.contains_key(&key) {
+                            edge_counts.insert(key.clone(), 1);
+                            edge_types.insert(key, "citation".to_string());
+                        }
+                    }
+                }
             }
         }
     }
@@ -155,10 +178,15 @@ pub fn build_knowledge_graph(notes: &[Note], query: &GraphQuery) -> KnowledgeGra
 
     for ((src, tgt), weight) in &edge_counts {
         if included.contains(src) && included.contains(tgt) {
+            let etype = edge_types
+                .get(&(src.clone(), tgt.clone()))
+                .cloned()
+                .unwrap_or_else(|| "crosslink".to_string());
             graph_edges.push(GraphEdge {
                 source: src.clone(),
                 target: tgt.clone(),
                 weight: *weight,
+                edge_type: etype,
             });
         }
     }
@@ -306,7 +334,7 @@ pub async fn graph_page(
     let query_str = params.q.as_deref().unwrap_or("");
     let query = GraphQuery::parse(query_str);
     let notes = state.load_notes();
-    let graph = build_knowledge_graph(&notes, &query);
+    let graph = build_knowledge_graph(&notes, &query, &state.db);
 
     let graph_styles = r#"
         .graph-container {
@@ -397,6 +425,7 @@ pub async fn graph_page(
         svg { width: 100%; height: 100%; }
 
         .link { stroke: var(--border); stroke-opacity: 0.6; }
+        .link.citation { stroke-dasharray: 5,3; stroke: #b58900; stroke-opacity: 0.5; }
         .link.highlighted { stroke: var(--link); stroke-opacity: 1; stroke-width: 2px; }
 
         .node circle { cursor: pointer; stroke: var(--bg); stroke-width: 1.5px; }
@@ -463,6 +492,7 @@ pub async fn graph_page(
             <div class="legend">
                 <div class="legend-item"><div class="legend-dot note"></div>Note</div>
                 <div class="legend-item"><div class="legend-dot paper"></div>Paper</div>
+                <div class="legend-item"><svg width="20" height="10"><line x1="0" y1="5" x2="20" y2="5" stroke="#b58900" stroke-dasharray="3,2" stroke-width="1.5"/></svg>Citation</div>
             </div>
         </div>
 
@@ -511,7 +541,7 @@ pub async fn graph_page(
                 .selectAll('line')
                 .data(graphData.edges)
                 .join('line')
-                .attr('class', 'link')
+                .attr('class', d => 'link' + (d.edge_type === 'citation' ? ' citation' : ''))
                 .attr('stroke-width', d => Math.sqrt(d.weight) * 1.5);
 
             // Create node groups
@@ -652,7 +682,7 @@ pub async fn graph_api(
     let query_str = params.q.as_deref().unwrap_or("");
     let query = GraphQuery::parse(query_str);
     let notes = state.load_notes();
-    let graph = build_knowledge_graph(&notes, &query);
+    let graph = build_knowledge_graph(&notes, &query, &state.db);
 
     (
         [("content-type", "application/json")],

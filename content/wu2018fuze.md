@@ -11,6 +11,7 @@ bibtex: |
     pages     = {781--797},
     year      = {2018}
   }
+pdf: wu2018fuze.pdf
 ---
 
 ## Summary
@@ -18,4 +19,3 @@ bibtex: |
 ## Key Contributions
 
 ## Notes
-

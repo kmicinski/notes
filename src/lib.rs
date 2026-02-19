@@ -12,6 +12,7 @@ use std::sync::{Arc, Mutex};
 use chrono::{DateTime, Utc};
 
 pub mod auth;
+pub mod citations;
 pub mod graph;
 pub mod handlers;
 pub mod models;
@@ -160,9 +161,11 @@ pub fn validate_path_within(base: &PathBuf, target: &PathBuf) -> Result<PathBuf,
 
 // Re-export commonly used types
 pub use models::{
-    AttachSourceRequest, ExternalResult, GitCommit, GraphEdge, GraphNode, GraphQuery, GraphStats,
-    InputType, KnowledgeGraph, LocalMatch, Note, NoteType, PaperMeta, PaperSource, SearchMatch,
-    SearchResult, SmartAddCreateRequest, SmartAddRequest, SmartAddResult, TimeCategory, TimeEntry,
+    AttachSourceRequest, CitationMatch, CitationScanAllResult, CitationScanRequest,
+    CitationScanResult, CitationWriteRequest, ExternalResult, ExtractedReference, GitCommit,
+    GraphEdge, GraphNode, GraphQuery, GraphStats, InputType, KnowledgeGraph, LocalMatch, Note,
+    NoteType, PaperMeta, PaperSource, SearchMatch, SearchResult, SmartAddCreateRequest,
+    SmartAddRequest, SmartAddResult, TimeCategory, TimeEntry,
 };
 
 pub use notes::{
