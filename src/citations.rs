@@ -32,14 +32,15 @@ const END_MARKER: &str = "<!-- END AUTO-CITATIONS -->";
 // PDF Text Extraction
 // ============================================================================
 
-/// Run `pdftotext <path> -` and return stdout as a String.
-/// Note: we intentionally omit `-layout` because it preserves column positioning
-/// which merges left/right columns on the same line, mangling reference sections
-/// in multi-column papers.
-fn extract_pdf_text(path: &Path) -> Result<String, String> {
-    let output = Command::new("pdftotext")
-        .arg(path.as_os_str())
-        .arg("-")
+/// Run `pdftotext` in a given mode and return stdout as a String.
+fn run_pdftotext(path: &Path, layout: bool) -> Result<String, String> {
+    let mut cmd = Command::new("pdftotext");
+    if layout {
+        cmd.arg("-layout");
+    }
+    cmd.arg(path.as_os_str()).arg("-");
+
+    let output = cmd
         .output()
         .map_err(|e| format!("Failed to run pdftotext: {}. Is poppler installed?", e))?;
 
@@ -50,6 +51,25 @@ fn extract_pdf_text(path: &Path) -> Result<String, String> {
 
     String::from_utf8(output.stdout)
         .map_err(|e| format!("pdftotext output not valid UTF-8: {}", e))
+}
+
+/// Extract PDF text, trying both with and without `-layout` flag.
+/// Returns whichever mode yields more reference entries, since different
+/// paper layouts work better with different modes:
+/// - Without `-layout`: better for heading detection in multi-column papers
+/// - With `-layout`: better for preserving numbered reference formatting
+fn extract_pdf_text_best(path: &Path) -> Result<(String, Vec<String>), String> {
+    let text_plain = run_pdftotext(path, false)?;
+    let refs_plain = extract_references_from_text(&text_plain);
+
+    let text_layout = run_pdftotext(path, true)?;
+    let refs_layout = extract_references_from_text(&text_layout);
+
+    if refs_layout.len() > refs_plain.len() {
+        Ok((text_layout, refs_layout))
+    } else {
+        Ok((text_plain, refs_plain))
+    }
 }
 
 // ============================================================================
@@ -101,22 +121,151 @@ fn extract_references_from_text(text: &str) -> Vec<String> {
     };
 
     let ref_lines = &lines[ref_start..];
-    let ref_text: String = ref_lines.join("\n");
 
-    // Try numbered references: [1], [2], ... or 1. 2. ...
+    // --- Pre-processing: strip page headers/footers/noise ---
+    // Many PDFs inject running headers, page numbers, and conference/journal
+    // names between references. We detect and remove these lines.
+    let cleaned_lines = strip_page_noise(ref_lines);
+    let ref_text: String = cleaned_lines.join("\n");
+
+    // Try numbered references in order of specificity:
+    // 1. Bracketed: [1], [2], ...
     let numbered_bracket = Regex::new(r"(?m)^\s*\[(\d+)\]").unwrap();
-    let numbered_dot = Regex::new(r"(?m)^\s*(\d+)\.\s+[A-Z]").unwrap();
-
     if numbered_bracket.find_count(&ref_text) >= 3 {
         return split_by_pattern(&ref_text, &numbered_bracket);
     }
 
+    // 2. Dot-numbered: "1. AuthorName..." or "1. A. Author..."
+    let numbered_dot = Regex::new(r"(?m)^\s*(\d+)\.\s+[A-Z]").unwrap();
     if numbered_dot.find_count(&ref_text) >= 3 {
         return split_by_pattern(&ref_text, &numbered_dot);
     }
 
-    // Fallback: split by blank-line separated blocks
+    // 3. Bare number followed by spaces then author name on same line (layout mode):
+    //    "  1    Serge Abiteboul..." or "10   Martin Bravenboer..."
+    let numbered_space = Regex::new(r"(?m)^\s*(\d+)\s{2,}[A-Z]").unwrap();
+    if numbered_space.find_count(&ref_text) >= 3 {
+        return split_by_pattern(&ref_text, &numbered_space);
+    }
+
+    // 4. Bare numbers on their own line: common in some styles
+    let bare_number = Regex::new(r"(?m)^\s*(\d+)\s*$").unwrap();
+    let bare_count = bare_number.find_count(&ref_text);
+    if bare_count >= 3 {
+        let merged = merge_bare_numbers(&ref_text, &bare_number);
+        let split_pat = Regex::new(r"(?m)^REFENTRY_\d+\s").unwrap();
+        if split_pat.find_count(&merged) >= 3 {
+            return split_by_pattern(&merged, &split_pat)
+                .into_iter()
+                .map(|s| {
+                    Regex::new(r"^REFENTRY_\d+\s*")
+                        .unwrap()
+                        .replace(&s, "")
+                        .to_string()
+                        .trim()
+                        .to_string()
+                })
+                .filter(|s| s.len() > 20)
+                .collect();
+        }
+    }
+
+    // 5. Fallback: split by blank-line separated blocks
     split_by_blank_lines(&ref_text)
+}
+
+/// Strip page headers, footers, page numbers, and running titles from reference lines.
+/// These are common noise in multi-page reference sections.
+fn strip_page_noise(lines: &[&str]) -> Vec<String> {
+    // Detect repeated short lines (headers/footers appear on multiple pages)
+    let mut short_line_counts: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
+    for line in lines {
+        let trimmed = line.trim();
+        // Short lines that look like noise: page numbers, headers
+        if !trimmed.is_empty() && trimmed.len() < 60 {
+            let normalized = trimmed.to_lowercase();
+            *short_line_counts.entry(normalized).or_insert(0) += 1;
+        }
+    }
+
+    // Lines that appear 2+ times and are short are likely headers/footers
+    let repeated_noise: std::collections::HashSet<String> = short_line_counts
+        .into_iter()
+        .filter(|(_, count)| *count >= 2)
+        .map(|(line, _)| line)
+        .collect();
+
+    // Also detect standalone page numbers and very short noise lines
+    let page_num_re = Regex::new(r"^\s*\d{1,4}\s*$").unwrap();
+    // Detect "Author and Author" or "FirstName LastName" running headers
+    let _short_name_header_re =
+        Regex::new(r"^\s*[A-Z][a-z]+(\s+(and\s+)?[A-Z]\.?\s*)+[A-Za-z]+\s*$").unwrap();
+    // Detect page:column markers like "7:27", "7:28"
+    let page_col_re = Regex::new(r"^\s*\d+:\d+\s*$").unwrap();
+
+    lines
+        .iter()
+        .filter(|line| {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                return true; // Keep blank lines for structure
+            }
+            // Filter out repeated noise
+            if repeated_noise.contains(&trimmed.to_lowercase()) && trimmed.len() < 60 {
+                // But don't filter if it looks like a real reference number
+                if page_num_re.is_match(trimmed) {
+                    // Bare numbers might be reference numbers — keep if ≤ 200
+                    let num: usize = trimmed.trim().parse().unwrap_or(999);
+                    return num <= 200;
+                }
+                return false;
+            }
+            // Filter standalone page:column markers
+            if page_col_re.is_match(trimmed) {
+                return false;
+            }
+            true
+        })
+        .map(|s| s.to_string())
+        .collect()
+}
+
+/// Merge bare reference numbers (alone on a line) with the text that follows,
+/// producing lines like "REFENTRY_1 Author Name, ..."
+fn merge_bare_numbers(text: &str, bare_pattern: &Regex) -> String {
+    let lines: Vec<&str> = text.lines().collect();
+    let mut result = Vec::new();
+    let mut i = 0;
+    while i < lines.len() {
+        let trimmed = lines[i].trim();
+        if let Some(caps) = bare_pattern.captures(trimmed) {
+            let num = &caps[1];
+            // Skip blank lines after the number to find the actual reference text
+            let mut j = i + 1;
+            while j < lines.len() && lines[j].trim().is_empty() {
+                j += 1;
+            }
+            // Collect text until next bare number or end
+            let mut entry_lines = vec![format!("REFENTRY_{} ", num)];
+            while j < lines.len() {
+                let next_trimmed = lines[j].trim();
+                if bare_pattern.is_match(next_trimmed) {
+                    break;
+                }
+                if !next_trimmed.is_empty() {
+                    entry_lines.push(next_trimmed.to_string());
+                }
+                j += 1;
+            }
+            result.push(entry_lines.join(" "));
+            i = j;
+        } else {
+            // Non-number line outside a reference — skip (likely noise before first ref)
+            i += 1;
+        }
+    }
+    result.join("\n")
 }
 
 /// Split reference text at each match of `pattern`, collecting everything between
@@ -489,11 +638,8 @@ fn scan_note_pdf(
         }
     }
 
-    // Extract text
-    let text = extract_pdf_text(&pdf_path)?;
-
-    // Parse references
-    let raw_refs = extract_references_from_text(&text);
+    // Extract text — tries both with and without -layout, picks whichever yields more refs
+    let (_text, raw_refs) = extract_pdf_text_best(&pdf_path)?;
     let parsed_refs: Vec<ExtractedReference> = raw_refs
         .iter()
         .enumerate()
