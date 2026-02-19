@@ -709,19 +709,19 @@ pub fn render_viewer(
             overflow: hidden;
         }}
         .mini-graph-body svg {{ width: 100%; height: 100%; }}
-        .mini-graph-body .mg-link {{ stroke: var(--border); stroke-opacity: 0.5; }}
-        .mini-graph-body .mg-link.citation {{ stroke-dasharray: 4,2; stroke: #b58900; }}
-        .mini-graph-body .mg-link.highlighted {{ stroke: var(--link); stroke-opacity: 1; stroke-width: 2.5px; }}
+        .mini-graph-body .mg-link {{ stroke: var(--border); stroke-opacity: 0.35; }}
+        .mini-graph-body .mg-link.citation {{ stroke-dasharray: 4,2; stroke: #b58900; stroke-opacity: 0.4; }}
+        .mini-graph-body .mg-link.highlighted {{ stroke: var(--fg); stroke-opacity: 0.8; stroke-width: 2px; }}
         .mini-graph-body .mg-node circle {{ cursor: pointer; stroke: var(--bg); stroke-width: 1.5px; }}
-        .mini-graph-body .mg-node.note circle {{ fill: var(--link); }}
-        .mini-graph-body .mg-node.paper circle {{ fill: #f4a460; }}
-        .mini-graph-body .mg-node.center circle {{ stroke: var(--fg); stroke-width: 3px; }}
-        .mini-graph-body .mg-node text {{
-            font-size: 9px;
+        .mini-graph-body .mg-node .mg-label {{
+            font-size: 8px;
             fill: var(--fg);
             pointer-events: none;
             text-anchor: middle;
+            opacity: 0.7;
         }}
+        .mini-graph-body .mg-node.center .mg-label {{ opacity: 1; font-size: 10px; font-weight: 600; }}
+        .mini-graph-body .mg-node:hover .mg-label {{ opacity: 1; font-size: 10px; }}
         .mg-tooltip {{
             position: absolute;
             background: var(--bg);
@@ -732,10 +732,30 @@ pub fn render_viewer(
             pointer-events: none;
             z-index: 1001;
             box-shadow: 0 2px 6px rgba(0,0,0,0.15);
-            max-width: 220px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            max-width: 250px;
+        }}
+        .mg-tooltip .mgt-title {{ font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+        .mg-tooltip .mgt-meta {{ font-size: 0.75rem; color: var(--muted); margin-top: 0.15rem; }}
+        .mg-legend {{
+            position: absolute;
+            bottom: 6px;
+            left: 6px;
+            font-size: 0.7rem;
+            color: var(--muted);
+            display: flex;
+            gap: 0.6rem;
+            align-items: center;
+        }}
+        .mg-legend-item {{
+            display: flex;
+            align-items: center;
+            gap: 0.2rem;
+        }}
+        .mg-legend-dot {{
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
         }}
 
         /* Citation scan results panel */
@@ -1792,58 +1812,124 @@ pub fn render_viewer(
             const width = rect.width || 460;
             const height = rect.height || 360;
 
+            // --- BFS to compute distance from center node ---
+            const adj = {{}};
+            data.nodes.forEach(n => {{ adj[n.id] = []; }});
+            data.edges.forEach(e => {{
+                const sid = typeof e.source === 'object' ? e.source.id : e.source;
+                const tid = typeof e.target === 'object' ? e.target.id : e.target;
+                if (adj[sid]) adj[sid].push(tid);
+                if (adj[tid]) adj[tid].push(sid);
+            }});
+            const dist = {{}};
+            dist[noteKey] = 0;
+            const queue = [noteKey];
+            let qi = 0;
+            while (qi < queue.length) {{
+                const cur = queue[qi++];
+                (adj[cur] || []).forEach(nb => {{
+                    if (dist[nb] === undefined) {{
+                        dist[nb] = dist[cur] + 1;
+                        queue.push(nb);
+                    }}
+                }});
+            }}
+            data.nodes.forEach(n => {{
+                n._dist = dist[n.id] !== undefined ? dist[n.id] : 99;
+            }});
+
+            // --- Color palette by distance ---
+            // 0=center, 1=1st degree, 2=2nd, 3+=3rd
+            const distColors = ['#dc322f', '#cb4b16', '#268bd2', '#93a1a1'];
+            function nodeColor(d) {{
+                return distColors[Math.min(d._dist, distColors.length - 1)];
+            }}
+            function nodeRadius(d) {{
+                if (d._dist === 0) return 14;
+                if (d._dist === 1) return 9;
+                if (d._dist === 2) return 7;
+                return 5;
+            }}
+            function nodeOpacity(d) {{
+                if (d._dist === 0) return 1;
+                if (d._dist === 1) return 0.95;
+                if (d._dist === 2) return 0.75;
+                return 0.5;
+            }}
+
             const svg = d3.select(container).append('svg');
+            const g = svg.append('g'); // Single transform group for zoom
 
             // Tooltip
             const tip = d3.select(container).append('div')
                 .attr('class', 'mg-tooltip')
                 .style('display', 'none');
 
-            // Simulation
+            // Pin center node
+            const centerNode = data.nodes.find(n => n.id === noteKey);
+            if (centerNode) {{
+                centerNode.fx = width / 2;
+                centerNode.fy = height / 2;
+            }}
+
+            // Simulation — spread by distance
             const sim = d3.forceSimulation(data.nodes)
-                .force('link', d3.forceLink(data.edges).id(d => d.id).distance(60))
-                .force('charge', d3.forceManyBody().strength(-150))
+                .force('link', d3.forceLink(data.edges).id(d => d.id).distance(d => {{
+                    const s = d.source._dist !== undefined ? d.source._dist : 1;
+                    const t = d.target._dist !== undefined ? d.target._dist : 1;
+                    return 40 + Math.max(s, t) * 25;
+                }}))
+                .force('charge', d3.forceManyBody().strength(d => d._dist === 0 ? -300 : -100))
                 .force('center', d3.forceCenter(width / 2, height / 2))
-                .force('collision', d3.forceCollide().radius(20));
+                .force('collision', d3.forceCollide().radius(d => nodeRadius(d) + 4));
             miniGraphSim = sim;
 
             // Links
-            const link = svg.append('g').selectAll('line')
+            const link = g.append('g').selectAll('line')
                 .data(data.edges).join('line')
                 .attr('class', d => 'mg-link' + (d.edge_type === 'citation' ? ' citation' : ''))
-                .attr('stroke-width', d => Math.sqrt(d.weight) * 1.2);
+                .attr('stroke-width', 1);
 
-            // Nodes
-            const node = svg.append('g').selectAll('g')
-                .data(data.nodes).join('g')
-                .attr('class', d => {{
-                    let cls = 'mg-node ' + d.node_type;
-                    if (d.id === noteKey) cls += ' center';
-                    return cls;
-                }})
+            // Nodes — sorted so center renders on top
+            const sortedNodes = [...data.nodes].sort((a, b) => b._dist - a._dist);
+            const node = g.append('g').selectAll('g')
+                .data(sortedNodes, d => d.id).join('g')
+                .attr('class', d => 'mg-node' + (d._dist === 0 ? ' center' : ''))
+                .style('opacity', d => nodeOpacity(d))
                 .call(d3.drag()
                     .on('start', (e, d) => {{ if (!e.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; }})
                     .on('drag', (e, d) => {{ d.fx = e.x; d.fy = e.y; }})
-                    .on('end', (e, d) => {{ if (!e.active) sim.alphaTarget(0); d.fx = null; d.fy = null; }}));
+                    .on('end', (e, d) => {{
+                        if (!e.active) sim.alphaTarget(0);
+                        // Keep center pinned
+                        if (d.id !== noteKey) {{ d.fx = null; d.fy = null; }}
+                    }}));
 
             node.append('circle')
-                .attr('r', d => d.id === noteKey ? 10 : 6 + Math.sqrt(d.in_degree + d.out_degree) * 1.5);
+                .attr('r', d => nodeRadius(d))
+                .attr('fill', d => nodeColor(d));
 
+            // Labels — always visible, truncated by distance
             node.append('text')
-                .text(d => d.title.length > 18 ? d.title.substring(0, 18) + '\u2026' : d.title)
-                .attr('dy', d => -(10 + (d.id === noteKey ? 4 : Math.sqrt(d.in_degree + d.out_degree) * 1.5)));
+                .attr('class', 'mg-label')
+                .text(d => {{
+                    const maxLen = d._dist === 0 ? 30 : d._dist === 1 ? 18 : 12;
+                    return d.title.length > maxLen ? d.title.substring(0, maxLen) + '\u2026' : d.title;
+                }})
+                .attr('dy', d => -(nodeRadius(d) + 3));
 
             // Hover
             node.on('mouseover', function(event, d) {{
-                d3.select(this).select('circle').attr('stroke-width', 3);
+                d3.select(this).raise().select('circle').attr('stroke', 'var(--fg)').attr('stroke-width', 2.5);
                 link.classed('highlighted', l => l.source.id === d.id || l.target.id === d.id);
+                const distLabel = d._dist === 0 ? 'center' : d._dist + (d._dist === 1 ? 'st' : d._dist === 2 ? 'nd' : d._dist === 3 ? 'rd' : 'th') + ' degree';
                 tip.style('display', 'block')
-                    .text(d.title + ' (' + d.node_type + ')')
-                    .style('left', (event.offsetX + 12) + 'px')
-                    .style('top', (event.offsetY - 8) + 'px');
+                    .html('<div class="mgt-title">' + d.title + '</div><div class="mgt-meta">' + d.node_type + ' \u00b7 ' + distLabel + '</div>')
+                    .style('left', (event.offsetX + 14) + 'px')
+                    .style('top', (event.offsetY - 10) + 'px');
             }})
-            .on('mouseout', function() {{
-                d3.select(this).select('circle').attr('stroke-width', 1.5);
+            .on('mouseout', function(event, d) {{
+                d3.select(this).select('circle').attr('stroke', 'var(--bg)').attr('stroke-width', 1.5);
                 link.classed('highlighted', false);
                 tip.style('display', 'none');
             }})
@@ -1863,10 +1949,18 @@ pub fn render_viewer(
                 }});
             }});
 
-            // Zoom
-            svg.call(d3.zoom().scaleExtent([0.4, 3]).on('zoom', e => {{
-                svg.selectAll('g').attr('transform', e.transform);
+            // Zoom — apply to single group
+            svg.call(d3.zoom().scaleExtent([0.3, 4]).on('zoom', e => {{
+                g.attr('transform', e.transform);
             }}));
+
+            // Legend
+            const legend = d3.select(container).append('div').attr('class', 'mg-legend');
+            [['Center', distColors[0]], ['1st', distColors[1]], ['2nd', distColors[2]], ['3rd+', distColors[3]]].forEach(([label, color]) => {{
+                const item = legend.append('span').attr('class', 'mg-legend-item');
+                item.append('span').attr('class', 'mg-legend-dot').style('background', color);
+                item.append('span').text(label);
+            }});
         }}
 
         // Draggable mini-graph panel
