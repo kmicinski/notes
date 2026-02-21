@@ -4,15 +4,16 @@
 //! and references, as well as the web-based D3.js visualization.
 
 use crate::auth::is_logged_in;
-use crate::models::{GraphEdge, GraphNode, GraphQuery, GraphStats, KnowledgeGraph, Note, NoteType};
-use crate::notes::{extract_references, html_escape};
+use crate::graph_index;
+use crate::models::{GraphEdge, GraphNode, GraphQuery, GraphStats, KnowledgeGraph};
+use crate::notes::html_escape;
 use crate::templates::base_html;
 use axum::{
     extract::{Query, State},
     response::{Html, IntoResponse, Response},
 };
 use axum_extra::extract::CookieJar;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
@@ -23,49 +24,18 @@ use crate::AppState;
 // Graph Building
 // ============================================================================
 
-pub fn build_knowledge_graph(notes: &[Note], query: &GraphQuery, db: &sled::Db) -> KnowledgeGraph {
-    let notes_map: HashMap<String, &Note> = notes.iter().map(|n| (n.key.clone(), n)).collect();
+pub fn build_knowledge_graph(query: &GraphQuery, db: &sled::Db) -> KnowledgeGraph {
+    let indexed_nodes = graph_index::load_all_nodes(db).unwrap_or_default();
+    let indexed_edges = graph_index::load_all_edges(db).unwrap_or_default();
 
-    // Build raw edges with counts and types
-    // Key: (source, target) -> (count, edge_type)
+    // Build raw edge maps
     let mut edge_counts: HashMap<(String, String), usize> = HashMap::new();
     let mut edge_types: HashMap<(String, String), String> = HashMap::new();
 
-    for note in notes {
-        let refs = extract_references(&note.full_file_content);
-        for r in refs {
-            if notes_map.contains_key(&r) {
-                let key = (note.key.clone(), r);
-                *edge_counts.entry(key.clone()).or_insert(0) += 1;
-                edge_types.entry(key).or_insert_with(|| "crosslink".to_string());
-            }
-        }
-        // Also count parent relationships
-        if let Some(ref parent) = note.parent_key {
-            if notes_map.contains_key(parent) {
-                let key = (note.key.clone(), parent.clone());
-                *edge_counts.entry(key.clone()).or_insert(0) += 1;
-                edge_types.insert(key, "parent".to_string());
-            }
-        }
-    }
-
-    // Load citation edges from sled cache
-    if let Ok(tree) = db.open_tree("citations") {
-        for entry in tree.iter().flatten() {
-            if let Ok(result) = serde_json::from_slice::<crate::models::CitationScanResult>(&entry.1) {
-                for m in &result.matches {
-                    if notes_map.contains_key(&result.source_key) && notes_map.contains_key(&m.target_key) {
-                        let key = (result.source_key.clone(), m.target_key.clone());
-                        // Only add citation edge if no existing edge
-                        if !edge_counts.contains_key(&key) {
-                            edge_counts.insert(key.clone(), 1);
-                            edge_types.insert(key, "citation".to_string());
-                        }
-                    }
-                }
-            }
-        }
+    for e in &indexed_edges {
+        let key = (e.source.clone(), e.target.clone());
+        *edge_counts.entry(key.clone()).or_insert(0) += e.weight as usize;
+        edge_types.entry(key).or_insert_with(|| e.edge_type.clone());
     }
 
     // Calculate degrees
@@ -88,37 +58,30 @@ pub fn build_knowledge_graph(notes: &[Note], query: &GraphQuery, db: &sled::Db) 
     let reachable: HashSet<String> = if let Some(ref center) = query.center {
         find_reachable(&edge_counts, center, query.depth)
     } else {
-        notes.iter().map(|n| n.key.clone()).collect()
+        indexed_nodes.keys().cloned().collect()
     };
 
     // Build nodes with filtering
     let now = Utc::now();
     let mut graph_nodes = Vec::new();
 
-    for note in notes {
-        // Apply filters
-        if !reachable.contains(&note.key) && !path_nodes.contains(&note.key) {
+    for (key, node) in &indexed_nodes {
+        if !reachable.contains(key) && !path_nodes.contains(key) {
             continue;
         }
 
-        let node_type = match note.note_type {
-            NoteType::Paper(_) => "paper",
-            NoteType::Note => "note",
-        };
-
         if let Some(ref tf) = query.type_filter {
-            if node_type != tf {
+            if node.node_type != *tf {
                 continue;
             }
         }
 
-        let time_total: u32 = note.time_entries.iter().map(|e| e.minutes).sum();
-        if query.has_time && time_total == 0 {
+        if query.has_time && node.time_total == 0 {
             continue;
         }
 
-        let indeg = *in_degree.get(&note.key).unwrap_or(&0);
-        let outdeg = *out_degree.get(&note.key).unwrap_or(&0);
+        let indeg = *in_degree.get(key).unwrap_or(&0);
+        let outdeg = *out_degree.get(key).unwrap_or(&0);
         let total_deg = indeg + outdeg;
 
         if let Some(min) = query.min_links {
@@ -138,69 +101,32 @@ pub fn build_knowledge_graph(notes: &[Note], query: &GraphQuery, db: &sled::Db) 
             continue;
         }
 
-        // Category filter
-        let primary_cat = note
-            .time_entries
-            .iter()
-            .max_by_key(|e| e.minutes)
-            .map(|e| e.category.to_string());
-
         if let Some(ref cat_filter) = query.category_filter {
-            if primary_cat.as_deref() != Some(cat_filter) {
+            if node.primary_category.as_deref() != Some(cat_filter) {
                 continue;
             }
         }
 
-        // Recent filter
         if let Some(days) = query.recent_days {
             let cutoff = now - chrono::Duration::days(days);
-            if note.modified < cutoff {
-                continue;
+            if let Ok(modified) = DateTime::parse_from_rfc3339(&node.modified) {
+                if modified < cutoff {
+                    continue;
+                }
             }
         }
 
-        // Build short label: "LastName et al." for papers, truncated title for notes
-        let short_label = if let NoteType::Paper(ref meta) = note.note_type {
-            let eff = meta.effective_metadata(&note.title);
-            if let Some(ref authors) = eff.authors {
-                // Extract first author last name
-                let first_author = authors.split(" and ")
-                    .next()
-                    .unwrap_or(authors)
-                    .split(',')
-                    .next()
-                    .unwrap_or(authors)
-                    .trim();
-                // Extract just the last name (last capitalized word)
-                let last_name = first_author.split_whitespace()
-                    .filter(|w| w.chars().next().map(|c| c.is_uppercase()).unwrap_or(false))
-                    .last()
-                    .unwrap_or(first_author);
-                if authors.contains(" and ") {
-                    format!("{} et al.", last_name)
-                } else {
-                    last_name.to_string()
-                }
-            } else {
-                let t = &note.title;
-                if t.len() > 16 { format!("{}…", &t[..16]) } else { t.clone() }
-            }
-        } else {
-            let t = &note.title;
-            if t.len() > 16 { format!("{}…", &t[..16]) } else { t.clone() }
-        };
-
         graph_nodes.push(GraphNode {
-            id: note.key.clone(),
-            title: note.title.clone(),
-            node_type: node_type.to_string(),
-            short_label,
-            date: note.date.map(|d| d.to_string()),
-            time_total,
-            primary_category: primary_cat,
+            id: key.clone(),
+            title: node.title.clone(),
+            node_type: node.node_type.clone(),
+            short_label: node.short_label.clone(),
+            date: node.date.clone(),
+            time_total: node.time_total,
+            primary_category: node.primary_category.clone(),
             in_degree: indeg,
             out_degree: outdeg,
-            parent: note.parent_key.clone(),
+            parent: node.parent_key.clone(),
         });
     }
 
@@ -365,8 +291,7 @@ pub async fn graph_page(
     let logged_in = is_logged_in(&jar, &state.db);
     let query_str = params.q.as_deref().unwrap_or("");
     let query = GraphQuery::parse(query_str);
-    let notes = state.load_notes();
-    let graph = build_knowledge_graph(&notes, &query, &state.db);
+    let graph = build_knowledge_graph(&query, &state.db);
 
     let graph_styles = r#"
         .graph-container {
@@ -713,8 +638,7 @@ pub async fn graph_api(
 ) -> Response {
     let query_str = params.q.as_deref().unwrap_or("");
     let query = GraphQuery::parse(query_str);
-    let notes = state.load_notes();
-    let graph = build_knowledge_graph(&notes, &query, &state.db);
+    let graph = build_knowledge_graph(&query, &state.db);
 
     (
         [("content-type", "application/json")],

@@ -770,7 +770,11 @@ pub async fn citation_scan(
     .await;
 
     match result {
-        Ok(Ok(scan_result)) => axum::Json(scan_result).into_response(),
+        Ok(Ok(scan_result)) => {
+            // Sync citation edges into the graph index
+            let _ = crate::graph_index::sync_citations(&state.db, &req.note_key);
+            axum::Json(scan_result).into_response()
+        }
         Ok(Err(e)) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
         Err(e) => (
             axum::http::StatusCode::INTERNAL_SERVER_ERROR,
@@ -820,6 +824,8 @@ pub async fn citation_write(
 
     match write_citations_to_markdown(&note, &cached, &notes_map, &state.notes_dir) {
         Ok(()) => {
+            state.invalidate_notes_cache();
+            state.reindex_graph_note(&req.note_key);
             let msg = format!("Wrote {} citation(s) to {}", cached.matches.len(), req.note_key);
             (axum::http::StatusCode::OK, msg).into_response()
         }
@@ -887,7 +893,11 @@ pub async fn citation_scan_all(
     .await;
 
     match result {
-        Ok(scan_all_result) => axum::Json(scan_all_result).into_response(),
+        Ok(scan_all_result) => {
+            // Sync all citation edges into the graph index
+            let _ = crate::graph_index::sync_all_citations(&state.db);
+            axum::Json(scan_all_result).into_response()
+        }
         Err(e) => (
             axum::http::StatusCode::INTERNAL_SERVER_ERROR,
             format!("Task join error: {}", e),

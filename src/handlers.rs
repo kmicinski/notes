@@ -507,6 +507,9 @@ pub async fn save_note(
             .into_response();
     }
 
+    state.invalidate_notes_cache();
+    state.reindex_graph_note(&key);
+
     // Make git commit if auto_commit is true
     if body.auto_commit {
         let notes_dir = state.notes_dir.clone();
@@ -577,6 +580,9 @@ pub async fn delete_note(
         )
             .into_response();
     }
+
+    state.invalidate_notes_cache();
+    state.remove_graph_note(&key);
 
     // Git commit the deletion
     let notes_dir = state.notes_dir.clone();
@@ -1006,9 +1012,13 @@ pub async fn create_note(
         return Html(base_html("Error", &html, None, true)).into_response();
     }
 
+    state.invalidate_notes_cache();
+
     // Get the key of the new note
     let relative_path = PathBuf::from(filename);
     let key = generate_key(&relative_path);
+
+    state.reindex_graph_note(&key);
 
     // Redirect to edit the new note
     Redirect::to(&format!("/note/{}?edit=true", key)).into_response()
@@ -1101,6 +1111,9 @@ pub async fn toggle_hidden(
             .into_response();
     }
 
+    state.invalidate_notes_cache();
+    state.reindex_graph_note(&key);
+
     axum::Json(serde_json::json!({ "hidden": new_hidden })).into_response()
 }
 
@@ -1127,8 +1140,9 @@ pub async fn papers(
     let mut html = String::from("<h1>Papers</h1>");
 
     if logged_in {
-        html.push_str(r#"<div style="margin-bottom:1rem;">
+        html.push_str(r#"<div style="margin-bottom:1rem;display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
             <button class="btn" id="scan-all-btn" onclick="scanAllPdfs()">Scan All PDFs for Citations</button>
+            <a href="/papers/find-pdfs" class="btn" style="text-decoration:none;">Find Missing PDFs</a>
             <span id="scan-all-status" style="margin-left:0.75rem;font-size:0.85rem;color:var(--muted);"></span>
         </div>
         <script>
@@ -1396,6 +1410,8 @@ pub async fn upload_pdf(
         return (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to update note: {}", e)).into_response();
     }
 
+    state.invalidate_notes_cache();
+
     axum::Json(serde_json::json!({
         "success": true,
         "filename": safe_filename
@@ -1488,6 +1504,8 @@ pub async fn download_pdf_from_url(
         return (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to update note: {}", e)).into_response();
     }
 
+    state.invalidate_notes_cache();
+
     axum::Json(serde_json::json!({
         "success": true,
         "filename": safe_filename
@@ -1546,6 +1564,8 @@ pub async fn rename_pdf(
     if let Err(e) = update_note_pdf_frontmatter(&state.notes_dir, &note.path, &new_filename) {
         return (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to update note: {}", e)).into_response();
     }
+
+    state.invalidate_notes_cache();
 
     axum::Json(serde_json::json!({
         "success": true,
@@ -1869,6 +1889,8 @@ pub async fn unlink_pdf(
         return (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to update note: {}", e)).into_response();
     }
 
+    state.invalidate_notes_cache();
+
     axum::Json(serde_json::json!({
         "success": true
     })).into_response()
@@ -1952,4 +1974,360 @@ fn update_note_pdf_frontmatter(notes_dir: &PathBuf, note_path: &PathBuf, pdf_fil
         .map_err(|e| format!("Failed to write note: {}", e))?;
 
     Ok(())
+}
+
+// ============================================================================
+// Bulk PDF Finder
+// ============================================================================
+
+pub async fn find_pdfs_page(
+    State(state): State<Arc<AppState>>,
+    jar: CookieJar,
+) -> Response {
+    let logged_in = is_logged_in(&jar, &state.db);
+    if !logged_in {
+        return Redirect::to("/login").into_response();
+    }
+
+    let notes = state.load_notes();
+    let papers: Vec<_> = notes
+        .iter()
+        .filter(|n| matches!(n.note_type, NoteType::Paper(_)))
+        .collect();
+
+    let total = papers.len();
+    let missing: Vec<_> = papers
+        .iter()
+        .filter(|n| n.pdf.is_none() && !n.hidden)
+        .collect();
+    let missing_count = missing.len();
+
+    // Build JSON array of papers without PDFs
+    let papers_data: Vec<serde_json::Value> = missing
+        .iter()
+        .filter_map(|note| {
+            if let NoteType::Paper(ref paper) = note.note_type {
+                let meta = paper.effective_metadata(&note.title);
+                Some(serde_json::json!({
+                    "key": note.key,
+                    "title": meta.title.as_deref().unwrap_or(&note.title),
+                    "authors": meta.authors.as_deref().unwrap_or("Unknown"),
+                    "year": meta.year.map(|y| y.to_string()).unwrap_or_default(),
+                }))
+            } else {
+                None
+            }
+        })
+        .collect();
+    let papers_json = serde_json::to_string(&papers_data).unwrap_or_else(|_| "[]".to_string());
+
+    let content = format!(
+        r#"
+<style>
+    .fpf-stats {{
+        margin-bottom: 1rem;
+        font-size: 0.9rem;
+        color: var(--muted);
+    }}
+    .fpf-controls {{
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+        flex-wrap: wrap;
+    }}
+    .fpf-progress {{
+        font-size: 0.85rem;
+        color: var(--muted);
+    }}
+    .fpf-toggle {{
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        font-size: 0.85rem;
+    }}
+    .fpf-table {{
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.85rem;
+    }}
+    .fpf-table th {{
+        text-align: left;
+        padding: 0.4rem 0.5rem;
+        border-bottom: 2px solid var(--base2);
+        font-weight: 600;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        color: var(--muted);
+    }}
+    .fpf-table td {{
+        padding: 0.4rem 0.5rem;
+        border-bottom: 1px solid var(--base2);
+        vertical-align: middle;
+    }}
+    .fpf-table tr.fpf-found {{ background: rgba(133, 153, 0, 0.06); }}
+    .fpf-table tr.fpf-downloaded {{ background: rgba(133, 153, 0, 0.12); }}
+    .fpf-table tr.fpf-error {{ background: rgba(220, 50, 47, 0.05); }}
+    .fpf-table tr.fpf-searching td:first-child::before {{
+        content: '';
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border: 2px solid var(--muted);
+        border-top-color: transparent;
+        border-radius: 50%;
+        animation: fpf-spin 0.8s linear infinite;
+        margin-right: 0.4rem;
+        vertical-align: middle;
+    }}
+    @keyframes fpf-spin {{ to {{ transform: rotate(360deg); }} }}
+    .fpf-status {{
+        font-size: 0.8rem;
+        min-width: 200px;
+    }}
+    .fpf-status .source-badge {{
+        display: inline-block;
+        font-size: 0.65rem;
+        padding: 0.1rem 0.4rem;
+        border-radius: 3px;
+        background: var(--cyan);
+        color: white;
+        margin-right: 0.3rem;
+        text-transform: uppercase;
+        font-weight: 600;
+    }}
+    .fpf-status .fpf-url {{
+        font-size: 0.75rem;
+        color: var(--muted);
+        word-break: break-all;
+    }}
+    .fpf-actions button {{
+        font-size: 0.75rem;
+        padding: 0.2rem 0.6rem;
+        border: none;
+        border-radius: 3px;
+        cursor: pointer;
+        margin-right: 0.3rem;
+    }}
+    .fpf-actions .btn-accept {{
+        background: var(--green);
+        color: white;
+    }}
+    .fpf-actions .btn-skip {{
+        background: var(--base2);
+        color: var(--base00);
+    }}
+    .fpf-done {{ color: var(--green); font-weight: 600; }}
+    .fpf-err {{ color: var(--red); font-size: 0.8rem; }}
+    .fpf-none {{ color: var(--muted); }}
+    .fpf-title-cell {{
+        max-width: 350px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }}
+    .fpf-authors-cell {{
+        max-width: 200px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: var(--muted);
+    }}
+</style>
+
+<h1>Find Missing PDFs</h1>
+<p><a href="/papers">&larr; Back to Papers</a></p>
+
+<div class="fpf-stats">
+    {missing_count} papers without PDFs out of {total} total
+</div>
+
+<div class="fpf-controls">
+    <button class="btn" id="find-all-btn" onclick="startFindAll()">Find All PDFs</button>
+    <button class="btn" id="stop-btn" onclick="stopFindAll()" style="display:none;">Stop</button>
+    <div class="fpf-toggle">
+        <input type="checkbox" id="auto-download" />
+        <label for="auto-download">Auto-download found PDFs</label>
+    </div>
+    <div class="fpf-progress" id="progress"></div>
+</div>
+
+<table class="fpf-table">
+    <thead>
+        <tr>
+            <th>Title</th>
+            <th>Authors</th>
+            <th>Year</th>
+            <th>Key</th>
+            <th>Status</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody id="papers-tbody">
+    </tbody>
+</table>
+
+<script>
+const papers = {papers_json};
+let running = false;
+let stopRequested = false;
+let searched = 0, found = 0, downloaded = 0;
+
+function updateProgress() {{
+    const el = document.getElementById('progress');
+    if (el) el.textContent = searched + '/' + papers.length + ' searched, ' + found + ' found, ' + downloaded + ' downloaded';
+}}
+
+function esc(s) {{
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+}}
+
+// Render initial table
+(function() {{
+    const tbody = document.getElementById('papers-tbody');
+    for (let i = 0; i < papers.length; i++) {{
+        const p = papers[i];
+        const tr = document.createElement('tr');
+        tr.id = 'row-' + i;
+        tr.innerHTML =
+            '<td class="fpf-title-cell" title="' + esc(p.title) + '">' + esc(p.title) + '</td>' +
+            '<td class="fpf-authors-cell" title="' + esc(p.authors) + '">' + esc(p.authors) + '</td>' +
+            '<td>' + esc(p.year) + '</td>' +
+            '<td><code>' + esc(p.key) + '</code></td>' +
+            '<td class="fpf-status" id="status-' + i + '"><span class="fpf-none">Pending</span></td>' +
+            '<td class="fpf-actions" id="actions-' + i + '"></td>';
+        tbody.appendChild(tr);
+    }}
+}})();
+
+async function startFindAll() {{
+    if (running) return;
+    running = true;
+    stopRequested = false;
+    searched = 0; found = 0; downloaded = 0;
+    document.getElementById('find-all-btn').disabled = true;
+    document.getElementById('stop-btn').style.display = '';
+    updateProgress();
+
+    for (let i = 0; i < papers.length; i++) {{
+        if (stopRequested) break;
+
+        const row = document.getElementById('row-' + i);
+        const statusEl = document.getElementById('status-' + i);
+        const actionsEl = document.getElementById('actions-' + i);
+
+        // Skip already-downloaded rows
+        if (row.classList.contains('fpf-downloaded')) {{
+            continue;
+        }}
+
+        row.className = 'fpf-searching';
+        statusEl.innerHTML = '<span class="fpf-none">Searching...</span>';
+
+        try {{
+            const resp = await fetch('/api/pdf/smart-find', {{
+                method: 'POST',
+                headers: {{ 'Content-Type': 'application/json' }},
+                body: JSON.stringify({{ note_key: papers[i].key }})
+            }});
+
+            const data = await resp.json();
+            searched++;
+
+            if (data.status === 'found') {{
+                found++;
+                row.className = 'fpf-found';
+                const truncUrl = data.url.length > 50 ? data.url.substring(0, 50) + '...' : data.url;
+                statusEl.innerHTML = '<span class="source-badge">' + (data.source || 'found') + '</span>' +
+                    '<span class="fpf-url">' + truncUrl + '</span>';
+
+                const autoDownload = document.getElementById('auto-download').checked;
+                if (autoDownload) {{
+                    await doDownload(i, data.url);
+                }} else {{
+                    actionsEl.innerHTML =
+                        '<button class="btn-accept" onclick="doDownload(' + i + ', \'' + data.url.replace(/'/g, "\\\\'") + '\')">Accept</button>' +
+                        '<button class="btn-skip" onclick="doSkip(' + i + ')">Skip</button>';
+                }}
+            }} else {{
+                row.className = 'fpf-error';
+                statusEl.innerHTML = '<span class="fpf-none">' + (data.error || 'Not found') + '</span>';
+            }}
+        }} catch (e) {{
+            searched++;
+            row.className = 'fpf-error';
+            statusEl.innerHTML = '<span class="fpf-err">Error: ' + e.message + '</span>';
+        }}
+
+        updateProgress();
+
+        // 500ms delay between requests
+        if (i < papers.length - 1 && !stopRequested) {{
+            await new Promise(r => setTimeout(r, 500));
+        }}
+    }}
+
+    running = false;
+    document.getElementById('find-all-btn').disabled = false;
+    document.getElementById('stop-btn').style.display = 'none';
+}}
+
+function stopFindAll() {{
+    stopRequested = true;
+    document.getElementById('stop-btn').style.display = 'none';
+}}
+
+async function doDownload(idx, url) {{
+    const statusEl = document.getElementById('status-' + idx);
+    const actionsEl = document.getElementById('actions-' + idx);
+    const row = document.getElementById('row-' + idx);
+
+    statusEl.innerHTML = '<span class="fpf-none">Downloading...</span>';
+    actionsEl.innerHTML = '';
+
+    try {{
+        const resp = await fetch('/api/pdf/download-url', {{
+            method: 'POST',
+            headers: {{ 'Content-Type': 'application/json' }},
+            body: JSON.stringify({{ note_key: papers[idx].key, url: url }})
+        }});
+
+        if (resp.ok) {{
+            downloaded++;
+            row.className = 'fpf-downloaded';
+            statusEl.innerHTML = '<span class="fpf-done">&#10003; Downloaded</span>';
+        }} else {{
+            const err = await resp.text();
+            row.className = 'fpf-error';
+            statusEl.innerHTML = '<span class="fpf-err">Failed: ' + err + '</span>';
+            actionsEl.innerHTML = '<button class="btn-skip" onclick="doSkip(' + idx + ')">Dismiss</button>';
+        }}
+    }} catch (e) {{
+        row.className = 'fpf-error';
+        statusEl.innerHTML = '<span class="fpf-err">Error: ' + e.message + '</span>';
+    }}
+
+    updateProgress();
+}}
+
+function doSkip(idx) {{
+    const actionsEl = document.getElementById('actions-' + idx);
+    actionsEl.innerHTML = '<span class="fpf-none">Skipped</span>';
+}}
+</script>
+"#,
+        missing_count = missing_count,
+        total = total,
+        papers_json = papers_json,
+    );
+
+    Html(crate::templates::base_html(
+        "Find Missing PDFs",
+        &content,
+        None,
+        true,
+    ))
+    .into_response()
 }

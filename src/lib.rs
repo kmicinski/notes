@@ -7,13 +7,14 @@ use sled::Db;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 
 use chrono::{DateTime, Utc};
 
 pub mod auth;
 pub mod citations;
 pub mod graph;
+pub mod graph_index;
 pub mod handlers;
 pub mod models;
 pub mod notes;
@@ -84,6 +85,7 @@ pub struct AppState {
     pub db: Db,
     pub password_hash: Option<String>,
     pub login_rate_limit: Arc<Mutex<LoginRateLimit>>,
+    pub notes_cache: Arc<RwLock<Option<Vec<models::Note>>>>,
 }
 
 impl AppState {
@@ -102,17 +104,52 @@ impl AppState {
         // Hash password at startup (Argon2id — ~100ms, done once)
         let password_hash = auth::hash_password_at_startup();
 
-        Self {
+        let state = Self {
             notes_dir,
             pdfs_dir,
             db,
             password_hash,
             login_rate_limit: Arc::new(Mutex::new(LoginRateLimit::new())),
+            notes_cache: Arc::new(RwLock::new(None)),
+        };
+
+        // Reconcile knowledge graph index with notes on disk
+        let notes = state.load_notes();
+        match graph_index::reconcile(&state.db, &notes) {
+            Ok(stats) => {
+                eprintln!(
+                    "Graph index: reindexed {}, removed {}, unchanged {}",
+                    stats.reindexed, stats.removed, stats.unchanged
+                );
+            }
+            Err(e) => {
+                eprintln!("Graph index reconciliation error: {}", e);
+            }
         }
+
+        state
     }
 
     pub fn load_notes(&self) -> Vec<models::Note> {
-        notes::load_all_notes(&self.notes_dir)
+        // Fast path: return cached notes if available
+        {
+            let cache = self.notes_cache.read().unwrap();
+            if let Some(ref notes) = *cache {
+                return notes.clone();
+            }
+        }
+        // Slow path: load from disk and populate cache
+        let notes = notes::load_all_notes(&self.notes_dir);
+        {
+            let mut cache = self.notes_cache.write().unwrap();
+            *cache = Some(notes.clone());
+        }
+        notes
+    }
+
+    pub fn invalidate_notes_cache(&self) {
+        let mut cache = self.notes_cache.write().unwrap();
+        *cache = None;
     }
 
     pub fn notes_map(&self) -> HashMap<String, models::Note> {
@@ -120,6 +157,25 @@ impl AppState {
             .into_iter()
             .map(|n| (n.key.clone(), n))
             .collect()
+    }
+
+    /// Reindex a single note in the knowledge graph after mutation.
+    pub fn reindex_graph_note(&self, key: &str) {
+        let notes = self.load_notes();
+        let all_keys: std::collections::HashSet<String> =
+            notes.iter().map(|n| n.key.clone()).collect();
+        if let Some(note) = notes.iter().find(|n| n.key == key) {
+            if let Err(e) = graph_index::reindex_note(&self.db, note, &all_keys) {
+                eprintln!("Graph reindex error for {}: {}", key, e);
+            }
+        }
+    }
+
+    /// Remove a note from the knowledge graph index.
+    pub fn remove_graph_note(&self, key: &str) {
+        if let Err(e) = graph_index::remove_note(&self.db, key) {
+            eprintln!("Graph remove error for {}: {}", key, e);
+        }
     }
 }
 
@@ -182,6 +238,8 @@ pub use auth::{
 };
 
 pub use graph::{build_knowledge_graph, find_reachable, find_shortest_path};
+
+pub use graph_index::{reconcile, reindex_note, remove_note, load_all_edges, load_all_nodes};
 
 pub use smart_add::{
     bib_import_analyze, bib_import_execute, detect_input_type, extract_arxiv_id, extract_doi,
