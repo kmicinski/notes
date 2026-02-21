@@ -1055,9 +1055,13 @@ pub async fn smart_add_create(
         .into_response();
     }
 
+    state.invalidate_notes_cache();
+
     // Generate key for the new note
     let relative_path = PathBuf::from(filename);
     let key = generate_key(&relative_path);
+
+    state.reindex_graph_note(&key);
 
     axum::Json(SmartAddCreateResponse {
         key: Some(key),
@@ -1166,8 +1170,12 @@ pub async fn quick_note_create(
         .into_response();
     }
 
+    state.invalidate_notes_cache();
+
     let relative_path = PathBuf::from(&filename);
     let key = generate_key(&relative_path);
+
+    state.reindex_graph_note(&key);
 
     axum::Json(SmartAddCreateResponse {
         key: Some(key),
@@ -1258,6 +1266,9 @@ pub async fn smart_add_attach(
         })
         .into_response();
     }
+
+    state.invalidate_notes_cache();
+    state.reindex_graph_note(&body.note_key);
 
     axum::Json(AttachSourceResponse {
         success: true,
@@ -1598,6 +1609,16 @@ pub async fn bib_import_execute(
             key: note.key.clone(),
             title: note.title.clone(),
         });
+    }
+
+    if !result.created.is_empty() || !result.updated.is_empty() {
+        state.invalidate_notes_cache();
+        for note in &result.created {
+            state.reindex_graph_note(&note.key);
+        }
+        for note in &result.updated {
+            state.reindex_graph_note(&note.key);
+        }
     }
 
     axum::Json(result).into_response()

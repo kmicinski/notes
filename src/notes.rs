@@ -501,7 +501,7 @@ pub struct ParsedBibtex {
 }
 
 /// Parse a BibTeX entry string and extract structured fields.
-/// Uses regex-based parsing to avoid additional dependencies.
+/// Uses string operations instead of regex for performance.
 pub fn parse_bibtex(bibtex: &str) -> Option<ParsedBibtex> {
     let bibtex = bibtex.trim();
     if bibtex.is_empty() {
@@ -511,53 +511,80 @@ pub fn parse_bibtex(bibtex: &str) -> Option<ParsedBibtex> {
     let mut result = ParsedBibtex::default();
 
     // Parse entry type and cite key: @type{key,
-    let entry_re = regex::Regex::new(r"@(\w+)\s*\{\s*([^,\s]+)").ok()?;
-    if let Some(caps) = entry_re.captures(bibtex) {
-        result.entry_type = caps.get(1)?.as_str().to_lowercase();
-        result.cite_key = caps.get(2)?.as_str().to_string();
-    } else {
+    let at_pos = bibtex.find('@')?;
+    let after_at = &bibtex[at_pos + 1..];
+    let type_end = after_at.find(|c: char| !c.is_alphanumeric() && c != '_')?;
+    result.entry_type = after_at[..type_end].to_lowercase();
+
+    let after_type = after_at[type_end..].trim_start();
+    if !after_type.starts_with('{') {
         return None;
     }
+    let key_start = &after_type[1..].trim_start();
+    let key_end = key_start.find(|c: char| c == ',' || c.is_whitespace())?;
+    result.cite_key = key_start[..key_end].to_string();
 
-    // Helper to extract a field value, handling nested braces
+    // Helper to find `field = value` case-insensitively without regex
     fn extract_field(bibtex: &str, field: &str) -> Option<String> {
-        // Find field = and then parse the value with brace-depth tracking
-        let pattern = format!(r#"(?i){}\s*=\s*"#, regex::escape(field));
-        let re = regex::Regex::new(&pattern).ok()?;
-        let m = re.find(bibtex)?;
-        let rest = &bibtex[m.end()..];
+        let bibtex_lower = bibtex.to_ascii_lowercase();
+        let field_lower = field.to_ascii_lowercase();
 
-        let value = if rest.starts_with('{') {
-            // Brace-delimited value: track depth to find matching close
-            let mut depth = 0;
-            let mut end = 0;
-            for (i, ch) in rest.char_indices() {
-                if ch == '{' {
-                    depth += 1;
-                } else if ch == '}' {
-                    depth -= 1;
-                    if depth == 0 {
-                        end = i;
-                        break;
+        // Search for the field name followed by optional whitespace and '='
+        let mut search_from = 0;
+        loop {
+            let pos = bibtex_lower[search_from..].find(&field_lower)?;
+            let abs_pos = search_from + pos;
+
+            // Verify it's a field boundary (start of line or after whitespace/comma)
+            let is_boundary = abs_pos == 0
+                || bibtex.as_bytes()[abs_pos - 1] == b'\n'
+                || bibtex.as_bytes()[abs_pos - 1] == b','
+                || bibtex.as_bytes()[abs_pos - 1] == b' '
+                || bibtex.as_bytes()[abs_pos - 1] == b'\t';
+
+            if !is_boundary {
+                search_from = abs_pos + 1;
+                continue;
+            }
+
+            // Check for '=' after the field name (with optional whitespace)
+            let after_field = bibtex[abs_pos + field.len()..].trim_start();
+            if !after_field.starts_with('=') {
+                search_from = abs_pos + 1;
+                continue;
+            }
+
+            let rest = after_field[1..].trim_start();
+
+            let value = if rest.starts_with('{') {
+                // Brace-delimited: track depth
+                let mut depth = 0;
+                let mut end = 0;
+                for (i, ch) in rest.char_indices() {
+                    if ch == '{' {
+                        depth += 1;
+                    } else if ch == '}' {
+                        depth -= 1;
+                        if depth == 0 {
+                            end = i;
+                            break;
+                        }
                     }
                 }
-            }
-            if end > 1 { Some(&rest[1..end]) } else { None }
-        } else if rest.starts_with('"') {
-            // Quote-delimited value
-            let end = rest[1..].find('"').map(|i| i + 1)?;
-            Some(&rest[1..end])
-        } else {
-            // Bare value (number)
-            let end = rest.find(|c: char| c == ',' || c == '}' || c == '\n').unwrap_or(rest.len());
-            Some(rest[..end].trim())
-        };
+                if end > 1 { Some(&rest[1..end]) } else { None }
+            } else if rest.starts_with('"') {
+                let end = rest[1..].find('"').map(|i| i + 1)?;
+                Some(&rest[1..end])
+            } else {
+                // Bare value (number)
+                let end = rest.find(|c: char| c == ',' || c == '}' || c == '\n').unwrap_or(rest.len());
+                Some(rest[..end].trim())
+            };
 
-        value.map(|v| strip_bibtex_braces(v.trim()))
+            return value.map(|v| strip_bibtex_braces(v.trim()));
+        }
     }
 
-    /// Strip BibTeX protection braces from a field value.
-    /// Removes all `{` and `}` characters that BibTeX uses for capitalization protection.
     fn strip_bibtex_braces(s: &str) -> String {
         s.chars().filter(|c| *c != '{' && *c != '}').collect()
     }

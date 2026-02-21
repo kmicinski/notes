@@ -30,12 +30,18 @@ pub fn render_viewer(
         } else {
             ""
         };
+        let scan_btn = if is_paper && logged_in {
+            r#" <button class="pdf-toggle-btn" onclick="scanReferences()" title="Scan PDF for references to other papers">Scan Refs</button>"#
+        } else {
+            ""
+        };
         format!(
             r#"<a href="/pdfs/{}" target="_blank">📄 {}</a>
-               <button class="pdf-toggle-btn" id="pdf-toggle-btn" onclick="togglePdfViewer()">View PDF</button>{}"#,
+               <button class="pdf-toggle-btn" id="pdf-toggle-btn" onclick="togglePdfViewer()">View PDF</button>{}{}"#,
             html_escape(pdf),
             html_escape(pdf),
-            unlink_btn
+            unlink_btn,
+            scan_btn
         )
     } else if is_paper && logged_in {
         r#"<button class="pdf-toggle-btn" id="pdf-toggle-btn" onclick="togglePdfViewer()">Find PDF</button>"#.to_string()
@@ -655,6 +661,182 @@ pub fn render_viewer(
 
         .sub-notes {{ margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border); }}
         .sub-notes h3 {{ font-size: 1rem; margin-top: 0; }}
+
+        /* Mini knowledge graph panel */
+        .mini-graph-panel {{
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 960px;
+            height: 800px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+            z-index: 999;
+            display: none;
+            flex-direction: column;
+            overflow: hidden;
+            resize: both;
+        }}
+        .mini-graph-panel.active {{ display: flex; }}
+        .mini-graph-panel-header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.5rem 0.75rem;
+            background: var(--accent);
+            border-bottom: 1px solid var(--border);
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: move;
+        }}
+        .mini-graph-panel-header a {{
+            font-weight: normal;
+            font-size: 0.75rem;
+        }}
+        .mini-graph-panel-close {{
+            background: none;
+            border: none;
+            font-size: 1.1rem;
+            cursor: pointer;
+            color: var(--muted);
+            padding: 0 0.25rem;
+        }}
+        .mini-graph-body {{
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+        }}
+        .mini-graph-body svg {{ width: 100%; height: 100%; }}
+        .mini-graph-body .mg-link {{ stroke: #93a1a1; stroke-opacity: 0.3; }}
+        .mini-graph-body .mg-link.deg1 {{ stroke: #073642; stroke-opacity: 0.7; stroke-width: 1.5px; }}
+        .mini-graph-body .mg-link.citation {{ stroke-dasharray: 4,2; stroke: #b58900; stroke-opacity: 0.5; }}
+        .mini-graph-body .mg-link.citation.deg1 {{ stroke-opacity: 0.8; stroke-width: 1.5px; }}
+        .mini-graph-body .mg-link.highlighted {{ stroke: var(--fg); stroke-opacity: 0.9; stroke-width: 2.5px; }}
+        .mini-graph-body .mg-node circle {{ cursor: pointer; stroke: var(--bg); stroke-width: 1.5px; }}
+        .mini-graph-body .mg-node .mg-label {{
+            font-size: 8px;
+            fill: var(--fg);
+            pointer-events: none;
+            text-anchor: middle;
+            opacity: 0.7;
+        }}
+        .mini-graph-body .mg-node.center .mg-label {{ opacity: 1; font-size: 10px; font-weight: 600; }}
+        .mini-graph-body .mg-node:hover .mg-label {{ opacity: 1; font-size: 10px; }}
+        .mg-tooltip {{
+            position: absolute;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 0.4rem 0.6rem;
+            font-size: 0.8rem;
+            pointer-events: none;
+            z-index: 1001;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+            max-width: 250px;
+        }}
+        .mg-tooltip .mgt-title {{ font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+        .mg-tooltip .mgt-meta {{ font-size: 0.75rem; color: var(--muted); margin-top: 0.15rem; }}
+        .mg-legend {{
+            position: absolute;
+            bottom: 6px;
+            left: 6px;
+            font-size: 0.7rem;
+            color: var(--muted);
+            display: flex;
+            gap: 0.6rem;
+            align-items: center;
+        }}
+        .mg-legend-item {{
+            display: flex;
+            align-items: center;
+            gap: 0.2rem;
+        }}
+        .mg-legend-dot {{
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+        }}
+
+        /* Citation scan results panel */
+        .citation-panel {{
+            position: fixed;
+            top: 60px;
+            right: 20px;
+            width: 380px;
+            max-height: 70vh;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+            z-index: 1000;
+            display: none;
+            flex-direction: column;
+            overflow: hidden;
+        }}
+        .citation-panel.active {{ display: flex; }}
+        .citation-panel-header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem 1rem;
+            background: var(--accent);
+            border-bottom: 1px solid var(--border);
+            font-weight: 600;
+            font-size: 0.9rem;
+        }}
+        .citation-panel-close {{
+            background: none;
+            border: none;
+            font-size: 1.1rem;
+            cursor: pointer;
+            color: var(--muted);
+            padding: 0 0.25rem;
+        }}
+        .citation-panel-body {{
+            overflow-y: auto;
+            padding: 0.75rem 1rem;
+            flex: 1;
+        }}
+        .citation-match {{
+            padding: 0.5rem 0;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.85rem;
+        }}
+        .citation-match:last-child {{ border-bottom: none; }}
+        .citation-match .cm-key {{
+            font-family: monospace;
+            color: var(--link);
+            font-size: 0.8rem;
+        }}
+        .citation-match .cm-type {{
+            display: inline-block;
+            font-size: 0.7rem;
+            padding: 0.1rem 0.3rem;
+            border-radius: 3px;
+            background: var(--accent);
+            color: var(--muted);
+            margin-left: 0.3rem;
+        }}
+        .citation-match .cm-title {{
+            display: block;
+            margin-top: 0.2rem;
+            color: var(--fg);
+        }}
+        .citation-panel-footer {{
+            padding: 0.75rem 1rem;
+            border-top: 1px solid var(--border);
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }}
+        .citation-panel-footer .citation-stats {{
+            flex: 1;
+            font-size: 0.8rem;
+            color: var(--muted);
+        }}
     </style>
 </head>
 <body>
@@ -668,7 +850,10 @@ pub fn render_viewer(
                 <label><input type="radio" name="font-size" value="18" onchange="setFontSize(18)"><span class="size-normal">A</span></label>
                 <label><input type="radio" name="font-size" value="22" onchange="setFontSize(22)"><span class="size-large">A</span></label>
             </div>
-            <div class="pdf-status" id="pdf-status">{pdf_status_html}</div>
+            <div class="pdf-status" id="pdf-status">
+                <button class="pdf-toggle-btn" id="mini-graph-btn" onclick="toggleMiniGraph()" title="Show local knowledge graph">Graph</button>
+                {pdf_status_html}
+            </div>
             {mode_toggle}
         </div>
         <div class="viewer-main">
@@ -705,8 +890,30 @@ pub fn render_viewer(
                 </div>
             </div>
         </div>
+        <div class="mini-graph-panel" id="mini-graph-panel">
+            <div class="mini-graph-panel-header" id="mini-graph-header">
+                <span>Local Graph</span>
+                <span>
+                    <a href="/graph?q=from:{key}+depth:3" title="Open full graph view">Full Graph</a>
+                    <button class="mini-graph-panel-close" onclick="closeMiniGraph()">&times;</button>
+                </span>
+            </div>
+            <div class="mini-graph-body" id="mini-graph-body"></div>
+        </div>
+        <div class="citation-panel" id="citation-panel">
+            <div class="citation-panel-header">
+                <span>Citation Scan Results</span>
+                <button class="citation-panel-close" onclick="closeCitationPanel()">&times;</button>
+            </div>
+            <div class="citation-panel-body" id="citation-panel-body"></div>
+            <div class="citation-panel-footer" id="citation-panel-footer" style="display:none;">
+                <span class="citation-stats" id="citation-stats"></span>
+                <button class="pdf-toggle-btn" onclick="writeCitations()" id="write-citations-btn">Write to note</button>
+            </div>
+        </div>
     </div>
 
+    <script src="https://d3js.org/d3.v7.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script>
         // Set pdf.js worker
@@ -1460,10 +1667,18 @@ pub fn render_viewer(
                     window.location.reload();
                 }} else {{
                     const err = await resp.text();
-                    if (status) status.textContent = 'Download failed: ' + err;
+                    if (status) status.innerHTML = '<div style="color:var(--red);">Download failed: ' + err + '</div>' +
+                        '<div class="smart-find-actions" style="margin-top:0.5rem;">' +
+                        '<button class="btn-accept" onclick="startSmartFind()">Try Again</button>' +
+                        '<button class="btn-cancel" onclick="cancelSmartFind()">Cancel</button>' +
+                        '</div>';
                 }}
             }} catch (e) {{
-                if (status) status.textContent = 'Error: ' + e.message;
+                if (status) status.innerHTML = '<div style="color:var(--red);">Error: ' + e.message + '</div>' +
+                    '<div class="smart-find-actions" style="margin-top:0.5rem;">' +
+                    '<button class="btn-accept" onclick="startSmartFind()">Try Again</button>' +
+                    '<button class="btn-cancel" onclick="cancelSmartFind()">Cancel</button>' +
+                    '</div>';
             }}
         }}
 
@@ -1473,6 +1688,414 @@ pub fn render_viewer(
             if (status) status.innerHTML = '';
             if (btn) btn.disabled = false;
         }}
+
+        // =====================================================================
+        // Citation Scanning
+        // =====================================================================
+
+        async function scanReferences() {{
+            const panel = document.getElementById('citation-panel');
+            const body = document.getElementById('citation-panel-body');
+            const footer = document.getElementById('citation-panel-footer');
+            const stats = document.getElementById('citation-stats');
+
+            panel.classList.add('active');
+            body.innerHTML = '<div style="text-align:center;padding:1rem;color:var(--muted);"><span class="smart-find-spinner"></span> Scanning PDF references...</div>';
+            footer.style.display = 'none';
+
+            try {{
+                const resp = await fetch('/api/citations/scan', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{ note_key: noteKey, force: false }})
+                }});
+
+                if (!resp.ok) {{
+                    const err = await resp.text();
+                    body.innerHTML = '<div style="color:var(--red);padding:0.5rem;">' + err + '</div>';
+                    return;
+                }}
+
+                const data = await resp.json();
+
+                if (data.matches.length === 0) {{
+                    body.innerHTML = '<div style="padding:0.5rem;color:var(--muted);">No matches found among ' + data.unmatched_count + ' references.</div>';
+                    return;
+                }}
+
+                let html = '';
+                for (const m of data.matches) {{
+                    html += '<div class="citation-match">' +
+                        '<span class="cm-key">[@' + m.target_key + ']</span>' +
+                        '<span class="cm-type">' + m.match_type + ' ' + Math.round(m.confidence * 100) + '%</span>' +
+                        '<span class="cm-title">' + (m.raw_text.substring(0, 120)) + '</span>' +
+                        '</div>';
+                }}
+                body.innerHTML = html;
+
+                stats.textContent = data.matches.length + ' match(es), ' + data.unmatched_count + ' unmatched';
+                footer.style.display = 'flex';
+            }} catch (e) {{
+                body.innerHTML = '<div style="color:var(--red);padding:0.5rem;">Error: ' + e.message + '</div>';
+            }}
+        }}
+
+        async function writeCitations() {{
+            const btn = document.getElementById('write-citations-btn');
+            btn.disabled = true;
+            btn.textContent = 'Writing...';
+
+            try {{
+                const resp = await fetch('/api/citations/write', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{ note_key: noteKey }})
+                }});
+
+                if (resp.ok) {{
+                    window.location.reload();
+                }} else {{
+                    const err = await resp.text();
+                    alert('Failed to write citations: ' + err);
+                    btn.disabled = false;
+                    btn.textContent = 'Write to note';
+                }}
+            }} catch (e) {{
+                alert('Error: ' + e.message);
+                btn.disabled = false;
+                btn.textContent = 'Write to note';
+            }}
+        }}
+
+        function closeCitationPanel() {{
+            document.getElementById('citation-panel').classList.remove('active');
+        }}
+
+        // =====================================================================
+        // Mini Knowledge Graph
+        // =====================================================================
+
+        let miniGraphLoaded = false;
+        let miniGraphSim = null;
+
+        function toggleMiniGraph() {{
+            const panel = document.getElementById('mini-graph-panel');
+            const btn = document.getElementById('mini-graph-btn');
+            if (panel.classList.contains('active')) {{
+                closeMiniGraph();
+            }} else {{
+                panel.classList.add('active');
+                btn.classList.add('active');
+                if (!miniGraphLoaded) {{
+                    loadMiniGraph();
+                }}
+            }}
+        }}
+
+        function closeMiniGraph() {{
+            document.getElementById('mini-graph-panel').classList.remove('active');
+            document.getElementById('mini-graph-btn').classList.remove('active');
+            if (miniGraphSim) {{ miniGraphSim.stop(); }}
+        }}
+
+        async function loadMiniGraph() {{
+            const body = document.getElementById('mini-graph-body');
+            body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:0.85rem;"><span class="smart-find-spinner"></span> Loading graph...</div>';
+
+            try {{
+                const resp = await fetch('/api/graph?q=from:' + encodeURIComponent(noteKey) + '+depth:3');
+                if (!resp.ok) {{ body.innerHTML = '<div style="padding:1rem;color:var(--red);">Failed to load graph</div>'; return; }}
+
+                const data = await resp.json();
+                miniGraphLoaded = true;
+                renderMiniGraph(data);
+            }} catch (e) {{
+                body.innerHTML = '<div style="padding:1rem;color:var(--red);">Error: ' + e.message + '</div>';
+            }}
+        }}
+
+        function renderMiniGraph(data) {{
+            const container = document.getElementById('mini-graph-body');
+            container.innerHTML = '';
+
+            const rect = container.getBoundingClientRect();
+            const width = rect.width || 460;
+            const height = rect.height || 360;
+
+            // --- BFS to compute distance from center node ---
+            const adj = {{}};
+            data.nodes.forEach(n => {{ adj[n.id] = []; }});
+            data.edges.forEach(e => {{
+                const sid = typeof e.source === 'object' ? e.source.id : e.source;
+                const tid = typeof e.target === 'object' ? e.target.id : e.target;
+                if (adj[sid]) adj[sid].push(tid);
+                if (adj[tid]) adj[tid].push(sid);
+            }});
+            const dist = {{}};
+            dist[noteKey] = 0;
+            const queue = [noteKey];
+            let qi = 0;
+            while (qi < queue.length) {{
+                const cur = queue[qi++];
+                (adj[cur] || []).forEach(nb => {{
+                    if (dist[nb] === undefined) {{
+                        dist[nb] = dist[cur] + 1;
+                        queue.push(nb);
+                    }}
+                }});
+            }}
+            data.nodes.forEach(n => {{
+                n._dist = dist[n.id] !== undefined ? dist[n.id] : 99;
+            }});
+
+            // --- Prune distant nodes when graph is too large ---
+            // Always keep center + all 1st degree. If > 30 nodes, trim from furthest distance inward.
+            const MAX_NODES = 30;
+            const firstDegreeNodes = data.nodes.filter(n => n._dist <= 1);
+            let keepNodes;
+            if (data.nodes.length <= MAX_NODES) {{
+                keepNodes = data.nodes;
+            }} else {{
+                // Always keep dist 0 and 1. Fill remaining budget from dist 2, then 3, etc.
+                const budget = Math.max(MAX_NODES, firstDegreeNodes.length);
+                const byDist = {{}};
+                data.nodes.forEach(n => {{
+                    if (n._dist > 1) {{
+                        if (!byDist[n._dist]) byDist[n._dist] = [];
+                        byDist[n._dist].push(n);
+                    }}
+                }});
+                keepNodes = [...firstDegreeNodes];
+                const distances = Object.keys(byDist).map(Number).sort((a, b) => a - b);
+                for (const d of distances) {{
+                    if (keepNodes.length >= budget) break;
+                    const remaining = budget - keepNodes.length;
+                    const candidates = byDist[d];
+                    if (candidates.length <= remaining) {{
+                        keepNodes.push(...candidates);
+                    }} else {{
+                        // Take a random sample to avoid bias
+                        candidates.sort(() => Math.random() - 0.5);
+                        keepNodes.push(...candidates.slice(0, remaining));
+                    }}
+                }}
+            }}
+            const keepIds = new Set(keepNodes.map(n => n.id));
+            data.nodes = keepNodes;
+            data.edges = data.edges.filter(e => {{
+                const sid = typeof e.source === 'object' ? e.source.id : e.source;
+                const tid = typeof e.target === 'object' ? e.target.id : e.target;
+                return keepIds.has(sid) && keepIds.has(tid);
+            }});
+
+            // --- Color palette by distance ---
+            const distColors = ['#dc322f', '#cb4b16', '#268bd2', '#93a1a1'];
+            function nodeColor(d) {{
+                return distColors[Math.min(d._dist, distColors.length - 1)];
+            }}
+            function nodeRadius(d) {{
+                if (d._dist === 0) return 16;
+                if (d._dist === 1) return 10;
+                if (d._dist === 2) return 7;
+                return 5;
+            }}
+            function nodeOpacity(d) {{
+                if (d._dist === 0) return 1;
+                if (d._dist === 1) return 0.95;
+                if (d._dist === 2) return 0.7;
+                return 0.45;
+            }}
+
+            const svg = d3.select(container).append('svg');
+            const g = svg.append('g');
+
+            // Tooltip
+            const tip = d3.select(container).append('div')
+                .attr('class', 'mg-tooltip')
+                .style('display', 'none');
+
+            // Pin center node to middle
+            const centerNode = data.nodes.find(n => n.id === noteKey);
+            if (centerNode) {{
+                centerNode.fx = width / 2;
+                centerNode.fy = height / 2;
+            }}
+
+            // Count 1st degree neighbors for link distance tuning
+            const deg1Count = firstDegreeNodes.length - 1; // exclude center
+            // Spread 1st degree nodes in a ring that fits the viewport
+            const ringRadius = Math.min(width, height) * 0.3;
+            const linkDist1 = Math.max(60, ringRadius);
+
+            // Simulation tuned so 1st degree fills viewport nicely
+            const sim = d3.forceSimulation(data.nodes)
+                .force('link', d3.forceLink(data.edges).id(d => d.id).distance(d => {{
+                    const s = d.source._dist !== undefined ? d.source._dist : 1;
+                    const t = d.target._dist !== undefined ? d.target._dist : 1;
+                    const maxDist = Math.max(s, t);
+                    if (maxDist <= 1) return linkDist1;
+                    return linkDist1 * 0.6 + maxDist * 20;
+                }}).strength(d => {{
+                    const s = d.source._dist !== undefined ? d.source._dist : 1;
+                    const t = d.target._dist !== undefined ? d.target._dist : 1;
+                    return Math.max(s, t) <= 1 ? 1.0 : 0.3;
+                }}))
+                .force('charge', d3.forceManyBody().strength(d => {{
+                    if (d._dist === 0) return -400;
+                    if (d._dist === 1) return -200;
+                    return -60;
+                }}))
+                .force('center', d3.forceCenter(width / 2, height / 2).strength(0.05))
+                .force('collision', d3.forceCollide().radius(d => nodeRadius(d) + 6))
+                .force('radial', d3.forceRadial(d => {{
+                    if (d._dist === 0) return 0;
+                    if (d._dist === 1) return ringRadius;
+                    return ringRadius + d._dist * 60;
+                }}, width / 2, height / 2).strength(d => d._dist <= 1 ? 0.6 : 0.2));
+            miniGraphSim = sim;
+
+            // Links — 1st degree edges (touching center) get 'deg1' class for visibility
+            const link = g.append('g').selectAll('line')
+                .data(data.edges).join('line')
+                .attr('class', d => {{
+                    const sid = typeof d.source === 'object' ? d.source.id : d.source;
+                    const tid = typeof d.target === 'object' ? d.target.id : d.target;
+                    const isDeg1 = sid === noteKey || tid === noteKey;
+                    let cls = 'mg-link';
+                    if (isDeg1) cls += ' deg1';
+                    if (d.edge_type === 'citation') cls += ' citation';
+                    return cls;
+                }});
+
+            // Nodes — sorted so center renders on top
+            const sortedNodes = [...data.nodes].sort((a, b) => b._dist - a._dist);
+            const node = g.append('g').selectAll('g')
+                .data(sortedNodes, d => d.id).join('g')
+                .attr('class', d => 'mg-node' + (d._dist === 0 ? ' center' : ''))
+                .style('opacity', d => nodeOpacity(d))
+                .call(d3.drag()
+                    .on('start', (e, d) => {{ if (!e.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; }})
+                    .on('drag', (e, d) => {{ d.fx = e.x; d.fy = e.y; }})
+                    .on('end', (e, d) => {{
+                        if (!e.active) sim.alphaTarget(0);
+                        if (d.id !== noteKey) {{ d.fx = null; d.fy = null; }}
+                    }}));
+
+            node.append('circle')
+                .attr('r', d => nodeRadius(d))
+                .attr('fill', d => nodeColor(d));
+
+            // Labels — "Smith et al." style, hide for 3rd+ degree to reduce clutter
+            node.append('text')
+                .attr('class', 'mg-label')
+                .text(d => {{
+                    if (d._dist >= 3) return '';
+                    return d.short_label || d.title.substring(0, 14);
+                }})
+                .attr('dy', d => -(nodeRadius(d) + 3));
+
+            // Hover
+            node.on('mouseover', function(event, d) {{
+                d3.select(this).raise().select('circle').attr('stroke', 'var(--fg)').attr('stroke-width', 2.5);
+                // Show label on hover for nodes without one
+                if (d._dist >= 3) {{
+                    d3.select(this).select('text').text(d.short_label || d.title.substring(0, 20));
+                }}
+                link.classed('highlighted', l => l.source.id === d.id || l.target.id === d.id);
+                const distLabel = d._dist === 0 ? 'center' : d._dist + (d._dist === 1 ? 'st' : d._dist === 2 ? 'nd' : d._dist === 3 ? 'rd' : 'th') + ' degree';
+                tip.style('display', 'block')
+                    .html('<div class="mgt-title">' + d.title + '</div><div class="mgt-meta">' + d.node_type + ' \u00b7 ' + distLabel + '</div>')
+                    .style('left', (event.offsetX + 14) + 'px')
+                    .style('top', (event.offsetY - 10) + 'px');
+            }})
+            .on('mouseout', function(event, d) {{
+                d3.select(this).select('circle').attr('stroke', 'var(--bg)').attr('stroke-width', 1.5);
+                if (d._dist >= 3) {{
+                    d3.select(this).select('text').text('');
+                }}
+                link.classed('highlighted', false);
+                tip.style('display', 'none');
+            }})
+            .on('click', function(event, d) {{
+                if (d.id !== noteKey) {{
+                    window.location.href = '/note/' + d.id;
+                }}
+            }});
+
+            sim.on('tick', () => {{
+                link.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+                    .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+                node.attr('transform', d => 'translate(' + d.x + ',' + d.y + ')');
+            }});
+
+            // After simulation stabilizes, auto-fit so 1st degree nodes fill viewport
+            sim.on('end', () => {{
+                // Compute bounding box of 1st degree nodes
+                const deg1Nodes = data.nodes.filter(n => n._dist <= 1);
+                if (deg1Nodes.length < 2) return;
+                let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+                deg1Nodes.forEach(n => {{
+                    minX = Math.min(minX, n.x);
+                    maxX = Math.max(maxX, n.x);
+                    minY = Math.min(minY, n.y);
+                    maxY = Math.max(maxY, n.y);
+                }});
+                const pad = 60;
+                const bw = (maxX - minX) + pad * 2;
+                const bh = (maxY - minY) + pad * 2;
+                const scale = Math.min(width / bw, height / bh, 2.0);
+                const cx = (minX + maxX) / 2;
+                const cy = (minY + maxY) / 2;
+                const tx = width / 2 - cx * scale;
+                const ty = height / 2 - cy * scale;
+                const transform = d3.zoomIdentity.translate(tx, ty).scale(scale);
+                svg.transition().duration(500).call(
+                    d3.zoom().scaleExtent([0.2, 5]).on('zoom', e => {{
+                        g.attr('transform', e.transform);
+                    }}).transform, transform
+                );
+            }});
+
+            // Zoom — apply to single group
+            svg.call(d3.zoom().scaleExtent([0.2, 5]).on('zoom', e => {{
+                g.attr('transform', e.transform);
+            }}));
+
+            // Legend
+            const legend = d3.select(container).append('div').attr('class', 'mg-legend');
+            [['Center', distColors[0]], ['1st', distColors[1]], ['2nd', distColors[2]], ['3rd+', distColors[3]]].forEach(([label, color]) => {{
+                const item = legend.append('span').attr('class', 'mg-legend-item');
+                item.append('span').attr('class', 'mg-legend-dot').style('background', color);
+                item.append('span').text(label);
+            }});
+        }}
+
+        // Draggable mini-graph panel
+        (function() {{
+            const panel = document.getElementById('mini-graph-panel');
+            const header = document.getElementById('mini-graph-header');
+            if (!panel || !header) return;
+            let dragging = false, startX, startY, origLeft, origTop;
+            header.addEventListener('mousedown', function(e) {{
+                if (e.target.tagName === 'A' || e.target.tagName === 'BUTTON') return;
+                dragging = true;
+                const r = panel.getBoundingClientRect();
+                startX = e.clientX; startY = e.clientY;
+                origLeft = r.left; origTop = r.top;
+                document.body.style.userSelect = 'none';
+            }});
+            document.addEventListener('mousemove', function(e) {{
+                if (!dragging) return;
+                panel.style.left = (origLeft + e.clientX - startX) + 'px';
+                panel.style.top = (origTop + e.clientY - startY) + 'px';
+                panel.style.right = 'auto';
+                panel.style.bottom = 'auto';
+            }});
+            document.addEventListener('mouseup', function() {{
+                dragging = false;
+                document.body.style.userSelect = '';
+            }});
+        }})();
 
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', function() {{

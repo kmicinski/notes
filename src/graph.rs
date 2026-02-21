@@ -4,15 +4,16 @@
 //! and references, as well as the web-based D3.js visualization.
 
 use crate::auth::is_logged_in;
-use crate::models::{GraphEdge, GraphNode, GraphQuery, GraphStats, KnowledgeGraph, Note, NoteType};
-use crate::notes::{extract_references, html_escape};
+use crate::graph_index;
+use crate::models::{GraphEdge, GraphNode, GraphQuery, GraphStats, KnowledgeGraph};
+use crate::notes::html_escape;
 use crate::templates::base_html;
 use axum::{
     extract::{Query, State},
     response::{Html, IntoResponse, Response},
 };
 use axum_extra::extract::CookieJar;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
@@ -23,26 +24,18 @@ use crate::AppState;
 // Graph Building
 // ============================================================================
 
-pub fn build_knowledge_graph(notes: &[Note], query: &GraphQuery) -> KnowledgeGraph {
-    let notes_map: HashMap<String, &Note> = notes.iter().map(|n| (n.key.clone(), n)).collect();
+pub fn build_knowledge_graph(query: &GraphQuery, db: &sled::Db) -> KnowledgeGraph {
+    let indexed_nodes = graph_index::load_all_nodes(db).unwrap_or_default();
+    let indexed_edges = graph_index::load_all_edges(db).unwrap_or_default();
 
-    // Build raw edges with counts
+    // Build raw edge maps
     let mut edge_counts: HashMap<(String, String), usize> = HashMap::new();
-    for note in notes {
-        let refs = extract_references(&note.full_file_content);
-        for r in refs {
-            if notes_map.contains_key(&r) {
-                *edge_counts.entry((note.key.clone(), r)).or_insert(0) += 1;
-            }
-        }
-        // Also count parent relationships
-        if let Some(ref parent) = note.parent_key {
-            if notes_map.contains_key(parent) {
-                *edge_counts
-                    .entry((note.key.clone(), parent.clone()))
-                    .or_insert(0) += 1;
-            }
-        }
+    let mut edge_types: HashMap<(String, String), String> = HashMap::new();
+
+    for e in &indexed_edges {
+        let key = (e.source.clone(), e.target.clone());
+        *edge_counts.entry(key.clone()).or_insert(0) += e.weight as usize;
+        edge_types.entry(key).or_insert_with(|| e.edge_type.clone());
     }
 
     // Calculate degrees
@@ -65,37 +58,30 @@ pub fn build_knowledge_graph(notes: &[Note], query: &GraphQuery) -> KnowledgeGra
     let reachable: HashSet<String> = if let Some(ref center) = query.center {
         find_reachable(&edge_counts, center, query.depth)
     } else {
-        notes.iter().map(|n| n.key.clone()).collect()
+        indexed_nodes.keys().cloned().collect()
     };
 
     // Build nodes with filtering
     let now = Utc::now();
     let mut graph_nodes = Vec::new();
 
-    for note in notes {
-        // Apply filters
-        if !reachable.contains(&note.key) && !path_nodes.contains(&note.key) {
+    for (key, node) in &indexed_nodes {
+        if !reachable.contains(key) && !path_nodes.contains(key) {
             continue;
         }
 
-        let node_type = match note.note_type {
-            NoteType::Paper(_) => "paper",
-            NoteType::Note => "note",
-        };
-
         if let Some(ref tf) = query.type_filter {
-            if node_type != tf {
+            if node.node_type != *tf {
                 continue;
             }
         }
 
-        let time_total: u32 = note.time_entries.iter().map(|e| e.minutes).sum();
-        if query.has_time && time_total == 0 {
+        if query.has_time && node.time_total == 0 {
             continue;
         }
 
-        let indeg = *in_degree.get(&note.key).unwrap_or(&0);
-        let outdeg = *out_degree.get(&note.key).unwrap_or(&0);
+        let indeg = *in_degree.get(key).unwrap_or(&0);
+        let outdeg = *out_degree.get(key).unwrap_or(&0);
         let total_deg = indeg + outdeg;
 
         if let Some(min) = query.min_links {
@@ -115,37 +101,32 @@ pub fn build_knowledge_graph(notes: &[Note], query: &GraphQuery) -> KnowledgeGra
             continue;
         }
 
-        // Category filter
-        let primary_cat = note
-            .time_entries
-            .iter()
-            .max_by_key(|e| e.minutes)
-            .map(|e| e.category.to_string());
-
         if let Some(ref cat_filter) = query.category_filter {
-            if primary_cat.as_deref() != Some(cat_filter) {
+            if node.primary_category.as_deref() != Some(cat_filter) {
                 continue;
             }
         }
 
-        // Recent filter
         if let Some(days) = query.recent_days {
             let cutoff = now - chrono::Duration::days(days);
-            if note.modified < cutoff {
-                continue;
+            if let Ok(modified) = DateTime::parse_from_rfc3339(&node.modified) {
+                if modified < cutoff {
+                    continue;
+                }
             }
         }
 
         graph_nodes.push(GraphNode {
-            id: note.key.clone(),
-            title: note.title.clone(),
-            node_type: node_type.to_string(),
-            date: note.date.map(|d| d.to_string()),
-            time_total,
-            primary_category: primary_cat,
+            id: key.clone(),
+            title: node.title.clone(),
+            node_type: node.node_type.clone(),
+            short_label: node.short_label.clone(),
+            date: node.date.clone(),
+            time_total: node.time_total,
+            primary_category: node.primary_category.clone(),
             in_degree: indeg,
             out_degree: outdeg,
-            parent: note.parent_key.clone(),
+            parent: node.parent_key.clone(),
         });
     }
 
@@ -155,10 +136,15 @@ pub fn build_knowledge_graph(notes: &[Note], query: &GraphQuery) -> KnowledgeGra
 
     for ((src, tgt), weight) in &edge_counts {
         if included.contains(src) && included.contains(tgt) {
+            let etype = edge_types
+                .get(&(src.clone(), tgt.clone()))
+                .cloned()
+                .unwrap_or_else(|| "crosslink".to_string());
             graph_edges.push(GraphEdge {
                 source: src.clone(),
                 target: tgt.clone(),
                 weight: *weight,
+                edge_type: etype,
             });
         }
     }
@@ -305,8 +291,7 @@ pub async fn graph_page(
     let logged_in = is_logged_in(&jar, &state.db);
     let query_str = params.q.as_deref().unwrap_or("");
     let query = GraphQuery::parse(query_str);
-    let notes = state.load_notes();
-    let graph = build_knowledge_graph(&notes, &query);
+    let graph = build_knowledge_graph(&query, &state.db);
 
     let graph_styles = r#"
         .graph-container {
@@ -397,6 +382,7 @@ pub async fn graph_page(
         svg { width: 100%; height: 100%; }
 
         .link { stroke: var(--border); stroke-opacity: 0.6; }
+        .link.citation { stroke-dasharray: 5,3; stroke: #b58900; stroke-opacity: 0.5; }
         .link.highlighted { stroke: var(--link); stroke-opacity: 1; stroke-width: 2px; }
 
         .node circle { cursor: pointer; stroke: var(--bg); stroke-width: 1.5px; }
@@ -463,6 +449,7 @@ pub async fn graph_page(
             <div class="legend">
                 <div class="legend-item"><div class="legend-dot note"></div>Note</div>
                 <div class="legend-item"><div class="legend-dot paper"></div>Paper</div>
+                <div class="legend-item"><svg width="20" height="10"><line x1="0" y1="5" x2="20" y2="5" stroke="#b58900" stroke-dasharray="3,2" stroke-width="1.5"/></svg>Citation</div>
             </div>
         </div>
 
@@ -511,7 +498,7 @@ pub async fn graph_page(
                 .selectAll('line')
                 .data(graphData.edges)
                 .join('line')
-                .attr('class', 'link')
+                .attr('class', d => 'link' + (d.edge_type === 'citation' ? ' citation' : ''))
                 .attr('stroke-width', d => Math.sqrt(d.weight) * 1.5);
 
             // Create node groups
@@ -651,8 +638,7 @@ pub async fn graph_api(
 ) -> Response {
     let query_str = params.q.as_deref().unwrap_or("");
     let query = GraphQuery::parse(query_str);
-    let notes = state.load_notes();
-    let graph = build_knowledge_graph(&notes, &query);
+    let graph = build_knowledge_graph(&query, &state.db);
 
     (
         [("content-type", "application/json")],
