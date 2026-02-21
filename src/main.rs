@@ -42,6 +42,7 @@ async fn main() {
         .route("/note/{key}/history/{commit}", get(handlers::view_note_history))
         // List routes
         .route("/papers", get(handlers::papers))
+        .route("/papers/find-pdfs", get(handlers::find_pdfs_page))
         .route("/time", get(handlers::time_tracking))
         // Graph routes
         .route("/graph", get(graph::graph_page))

@@ -1667,10 +1667,18 @@ pub fn render_viewer(
                     window.location.reload();
                 }} else {{
                     const err = await resp.text();
-                    if (status) status.textContent = 'Download failed: ' + err;
+                    if (status) status.innerHTML = '<div style="color:var(--red);">Download failed: ' + err + '</div>' +
+                        '<div class="smart-find-actions" style="margin-top:0.5rem;">' +
+                        '<button class="btn-accept" onclick="startSmartFind()">Try Again</button>' +
+                        '<button class="btn-cancel" onclick="cancelSmartFind()">Cancel</button>' +
+                        '</div>';
                 }}
             }} catch (e) {{
-                if (status) status.textContent = 'Error: ' + e.message;
+                if (status) status.innerHTML = '<div style="color:var(--red);">Error: ' + e.message + '</div>' +
+                    '<div class="smart-find-actions" style="margin-top:0.5rem;">' +
+                    '<button class="btn-accept" onclick="startSmartFind()">Try Again</button>' +
+                    '<button class="btn-cancel" onclick="cancelSmartFind()">Cancel</button>' +
+                    '</div>';
             }}
         }}
 
