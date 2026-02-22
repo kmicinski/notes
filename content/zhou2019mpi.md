@@ -10,6 +10,7 @@ bibtex: |
   	pages={1--10},
   	year={2019}
   }
+pdf: zhou2019mpi.pdf
 ---
 
 ## Summary
@@ -17,4 +18,3 @@ bibtex: |
 ## Key Contributions
 
 ## Notes
-

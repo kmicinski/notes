@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, RwLock};
 
 use chrono::{DateTime, Utc};
+use tokio::sync::RwLock as TokioRwLock;
 
 pub mod auth;
 pub mod citations;
@@ -18,6 +19,7 @@ pub mod graph_index;
 pub mod handlers;
 pub mod models;
 pub mod notes;
+pub mod shared;
 pub mod smart_add;
 pub mod templates;
 pub mod url_validator;
@@ -86,6 +88,7 @@ pub struct AppState {
     pub password_hash: Option<String>,
     pub login_rate_limit: Arc<Mutex<LoginRateLimit>>,
     pub notes_cache: Arc<RwLock<Option<Vec<models::Note>>>>,
+    pub shared_rooms: Arc<TokioRwLock<HashMap<String, shared::SharedRoom>>>,
 }
 
 impl AppState {
@@ -111,6 +114,7 @@ impl AppState {
             password_hash,
             login_rate_limit: Arc::new(Mutex::new(LoginRateLimit::new())),
             notes_cache: Arc::new(RwLock::new(None)),
+            shared_rooms: Arc::new(TokioRwLock::new(HashMap::new())),
         };
 
         // Reconcile knowledge graph index with notes on disk

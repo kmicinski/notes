@@ -104,7 +104,6 @@ pub fn render_editor(note: &Note, notes_map: &HashMap<String, Note>, _logged_in:
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         }}
 
         .back-link {{
@@ -143,7 +142,6 @@ pub fn render_editor(note: &Note, notes_map: &HashMap<String, Note>, _logged_in:
             display: flex;
             align-items: center;
             gap: 0.5rem;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             min-width: 120px;
         }}
         .editor-status.saving {{ color: #268bd2; }}
@@ -218,7 +216,7 @@ pub fn render_editor(note: &Note, notes_map: &HashMap<String, Note>, _logged_in:
             display: flex;
             align-items: baseline;
             gap: 0.15rem;
-            font-family: Georgia, 'Times New Roman', serif;
+            font-family: inherit;
             color: #93a1a1;
         }}
         .font-size-controls label {{
@@ -1880,6 +1878,7 @@ pub fn render_editor(note: &Note, notes_map: &HashMap<String, Note>, _logged_in:
 
             // Track changes for auto-save
             editor.onDidChangeModelContent(() => {{
+                if (window.sharedMode) return; // Shared mode: edits sync via WS
                 const currentContent = editor.getValue();
                 if (currentContent !== lastSavedContent) {{
                     hasUnsavedChanges = true;
@@ -1925,9 +1924,15 @@ pub fn render_editor(note: &Note, notes_map: &HashMap<String, Note>, _logged_in:
 
             // Focus editor
             editor.focus();
+
+            // Expose to window for shared mode overlay
+            window.editor = editor;
+            window.hasUnsavedChanges = hasUnsavedChanges;
         }});
 
+        window.scheduleAutoSave = scheduleAutoSave;
         function scheduleAutoSave() {{
+            if (window.sharedMode) return; // Shared mode: no disk auto-save
             if (autoSaveTimer) clearTimeout(autoSaveTimer);
             autoSaveTimer = setTimeout(() => {{
                 if (hasUnsavedChanges) {{
@@ -1944,7 +1949,10 @@ pub fn render_editor(note: &Note, notes_map: &HashMap<String, Note>, _logged_in:
             textEl.textContent = text;
         }}
 
+        window.saveNote = saveNote;
         async function saveNote(isAutoSave, shouldCommit) {{
+            if (window.sharedSaveHandler) {{ window.sharedSaveHandler(); return; }}
+            if (window.sharedMode) return;
             if (!editor) return;
 
             // If called with only one arg (explicit save button), always commit
@@ -2003,6 +2011,7 @@ pub fn render_editor(note: &Note, notes_map: &HashMap<String, Note>, _logged_in:
         // Warn before leaving with unsaved changes and save PDF state
         window.addEventListener('beforeunload', (e) => {{
             savePdfState();
+            if (window.sharedMode) return; // Shared mode: edits sync via WS
             if (hasUnsavedChanges) {{
                 e.preventDefault();
                 e.returnValue = '';

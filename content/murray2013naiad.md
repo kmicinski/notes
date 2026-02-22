@@ -10,6 +10,7 @@ bibtex: |
     pages={439--455},
     year={2013}
   }
+pdf: p439-murray.pdf
 ---
 
 ## Summary
@@ -18,3 +19,11 @@ bibtex: |
 
 ## Notes
 
+<!-- BEGIN AUTO-CITATIONS -->
+## References
+
+- [@169f18] Logic and lattices for distributed programming
+- [@74cff4] Sloavx: Scalable logarithmic alltoallv algorithm for hierarchical multicore systems
+- [@c25377] Pregel: a system for large-scale graph processing
+- [@dbf3fd] Dedalus: Datalog in time and space
+<!-- END AUTO-CITATIONS -->

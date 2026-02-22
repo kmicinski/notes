@@ -1,0 +1,5428 @@
+<!DOCTYPE HTML>
+
+<!--[if lt IE 7]><html class="html-page no-js lt-ie9 lt-ie8 lt-ie7"> <![endif]-->
+<!--[if IE 7]><html class="html-page no-js lt-ie9 lt-ie8"> <![endif]-->
+<!--[if IE 8]><html class="html-page no-js lt-ie9"> <![endif]-->
+<!--[if gt IE 8]><!-->
+<html class="html-page no-js" xmlns="http://www.w3.org/1999/xhtml" dir="ltr" lang="en-us" xml:lang="en-us" ><!--<![endif]-->
+
+
+
+
+
+
+
+
+                      
+
+
+<head>
+	
+
+
+
+
+
+
+                      
+
+<!--  Added for weibo metatags to  gtc page template -->
+
+<!--  End of weibo metatags to gtc page template -->
+
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="robots" content="NOODP,NOYDIR"> 
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+<meta name="keywords" content="Demos , Talks , Events">
+<meta name="description" content="A searchable database of content from GTCs and various other events.">
+
+<meta property="og:site_name" content="NVIDIA">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.nvidia.com/en-us/on-demand/">
+<meta property="og:title" content="NVIDIA On-Demand">
+<meta property="og:description" content="A searchable database of content from GTCs and various other events.">
+<meta name="nv-pub-date" content="2026-02-17T23:30:35.000Z">
+
+	<meta property="og:image" content="https://www.nvidia.com/content/dam/en-zz/Solutions/on-demand/NVOD-OG-TWITTER-1200x630.jpg">
+
+
+
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:site" content="@NVIDIA">
+<meta name="twitter:creator" content="@NVIDIA">
+<meta name="twitter:title" content="NVIDIA On-Demand">
+<meta name="twitter:url" content="https://www.nvidia.com/en-us/on-demand/">
+<meta name="twitter:description" content="A searchable database of content from GTCs and various other events.">
+
+	<meta name="twitter:image" content="https://www.nvidia.com/content/dam/en-zz/Solutions/on-demand/NVOD-OG-TWITTER-1200x630.jpg">
+
+
+
+	<meta property="fb:app_id" content="1679326302390196"/>
+
+
+	<meta property="products" content="On Demand">
+
+
+
+
+<link rel="canonical" href="https://www.nvidia.com/en-us/on-demand/">
+
+
+	<link rel="alternate" hreflang="pt-br" href="https://www.nvidia.com/pt-br/on-demand/">
+
+	<link rel="alternate" hreflang="es-mx" href="https://www.nvidia.com/es-la/on-demand/">
+
+	<link rel="alternate" hreflang="es-ar" href="https://www.nvidia.com/es-la/on-demand/">
+
+	<link rel="alternate" hreflang="ko-kr" href="https://www.nvidia.com/ko-kr/on-demand/">
+
+	<link rel="alternate" hreflang="en-us" href="https://www.nvidia.com/en-us/on-demand/">
+
+	<link rel="alternate" hreflang="ja-jp" href="https://www.nvidia.com/ja-jp/on-demand/">
+
+	<link rel="alternate" hreflang="zh-tw" href="https://www.nvidia.com/zh-tw/on-demand/">
+
+	<link rel="alternate" hreflang="es-co" href="https://www.nvidia.com/es-la/on-demand/">
+
+	<link rel="alternate" hreflang="es-cl" href="https://www.nvidia.com/es-la/on-demand/">
+
+	<link rel="alternate" hreflang="es-pe" href="https://www.nvidia.com/es-la/on-demand/">
+
+	<link rel="alternate" hreflang="en-ca" href="https://www.nvidia.com/en-us/on-demand/">
+
+	<link rel="alternate" hreflang="zh-cn" href="https://www.nvidia.cn/on-demand/">
+
+	<link rel="alternate" hreflang="en" href="https://www.nvidia.com/en-us/on-demand/">
+
+	<link rel="alternate" hreflang="x-default" href="https://www.nvidia.com/en-us/on-demand/">
+
+
+
+
+
+
+
+
+
+
+
+	<meta property="search_roles" content="developer">
+
+
+
+
+
+
+
+
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+<meta itemprop="image primaryImageOfPage" content="/content/dam/en-zz/Solutions/on-demand/nv-corp-kv-bb460_420-p@2x.jpg" />
+    
+
+
+
+
+
+
+                      
+
+
+
+
+
+
+
+
+
+	<script src="/etc.clientlibs/clientlibs/granite/jquery.min.cee8557e8779d371fe722bbcdd3b3eb7.js"></script>
+<script src="/etc.clientlibs/clientlibs/granite/utils.min.4a192b590a2c2926fb000264370c0588.js"></script>
+<script src="/etc.clientlibs/foundation/clientlibs/shared.min.e9d9a3990d7779c2e8e3361187f3d36b.js"></script>
+<script src="/etc/designs/nvidiaGDC/clientlibs_foundation.min.026a51fcf3ffe653efd9f26b54a56ad6.js"></script>
+
+	
+	
+	
+		
+		
+				
+		
+		
+		<script type="text/javascript" src="https://cdn.cookielaw.org/scripttemplates/otSDKStub.js" charset="UTF-8" data-domain-script="3e2b62ff-7ae7-4ac5-87c8-d5949ecafff5" data-document-language="true">
+		</script>
+		<script>
+			function OptanonWrapper() {	
+				var event = new Event('bannerLoaded');
+				window.dispatchEvent(event);
+			}
+		</script>
+		
+			<script type="text/javascript" src="https://images.nvidia.com/aem-dam/Solutions/ot-js/ot-custom.js"></script>
+		
+	
+	
+	
+		<script src="//assets.adobedtm.com/5d4962a43b79/96fada676f0e/launch-95431b44ee81.min.js" data-ot-ignore="true"></script>
+	
+
+
+     
+
+
+
+
+
+
+
+    
+
+<!-- condition test for the old breakpoints to load defaulted to new breakpoints  -->
+         
+	
+	
+		         
+			
+			
+				<link rel="stylesheet" href="/etc/designs/nvidiaGDC/clientlibs_global_v2.min.ba9d3b10e0654a2a8734a758547dfec3.css" type="text/css">
+
+			
+		
+	
+
+
+<!-- End of condition for the old breakpoints -->
+<link rel="stylesheet" href="/etc/designs/nvidiaGDC/clientlibs-deep-learning.min.1c9e4f354a94f48c150e253bc98adfbf.css" type="text/css">
+
+<link rel="stylesheet" href="/etc/designs/nvidiaGDC/clientlibs-locales.min.49234a64896bf33a5fa37485d66f0bb4.css" type="text/css">
+
+<!-- Condition for whether clientlibs v3 is included -->
+
+
+
+
+
+
+
+
+
+
+
+                      
+<!--  Added for weibo metatags to driver gtc page template -->
+
+
+
+
+
+<!--  End of weibo metatags to gtc page template -->
+<script type="text/javascript">
+var NVIDIAGDC = NVIDIAGDC || {};
+
+;(function ( nvidiaGDC ){
+  
+
+    nvidiaGDC.addProperty = function(obj, name, val){
+        if (!obj && !name){
+            return;
+        }
+        
+        nvidiaGDC[obj] = nvidiaGDC[obj] || {};
+        
+        if(typeof val != "undefined" && val != null){
+            if(!nvidiaGDC[obj].hasOwnProperty(name) || !nvidiaGDC[obj][name]){
+                nvidiaGDC[obj][name] = val;
+            }    
+        }
+    };
+    
+    nvidiaGDC.addProperty('nod', 'gattedMsg', 'To enjoy this content please login or join the free NVIDIA Developer Program');
+    nvidiaGDC.addProperty('nod', 'gattedfileMsg', 'To enjoy this content please login or join the free NVIDIA Developer Program');
+    nvidiaGDC.addProperty('nod', 'usergattedMsg', 'To enjoy this content join the free NVIDIA Developer Program');
+    nvidiaGDC.addProperty('nod', 'usergattedfileMsg', 'To enjoy this content join the free NVIDIA Developer Program');
+    nvidiaGDC.addProperty('nod', 'starfleetRedirect', 'https://www.nvidia.com/auth/?client_id=VjclBI-aX9TkJYWklBkyDI-gXTFrjY6yHz8I-OdQlP4');
+    nvidiaGDC.addProperty('nod', 'SearchLandigPage', 'https://www.nvidia.com/en-us/on-demand/search/');
+    nvidiaGDC.addProperty('nod', 'SessionDetailsPage', 'https://www.nvidia.com/en-us/on-demand/session/'); 
+    nvidiaGDC.addProperty('nod', 'srvcendpoint', 'https://api-prod.nvidia.com');
+    nvidiaGDC.addProperty('nod', 'PlaylistDetailsPage', 'https://www.nvidia.com/en-us/on-demand/playlist/');
+    nvidiaGDC.addProperty('nod', 'MyProfilePage', 'https://www.nvidia.com/en-us/on-demand/my-profile/');
+    nvidiaGDC.addProperty('nod', 'search', 'https://api-prod.nvidia.com/search/nvidia-search-library.js');
+    nvidiaGDC.addProperty('nod', 'searchsrvc', 'https://api-prod.nvidia.com/search/graphql');
+    nvidiaGDC.addProperty('nod', 'roles', 'developer');
+    nvidiaGDC.addProperty('Accounts', 'LoginGatePage', 'https://www.nvidia.com/en-us/account/login-gate/');
+    nvidiaGDC.addProperty('Accounts', 'LoginPage', 'https://www.nvidia.com/en-us/account/');
+    nvidiaGDC.addProperty('Accounts', 'accountsJarvisSrvcBase', 'https://accounts.nvgs.nvidia.com');
+    nvidiaGDC.addProperty('Accounts', 'accountsJarvisHeaderMagicValue', '');
+    nvidiaGDC.addProperty('Accounts', 'accountsJarvisHeaderCFGRefereID', 'Account Mini-Site');
+    nvidiaGDC.addProperty('apps', 'endpoint', 'https://api-prod.nvidia.com');
+    nvidiaGDC.addProperty('web', 'env', 'p-prod');
+    nvidiaGDC.addProperty('apps', 'searchjs', 'https://api-prod.nvidia.com/search/nvidia-search-page-widget.js');
+    nvidiaGDC.addProperty('apps', 'searchsrvc', 'https://api-prod.nvidia.com/search/graphql');
+    nvidiaGDC.addProperty('web', 'q1', '');
+    nvidiaGDC.addProperty('web', 'q2', '');
+    nvidiaGDC.addProperty('web', 'q3', '');
+    
+    nvidiaGDC.addProperty('nod', 'promoimg', '');
+    nvidiaGDC.addProperty('nod', 'promourl', '');
+   
+
+})(NVIDIAGDC);
+</script>
+
+<!-- condition test for the old breakpoints to load defaulted to new breakpoints  -->
+
+   
+   
+      <script src="/etc/designs/nvidiaGDC/clientlibs_preload_v2.min.3e98d42754c8dcebfa55b20b0e62d7b9.js"></script>
+
+   
+
+
+<!-- End of condition for the old breakpoints -->
+
+<!--[if (gte IE 6)&(lte IE 8)]>
+    
+<![endif]-->
+<!-- <noscript><link rel="stylesheet" href="[fallback css]" /></noscript> -->
+
+
+<script type="text/javascript">
+
+var nvidiaGDClogqueue = [];
+var nvidiaGDClog = function() {
+    nvidiaGDClogqueue.push(arguments)
+};
+
+;(function ( nvidiaGDC ){
+    
+    nvidiaGDC.SC = nvidiaGDC.SC || {};
+    nvidiaGDC.SC.vars = nvidiaGDC.SC.vars || {};
+    nvidiaGDC.SC.vars.pageTemplate = "/apps/nvidiaGDC/templates/nodPage".toLowerCase();
+    
+
+    var nvidiaGDCFunctionQueue = function(){
+                this.queue = [];
+            };
+            nvidiaGDCFunctionQueue.prototype.addToQueue = function(funcItem){
+                nvidiaGDClog("funcqueue/add");
+                nvidiaGDClog(funcItem);
+                this.queue.push(funcItem);
+            };
+            nvidiaGDCFunctionQueue.prototype.clearQueue = function(){
+                this.queue.length = 0;
+            };
+            nvidiaGDCFunctionQueue.prototype.executeQueue = function(){
+
+                var nQueueLength = this.queue.length;
+                var sTargetID,
+                    sMethodName,
+                    aParams,
+                    $targetElement,
+                    fMethod;
+
+                for (var i = 0; i < this.queue.length; i++) {
+                    try {
+                        var funcItem = this.queue[i];
+
+                        if (typeof funcItem === 'object') {
+                            nvidiaGDClog("funcqueue/object: " + funcItem['method']);
+                                sTargetID = funcItem['id'];
+                                sMethodName = funcItem['method'];
+                                aParams = funcItem['params'];
+                                $targetElement = $(document.getElementById(sTargetID));
+                                fMethod = $targetElement[sMethodName];
+
+                            fMethod.apply($targetElement, aParams);
+
+                        } else if (typeof funcItem === 'string' && nvidiaGDC.Func) {
+                            nvidiaGDClog("funcqueue/string: " + funcItem);
+                            console.log("funcqueue/string: " + funcItem);
+                            if (typeof nvidiaGDC.Func[funcItem] === 'function') {
+                                nvidiaGDC.Func[funcItem].call();
+                            }
+
+                        }
+                    } catch(err) {
+                        if (typeof console == "object") {
+                            nvidiaGDClog("Error running script - " + err + " (Has plugin been included?)");
+                            nvidiaGDClog({
+                                "sTargetID" : sTargetID,
+                                "sMethodName" : sMethodName,
+                                "aParams" : aParams,
+                                "$targetElement" : $targetElement,
+                                "fMethod" : fMethod
+                            });
+                        }
+                    }
+                }
+                this.clearQueue();
+            };
+
+            nvidiaGDC.funcQueue = nvidiaGDC.funcQueue || new nvidiaGDCFunctionQueue();
+     
+})(NVIDIAGDC);
+
+
+</script>
+
+
+<style>
+.rawHtml li {
+    list-style: none;
+ }
+.tabcomp .tabs>li {
+   list-style: none;
+ }
+
+ul {
+	padding-left: 12px;
+}
+
+@media screen and (min-width: 690px){
+	.cleanslate .gallery-wrapper .prev {
+	    margin: 0px 0px 0px -35px;
+	}
+	.cleanslate .gallery-wrapper .next {
+	 	margin: 0px -35px 0px 0px;
+	}
+}
+.heroBanner .slider-container .search-input-wrapper input{
+	display: block;
+}
+
+#myprofile,#myprofile-mob{
+	display: none;
+}
+
+.theme-nodpage .heroBanner .slider-container #slides1 .overflow {
+	overflow-x: visible;
+}
+
+.heroBanner .cleanslate .nvidia-on-demand .search-form-container {
+    margin: 7.5px 7.5px 7.5px 0px;
+}
+
+
+
+</style>
+    
+
+    
+
+    <title>NVIDIA On-Demand</title>
+    
+    
+    
+
+
+
+
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+<style>
+.navigation .global-nav .sub-brand-nav .brand-nav-left #sub-brand {
+ display :none;
+}
+
+.navigation .global-nav .sub-brand-nav .brand-nav-left #sub-brand .sub-brand-name span {
+ display :none;
+}
+
+.navigation .global-nav .sub-brand-nav .brand-nav-left #sub-brand + .sub-brand-item{
+    margin-left:0px;
+}
+
+.navigation .global-nav .nav-header-container .nav-tools-container .nav-header-list .nav-header-item #nod-login, .navigation .global-nav .nav-header-container .nav-tools-container .nav-header-list .nav-header-item #nod-logout {
+     background-color: #76b900;
+     color: #fff;
+}
+
+#nvidia-gallery-widget1 .featured-info .speakers {
+     visibility: hidden;
+}
+
+</style>
+</head>
+
+
+
+
+
+
+
+
+                      
+
+<body class="body-page theme-en-us theme-nodpage  v4_design base_v4" data-edit-mode>
+	
+	
+
+
+
+
+
+
+                      
+
+
+	<header id="main-header">
+		         
+		    
+			
+		        <div class="navigation">
+
+
+
+
+
+
+
+
+
+                      
+
+
+
+
+
+
+
+
+ 
+
+
+
+
+
+
+
+
+
+
+	
+
+
+
+
+
+
+
+
+
+	
+	
+
+
+
+
+
+
+
+	
+	
+		
+	
+
+
+
+	
+	
+		
+	
+
+
+
+
+	
+		
+	
+	
+
+
+
+
+<nav class="global-nav" id="navigationdc0f2c6c_a06b_4298_a6f8_c3da323ce5cf">
+
+	<div class="nav-header">
+		<div class="nav-header-container">
+			
+				<div class="brand-container">
+					<a class="brand-link pull-left" href="https://www.nvidia.com/en-us/" title='Artificial Intelligence Computing Leadership from NVIDIA' alt='Artificial Intelligence Computing Leadership from NVIDIA'> 
+						<svg enable-background="new 0 0 974.7 179.7" version="1.1" viewBox="0 0 974.7 179.7" xml:space="preserve" xmlns="http://www.w3.org/2000/svg" width="110" height="44">
+						<title>Artificial Intelligence Computing Leadership from NVIDIA</title>
+						 <path d="m962.1 144.1v-2.7h1.7c0.9 0 2.2 0.1 2.2 1.2s-0.7 1.5-1.8 1.5h-2.1m0 1.9h1.2l2.7 4.7h2.9l-3-4.9c1.5 0.1 2.7-1 2.8-2.5v-0.4c0-2.6-1.8-3.4-4.8-3.4h-4.3v11.2h2.5v-4.7m12.6-0.9c0-6.6-5.1-10.4-10.8-10.4s-10.8 3.8-10.8 10.4 5.1 10.4 10.8 10.4 10.8-3.8 10.8-10.4m-3.2 0c0.2 4.2-3.1 7.8-7.3 8h-0.3c-4.4 0.2-8.1-3.3-8.3-7.7s3.3-8.1 7.7-8.3 8.1 3.3 8.3 7.7c-0.1 0.1-0.1 0.2-0.1 0.3z"/><path d="m578.2 34v118h33.3v-118h-33.3zm-262-0.2v118.1h33.6v-91.7l26.2 0.1c8.6 0 14.6 2.1 18.7 6.5 5.3 5.6 7.4 14.7 7.4 31.2v53.9h32.6v-65.2c0-46.6-29.7-52.9-58.7-52.9h-59.8zm315.7 0.2v118h54c28.8 0 38.2-4.8 48.3-15.5 7.2-7.5 11.8-24.1 11.8-42.2 0-16.6-3.9-31.4-10.8-40.6-12.2-16.5-30-19.7-56.6-19.7h-46.7zm33 25.6h14.3c20.8 0 34.2 9.3 34.2 33.5s-13.4 33.6-34.2 33.6h-14.3v-67.1zm-134.7-25.6l-27.8 93.5-26.6-93.5h-36l38 118h48l38.4-118h-34zm231.4 118h33.3v-118h-33.3v118zm93.4-118l-46.5 117.9h32.8l7.4-20.9h55l7 20.8h35.7l-46.9-117.8h-44.5zm21.6 21.5l20.2 55.2h-41l20.8-55.2z"/><path fill="#76B900" d="m101.3 53.6v-16.2c1.6-0.1 3.2-0.2 4.8-0.2 44.4-1.4 73.5 38.2 73.5 38.2s-31.4 43.6-65.1 43.6c-4.5 0-8.9-0.7-13.1-2.1v-49.2c17.3 2.1 20.8 9.7 31.1 27l23.1-19.4s-16.9-22.1-45.3-22.1c-3-0.1-6 0.1-9 0.4m0-53.6v24.2l4.8-0.3c61.7-2.1 102 50.6 102 50.6s-46.2 56.2-94.3 56.2c-4.2 0-8.3-0.4-12.4-1.1v15c3.4 0.4 6.9 0.7 10.3 0.7 44.8 0 77.2-22.9 108.6-49.9 5.2 4.2 26.5 14.3 30.9 18.7-29.8 25-99.3 45.1-138.7 45.1-3.8 0-7.4-0.2-11-0.6v21.1h170.2v-179.7h-170.4zm0 116.9v12.8c-41.4-7.4-52.9-50.5-52.9-50.5s19.9-22 52.9-25.6v14h-0.1c-17.3-2.1-30.9 14.1-30.9 14.1s7.7 27.3 31 35.2m-73.5-39.5s24.5-36.2 73.6-40v-13.2c-54.4 4.4-101.4 50.4-101.4 50.4s26.6 77 101.3 84v-14c-54.8-6.8-73.5-67.2-73.5-67.2z"/></svg>
+					</a>
+				</div>
+			
+			
+			<div class="nav-tools-container nav-tools-desktop">
+				<ul class="nav-header-list">
+					<div class="searchoverlay"></div>
+					 <li class="nav-header-item hide">
+					 	<div class="search-abort-container hide">
+							<a href="#" class="search-abort"> 
+								<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18"><defs><style>.cls-search {fill: #bdbdbd;fill-rule: evenodd;}</style></defs><path id="Close.svg_copy" data-name="Close.svg copy" class="cls-search" d="M1769,15.819L1767.18,14,1760,21.18,1752.82,14,1751,15.819,1758.18,23,1751,30.181,1752.82,32l7.18-7.181L1767.18,32l1.82-1.819L1761.82,23Z" transform="translate(-1751 -14)"></path></svg>
+							</a>
+						</div>
+					</li>					
+					<li class="nav-header-item hide">
+						<a class="" href="#">
+							<svg class="nav-search-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="none" d="M0 0h24v24H0V0z"/><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+						</a>
+						
+						<div class="search-main-section">
+                            <div class="search-section">
+                                         <div class="search_white"> 		
+											<div class="search-outter-container hide-wid-0">
+												<div class="search-inner-container">													
+														<!-- Updated code for forming cx value to search input hidden parameter -->	
+																											
+														<form id="searchform" action="https://www.nvidia.com/en-us/search/" class="search-form ">
+															
+															
+																<input data-search-box-input="" class="search-box-input placeholder" type="text" id="search-terms" name="q" value="" placeholder="Search NVIDIA" autocomplete="off">
+															
+															<input type="hidden" name="searchPath" id="search-path">
+															
+														</form>													
+													<div class="search-icon-container">
+														<!-- <span class="search-icon"> </span> -->
+														<svg class="nav-search-form-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="none" d="M0 0h24v24H0V0z"/><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+													</div>
+												</div>
+										</div>
+									</div>
+                        		</div>
+						</div>
+						
+						
+						
+					</li>
+					
+					<li class="nav-header-item hide">
+						<a id="nv-login" class="nav-profile-link" href="https://www.nvidia.com/en-us/account/">
+							<svg class="nvprofileicon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><title>My Account</title><path fill="none" d="M0 0h24v24H0V0z"/><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zM7.07 18.28c.43-.9 3.05-1.78 4.93-1.78s4.51.88 4.93 1.78C15.57 19.36 13.86 20 12 20s-3.57-.64-4.93-1.72zm11.29-1.45c-1.43-1.74-4.9-2.33-6.36-2.33s-4.93.59-6.36 2.33C4.62 15.49 4 13.82 4 12c0-4.41 3.59-8 8-8s8 3.59 8 8c0 1.82-.62 3.49-1.64 4.83zM12 6c-1.94 0-3.5 1.56-3.5 3.5S10.06 13 12 13s3.5-1.56 3.5-3.5S13.94 6 12 6zm0 5c-.83 0-1.5-.67-1.5-1.5S11.17 8 12 8s1.5.67 1.5 1.5S12.83 11 12 11z"/></svg>
+							<!-- <svg version="1.1" id="Capa_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
+						 		width="20" height="20" viewBox="0 0 510 510" style="enable-background:new 0 0 510 510;" xml:space="preserve"><title>My Account</title><path fill="#ccc" d="M255,0C114.75,0,0,114.75,0,255s114.75,255,255,255s255-114.75,255-255S395.25,0,255,0z M255,76.5
+								c43.35,0,76.5,33.15,76.5,76.5s-33.15,76.5-76.5,76.5c-43.35,0-76.5-33.15-76.5-76.5S211.65,76.5,255,76.5z M255,438.6
+								c-63.75,0-119.85-33.149-153-81.6c0-51,102-79.05,153-79.05S408,306,408,357C374.85,405.45,318.75,438.6,255,438.6z"/></svg> -->
+						</a>
+					</li>
+					<li class="nav-header-item login-button">
+						<a id="nod-login" style="display:none" href="#"><span>Log In</span></a>
+						<a id="nod-logout" style="display:none" href="#"><span>Log Out</span></a>
+					</li>
+								
+					<div class="floatright">
+												
+							<div class="navglobicon">
+	                            <ul>                                
+	                                <li>
+	                                    <a href="#" id="nv-language" class="nav-langglobe-icon">
+											<svg  class="nvlanguageicon"  xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><defs><style>.a{fill:none;}.b{fill:#666;}</style></defs><path class="a" d="M0,0H24V24H0Z"/><path class="b" d="M11.99,2A10,10,0,1,0,22,12,10,10,0,0,0,11.99,2Zm6.93,6H15.97a15.649,15.649,0,0,0-1.38-3.56A8.03,8.03,0,0,1,18.92,8ZM12,4.04A14.087,14.087,0,0,1,13.91,8H10.09A14.087,14.087,0,0,1,12,4.04ZM4.26,14a7.822,7.822,0,0,1,0-4H7.64a16.515,16.515,0,0,0-.14,2,16.515,16.515,0,0,0,.14,2Zm.82,2H8.03a15.649,15.649,0,0,0,1.38,3.56A7.987,7.987,0,0,1,5.08,16ZM8.03,8H5.08A7.987,7.987,0,0,1,9.41,4.44,15.649,15.649,0,0,0,8.03,8ZM12,19.96A14.087,14.087,0,0,1,10.09,16h3.82A14.087,14.087,0,0,1,12,19.96ZM14.34,14H9.66a14.713,14.713,0,0,1-.16-2,14.585,14.585,0,0,1,.16-2h4.68a14.585,14.585,0,0,1,.16,2A14.713,14.713,0,0,1,14.34,14Zm.25,5.56A15.649,15.649,0,0,0,15.97,16h2.95A8.03,8.03,0,0,1,14.59,19.56ZM16.36,14a16.515,16.515,0,0,0,.14-2,16.515,16.515,0,0,0-.14-2h3.38a7.822,7.822,0,0,1,0,4Z"/></svg>
+											<span>EN</span>
+										</a>
+	                                    <ul>
+	                                    	
+				                                
+				                                    
+				                                    	<li><a href="https://www.nvidia.com/en-us/on-demand/">EN</a></li>									
+				                        			
+				                                    	<li><a href="https://www.nvidia.cn/on-demand/">简中</a></li>									
+				                        			
+				                                    	<li><a href="https://www.nvidia.com/ja-jp/on-demand/">日本語</a></li>									
+				                        			
+				                                    	<li><a href="https://www.nvidia.com/ko-kr/on-demand/">한국어</a></li>									
+				                        			
+				                                    	<li><a href="https://www.nvidia.com/zh-tw/on-demand/">繁中</a></li>									
+				                        			
+				                                
+				                                				
+			                        		
+	                                    </ul>
+	                                </li>
+	                            </ul>
+	                        </div>
+						
+					</div>									
+					
+					
+				</ul>
+			</div>
+		</div>
+		<div id="unibrow-container" class="hide-unibrow"></div>
+	</div>
+	
+	<div class="nav-divider"></div>
+	
+	
+		<div class="sub-brand-nav">
+			<div class="sub-brand-nav-container">
+				<div class="brand-nav-left fade  ">
+					
+						
+						
+							
+							<div id="sub-brand" class="align-self-end">
+								<a class="sub-brand-name " href="https://www.nvidia.com/en-us/on-demand/"> 
+							
+								
+									
+									
+										
+										<span class="sub-brand-label ">NVIDIA On-Demand</span>
+									
+									
+								
+							
+								</a>
+							</div>
+							
+							
+							
+								
+									<div class="sub-brand-item"  >
+										
+											
+											
+												<a href="https://www.nvidia.com/en-us/on-demand/featured-playlist/" target="_self" class="sub-brand-link">Featured Playlists</a>
+											
+										
+									</div>
+								
+									<div class="sub-brand-item"  id="myprofile"  >
+										
+											
+											
+												<a href="https://www.nvidia.com/en-us/on-demand/my-profile/" target="_self" class="sub-brand-link">My Channel</a>
+											
+										
+									</div>
+								
+									<div class="sub-brand-item"  id="faq"  >
+										
+											
+											
+												<a href="https://www.nvidia.com/en-us/on-demand/faq/" target="_self" class="sub-brand-link">FAQ</a>
+											
+										
+									</div>
+								
+									<div class="sub-brand-item"  id="advancesearch"  >
+										
+											
+											
+												<a href="https://www.nvidia.com/en-us/on-demand/search/?q=-&sort=relevance&headerText=All%20Sessions&expandFilter=true" target="_self" class="sub-brand-link">Advanced Search</a>
+											
+										
+									</div>
+								
+							
+							
+								<div class="sub-brand-item hide">
+									<span class="sub-brand-link">
+										<div class="more-dropdown"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 21.4 5"><path  d="M12613.6,1800.5a2.654,2.654,0,1,0-2.6,2.5A2.575,2.575,0,0,0,12613.6,1800.5Zm2.7,0a2.708,2.708,0,1,0,2.7-2.5A2.6,2.6,0,0,0,12616.3,1800.5Zm8.1,0a2.654,2.654,0,1,0,2.6-2.5A2.575,2.575,0,0,0,12624.4,1800.5Z" transform="translate(-12608.3 -1798)"/></svg></div>
+									</span>
+									<ul class="dropdown-menu bullet ">
+										
+											<li class="more-element hide">
+													
+													
+														<a href="https://www.nvidia.com/en-us/on-demand/featured-playlist/">Featured Playlists</a>
+													
+												</li>
+										
+											<li class="more-element hide">
+													
+													
+														<a href="https://www.nvidia.com/en-us/on-demand/my-profile/">My Channel</a>
+													
+												</li>
+										
+											<li class="more-element hide">
+													
+													
+														<a href="https://www.nvidia.com/en-us/on-demand/faq/">FAQ</a>
+													
+												</li>
+										
+											<li class="more-element hide">
+													
+													
+														<a href="https://www.nvidia.com/en-us/on-demand/search/?q=-&sort=relevance&headerText=All%20Sessions&expandFilter=true">Advanced Search</a>
+													
+												</li>
+										
+										<span class="nvArrow"></span>
+									</ul>
+								</div>
+							
+						
+					
+				</div>
+				
+				
+				<div class="brand-nav-right bn-hide-mobile
+		                
+		                     
+		                ">
+		                
+		                
+                    		
+                    	
+						
+						
+                    		
+							
+							<!-- <a href="#" class="ic-menu" ></a> -->
+		
+							<a href="#" class="ic-menu unsubset" title="Menu"> 
+							<svg id="menu-icon" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" viewBox="0 0 24 24">
+		                            <line id="menu-line-top" class="menu-line"
+										x1="1" y1="6" x2="23" y2="6" stroke-width="2.4"
+										vector-effect="non-scaling-stroke" />
+		                            <line id="menu-line-mid" class="menu-line"
+										x1="1" y1="12" x2="23" y2="12" stroke-width="2.4"
+										vector-effect="non-scaling-stroke" />
+		                            <line id="menu-line-bot" class="menu-line"
+										x1="1" y1="18" x2="23" y2="18" stroke-width="2.4"
+										vector-effect="non-scaling-stroke" />
+		                            </svg>
+							</a>
+						</div>
+				
+					
+					
+						<div class="brand-nav-right bn-show-mobile
+		                
+		                     
+		                ">
+		                
+                    		
+                    		
+                    		
+                    		
+							
+							
+							<!-- <a href="#" class="ic-menu" ></a> -->
+		
+							<a href="#" class="ic-menu unsubset" title="Menu"> 
+							<svg id="menu-icon" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" viewBox="0 0 24 24">
+		                            <line id="menu-line-top" class="menu-line"
+										x1="1" y1="6" x2="23" y2="6" stroke-width="2.4"
+										vector-effect="non-scaling-stroke" />
+		                            <line id="menu-line-mid" class="menu-line"
+										x1="1" y1="12" x2="23" y2="12" stroke-width="2.4"
+										vector-effect="non-scaling-stroke" />
+		                            <line id="menu-line-bot" class="menu-line"
+										x1="1" y1="18" x2="23" y2="18" stroke-width="2.4"
+										vector-effect="non-scaling-stroke" />
+		                            </svg>
+							</a>
+						</div>
+					
+				
+				
+
+			</div>
+			<div style="opacity: 0; " class="lightbox-background tablet-only hide"></div>
+			<div class="mobile-menu-container background-color-black fade" style="display: none; opacity: 1; overflow: hidden; transition: all 0.1s;">
+				
+					
+					
+						<div id="screen-bg" class="screen-background"
+							style="display: block; opacity: 1;"></div>
+						<ul class="mobile-menu">
+							
+								
+								
+									
+									
+										<li><a href="https://www.nvidia.com/en-us/on-demand/featured-playlist/" target="_self" class="brand-nav-link">Featured Playlists</a></li>
+									
+								
+							
+								
+								
+									
+									
+										<li><a id="myprofile-mob" href="https://www.nvidia.com/en-us/on-demand/my-profile/" target="_self" class="brand-nav-link">My Channel</a></li>
+									
+								
+							
+								
+								
+									
+									
+										<li><a id="faq-mob" href="https://www.nvidia.com/en-us/on-demand/faq/" target="_self" class="brand-nav-link">FAQ</a></li>
+									
+								
+							
+								
+								
+									
+									
+										<li><a id="advancesearch-mob" href="https://www.nvidia.com/en-us/on-demand/search/?q=-&sort=relevance&headerText=All%20Sessions&expandFilter=true" target="_self" class="brand-nav-link">Advanced Search</a></li>
+									
+								
+							
+						</ul>
+					
+				
+			</div>
+		</div>
+		
+		
+			
+		
+	
+  <div class="cmp-verticalnavigation__toc-mobile hide">
+    <div>
+      <div class="cmp-verticalnavigation__toc-mobile-active-item">
+        <span class="active-text"></span>
+        <span class="active-arrow"></span>
+      </div>
+    </div>
+  </div>
+	
+<script>
+	var searchPath = document.getElementById("search-path");
+	searchPath.value = window.location.pathname;
+	NVIDIAGDC.funcQueue.addToQueue({ 
+	    id : "navigationdc0f2c6c_a06b_4298_a6f8_c3da323ce5cf",
+	    method : "navigation",
+	    params : [{
+	        globalSite:false,
+			breadCrumbAdded: false,
+			enableSearchLibrary: false,
+			searchOptions: {
+				destination: "https://www.nvidia.com/en-us/search/",
+				apiUrl: "https://api-prod.nvidia.com/search/graphql",
+				triggerId: 'nvidia-search-box-link',
+				referenceId: 'nvidia-search-box-link'
+			  }
+	        }]
+	});
+	
+	NVIDIAGDC.isBrandPage = true;
+	NVIDIAGDC.isBrandPage2 = false;
+	window.setHeaderObservers();
+</script>
+
+
+
+
+</nav>
+</div>
+
+		    
+		
+	</header>
+
+
+<!--[if lt IE 9]>
+<div id="ie_compat_warning" class="site-warning"><span class="message">You are viewing this site using an out of date version of Internet Explorer. Some functionality may not work as required.</span><span class="remove"></span></div>
+<![endif]-->
+	
+
+
+
+
+
+
+
+                      
+
+<noscript>
+       <div class="no-js-warning">This site requires Javascript in order to view all its content. Please enable Javascript in order to access all the functionality of this web site. Here are the <a href="http://www.enable-javascript.com/" target="_blank">instructions how to enable JavaScript in your web browser.</a></div>
+</noscript>
+
+
+	<script src="/assets/nvod/nvod-login.js"></script>
+
+
+	<script src="https://api-prod.nvidia.com/search/nvidia-search-library.js"></script>
+  
+<div  id="page-content" >
+	<div class="content_par parsys"><div class="heroBanner section">
+
+
+
+
+
+
+
+
+
+                      
+
+
+
+
+
+
+
+<!-- articleID for each slide - see AD-552  -->
+
+	
+		
+		
+	
+
+
+
+
+
+
+	
+
+
+
+	
+
+
+
+
+   
+   
+     
+   
+
+
+<!-- Hero Banner -->
+<div 
+	class="slider-container five-items m-t-0 m-b-0 lap-m-t-0 lap-m-b-0 tab-m-t-0 tab-m-b-0  mob-m-t-0 mob-m-b-0 background-none "
+	id="herobanner_copy7e1e684f_15b7_4675_bf83_c1c853853b16">
+	
+	<div id="slides1"
+		 class="singleSlideBanner">
+		<div class="overflow"
+			>
+			<div class="inner">
+				
+					
+						
+
+                        
+   							
+   							
+     							
+   							
+						
+
+						<article data-bcgCustomColor="" data-bcgImageTablet="/content/dam/graphics/nvidia-key-visual-bm-m460-t%402x.jpg" 
+							data-bcgImageLaptop="/content/dam/graphics/nvidia-key-visual-bm-m460-l%402x.jpg"
+							data-bcgImageMobile="/content/dam/graphics/nvidia-key-visual-bm-uf1920-p.jpg"
+							data-bcgImagePC="/content/dam/graphics/nvidia-key-visual-bm-m460-d%402x.jpg"
+							data-time="7"
+                        	class="background-lightgray-1 ht-580  image lazyload ">
+							 			
+							
+								
+								
+									
+
+
+
+
+
+
+                      
+
+	
+	
+			<div class="info text-on-left singlecolinfobar  ">
+				
+					
+					
+						<div
+							class="content-table v-middle v-mob-top wid-50">
+							<div class="content-cell">
+								<div class="column">
+									<div class="column-1-1 parsys"><div class="textcomponentenhanced section">
+
+
+
+
+
+
+
+                      
+
+
+
+
+
+    <div id="textcomponentenhancec7e6f253_8894_4dcb_b92f_026f3bc6fe66">
+
+
+   
+   
+     
+   
+
+
+   
+   
+     
+   
+
+
+   
+   
+     
+   
+
+
+	<div  class="general-container-text small-12 mob-p-content medium-12 tab-p-content large-12 lap-p-content large-12 d-p-content  p-t-0 p-b-0  lap-p-t-0 lap-p-b-0  tab-p-t-0 tab-p-b-0  mob-p-t-0 mob-p-b-0 ">
+
+		
+		
+    	
+		
+    	
+
+        <div class="text-left lap-text-left tab-text-left mob-text-left">
+			
+
+                
+                
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+                
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+
+	            
+	            <h1  class="title color-white   h1 uppercase" >NVIDIA On-Demand</h1>
+	            
+            
+            
+            
+
+                 
+                
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+                
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+
+            	<div  class="description color-white no-space intro-copy-text"><p>Watch the latest videos on AI breakthroughs and real-world applications—free and on your schedule.</p> 
+<p>
+ <svg xmlns="http://www.w3.org/2000/svg" width="18" height="20" viewbox="0 0 18 20" fill="none">
+  <path d="M5.625 5V7.5H11.875V5C11.875 3.28125 10.4688 1.875 8.75 1.875C6.99219 1.875 5.625 3.28125 5.625 5ZM3.75 7.5V5C3.75 2.26562 5.97656 0 8.75 0C11.4844 0 13.75 2.26562 13.75 5V7.5H15.625H17.5V9.375V18.125V20H15.625H1.875H0V18.125V9.375V7.5H1.875H3.75ZM1.875 18.125H15.625V9.375H1.875V18.125Z" fill="white"></path> 
+ </svg><span class="p--small" style="padding-left: 5.0px;">Some content may require membership in our free <a href="https://developer.nvidia.com/developer-program" target="_blank" rel="noopener noreferrer">NVIDIA Developer Program</a>.</span></p></div>
+            
+            <div class="text-button">
+				<div class="textCmpEnhancedButton-par parsys">
+</div>
+
+			</div>
+        </div>
+    </div>
+</div>
+</div>
+<div class="rawHtml section">
+
+
+
+
+
+
+
+
+
+
+                      
+
+
+
+
+
+<div class=' p-t-15 p-b-15 lap-p-t-15 lap-p-b-15 mob-p-t-15 mob-p-b-15 tab-p-t-15 tab-p-b-15' >
+	
+
+
+
+
+
+
+
+
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+<div id="nvidia-search-input-widget"></div> 
+<script>
+        NvidiaSearchLibrary.SearchInputWidget.mount({
+        site: 'https://www.nvidia.com',
+       language: $('html').attr('lang'),
+        queryParam: 'q',
+        apiUrl: NVIDIAGDC.apps.searchsrvc,
+         destination: NVIDIAGDC.nod.SearchLandigPage,
+          defaultSort:'relevance',
+         contextKeywords: '',
+        });
+      </script> 
+<style>
+.p--small {
+  font-size: 15px;
+}
+</style>
+	    
+</div> </div>
+<div class="button parbase section">
+
+
+
+
+
+
+
+                      
+
+
+
+	
+		<div class="text-left lap-text-left tab-text-left mob-text-left p-t-15 p-b-15 lap-p-t-15 lap-p-b-15 tab-p-t-0 tab-p-b-0 mob-p-t-0 mob-p-b-0 mobile-align ">
+			<div class="noicon  "  >
+				<a href='https://www.nvidia.com/en-us/on-demand/search/?q=-&sort=relevance&headerText=All%20Sessions&expandFilter=true' data-analytics="txt-manual:" data-title="" data-href='https://www.nvidia.com/en-us/on-demand/search/?q=-&sort=relevance&headerText=All%20Sessions&expandFilter=true' target="_self" class='  link-txt txt-manual brand-green regular-btn ' onclick='NVIDIAGDC.button.click(this, $(this).data(&quot;href&quot;),true, function() { ;return NVIDIAGDC.button.callbacks(this); }); return false;'><div class='btn'><span><svg xmlns="http://www.w3.org/2000/svg" width="154" height="20" viewBox="0 0 154 20" fill="none"> <path d="M0.59825 16L4.91825 4.8H7.01425L11.3503 16H8.82225L8.02225 13.744H3.78225L2.98225 16H0.59825ZM4.47025 11.824H7.33425L5.91025 7.808L4.47025 11.824ZM15.5949 16.224C14.9335 16.224 14.3415 16.0693 13.8189 15.76C13.2962 15.44 12.8855 14.9707 12.5869 14.352C12.2989 13.7333 12.1549 12.9813 12.1549 12.096V11.616C12.1549 10.7307 12.2989 9.984 12.5869 9.376C12.8855 8.768 13.2962 8.30933 13.8189 8C14.3415 7.68 14.9335 7.52 15.5949 7.52H15.7069C16.6989 7.52 17.4722 7.85067 18.0269 8.512V4.32H20.2669V16H18.3149V14.976C17.7495 15.808 16.8802 16.224 15.7069 16.224H15.5949ZM16.1869 14.304H16.3149C16.6029 14.304 16.8802 14.2347 17.1469 14.096C17.4135 13.9467 17.6322 13.712 17.8029 13.392C17.9735 13.072 18.0589 12.6507 18.0589 12.128V11.616C18.0589 11.0933 17.9682 10.672 17.7869 10.352C17.6162 10.032 17.3975 9.80267 17.1309 9.664C16.8642 9.51467 16.5922 9.44 16.3149 9.44H16.1869C15.6749 9.44 15.2482 9.61067 14.9069 9.952C14.5655 10.2933 14.3949 10.8427 14.3949 11.6V12.128C14.3949 12.8853 14.5655 13.44 14.9069 13.792C15.2482 14.1333 15.6749 14.304 16.1869 14.304ZM24.5925 16L21.4885 7.744H23.8565L25.6325 13.264L27.4565 7.744H29.6805L26.5765 16H24.5925ZM32.799 16.224C31.9137 16.224 31.2257 16.0053 30.735 15.568C30.255 15.1307 30.015 14.5173 30.015 13.728C30.015 13.0027 30.2337 12.4213 30.671 11.984C31.119 11.5467 31.7643 11.2747 32.607 11.168L35.199 10.832V10.768C35.199 9.79733 34.7563 9.312 33.871 9.312H33.711C33.3163 9.312 32.9857 9.38667 32.719 9.536C32.4523 9.67467 32.2283 9.92533 32.047 10.288L30.335 9.392C30.5803 8.82667 30.991 8.37333 31.567 8.032C32.1537 7.69067 32.863 7.52 33.695 7.52H33.935C36.271 7.52 37.439 8.61333 37.439 10.8V16H35.487V14.96C35.231 15.3547 34.8737 15.664 34.415 15.888C33.967 16.112 33.455 16.224 32.879 16.224H32.799ZM35.199 12.336L33.487 12.576C32.9963 12.6507 32.655 12.7573 32.463 12.896C32.271 13.024 32.175 13.2373 32.175 13.536C32.175 13.824 32.2817 14.0533 32.495 14.224C32.719 14.384 33.0123 14.464 33.375 14.464H33.503C34.0363 14.464 34.4523 14.3093 34.751 14C35.0497 13.6907 35.199 13.2693 35.199 12.736V12.336ZM39.4306 16V7.744H41.3826V8.768C41.66 8.37333 42.012 8.06933 42.4386 7.856C42.876 7.632 43.3613 7.52 43.8946 7.52H44.0546C44.9933 7.52 45.7346 7.81333 46.2786 8.4C46.8333 8.976 47.1106 9.80267 47.1106 10.88V16H44.8706V11.184C44.8706 10.6293 44.7533 10.2027 44.5186 9.904C44.2946 9.59467 43.9373 9.44 43.4466 9.44H43.3186C43.052 9.44 42.7906 9.50933 42.5346 9.648C42.2893 9.78667 42.0813 10 41.9106 10.288C41.7506 10.576 41.6706 10.9547 41.6706 11.424V16H39.4306ZM52.7029 16.224C51.4655 16.224 50.4789 15.872 49.7429 15.168C49.0175 14.464 48.6549 13.4453 48.6549 12.112V11.632C48.6549 10.7573 48.8202 10.016 49.1509 9.408C49.4922 8.78933 49.9669 8.32 50.5749 8C51.1829 7.68 51.8922 7.52 52.7029 7.52H52.8309C53.6309 7.52 54.3029 7.712 54.8469 8.096C55.4015 8.48 55.7962 8.98667 56.0309 9.616L54.2229 10.384C54.0949 10.1067 53.9135 9.88267 53.6789 9.712C53.4549 9.53067 53.1722 9.44 52.8309 9.44H52.7189C52.1749 9.44 51.7322 9.616 51.3909 9.968C51.0602 10.3093 50.8949 10.848 50.8949 11.584V12.16C50.8949 12.9173 51.0549 13.4667 51.3749 13.808C51.7055 14.1387 52.1535 14.304 52.7189 14.304H52.8309C53.2042 14.304 53.5135 14.224 53.7589 14.064C54.0042 13.904 54.1962 13.6853 54.3349 13.408L56.0789 14.32C55.8442 14.864 55.4442 15.3173 54.8789 15.68C54.3135 16.0427 53.6309 16.224 52.8309 16.224H52.7029ZM61.1073 16.224C59.8486 16.224 58.8726 15.8667 58.1793 15.152C57.4859 14.4373 57.1393 13.4293 57.1393 12.128V11.648C57.1393 10.3467 57.4913 9.33333 58.1953 8.608C58.8993 7.88267 59.8699 7.52 61.1073 7.52H61.2352C62.4086 7.52 63.3206 7.87733 63.9713 8.592C64.6326 9.296 64.9633 10.272 64.9633 11.52V12.528H59.3473C59.4219 13.7973 60.0086 14.432 61.1073 14.432H61.3313C62.1739 14.432 62.7659 14.1493 63.1073 13.584L64.7233 14.656C64.4246 15.1467 63.9766 15.5307 63.3793 15.808C62.7926 16.0853 62.1153 16.224 61.3473 16.224H61.1073ZM59.3633 11.024H62.7873V10.976C62.7873 9.86667 62.2699 9.312 61.2352 9.312H61.1073C60.0833 9.312 59.5019 9.88267 59.3633 11.024ZM69.548 16.224C68.8867 16.224 68.2947 16.0693 67.772 15.76C67.2493 15.44 66.8387 14.9707 66.54 14.352C66.252 13.7333 66.108 12.9813 66.108 12.096V11.616C66.108 10.7307 66.252 9.984 66.54 9.376C66.8387 8.768 67.2493 8.30933 67.772 8C68.2947 7.68 68.8867 7.52 69.548 7.52H69.66C70.652 7.52 71.4253 7.85067 71.98 8.512V4.32H74.22V16H72.268V14.976C71.7027 15.808 70.8333 16.224 69.66 16.224H69.548ZM70.14 14.304H70.268C70.556 14.304 70.8333 14.2347 71.1 14.096C71.3667 13.9467 71.5853 13.712 71.756 13.392C71.9267 13.072 72.012 12.6507 72.012 12.128V11.616C72.012 11.0933 71.9213 10.672 71.74 10.352C71.5693 10.032 71.3507 9.80267 71.084 9.664C70.8173 9.51467 70.5453 9.44 70.268 9.44H70.14C69.628 9.44 69.2013 9.61067 68.86 9.952C68.5187 10.2933 68.348 10.8427 68.348 11.6V12.128C68.348 12.8853 68.5187 13.44 68.86 13.792C69.2013 14.1333 69.628 14.304 70.14 14.304ZM84.1776 16.224C81.8416 16.224 80.3536 15.3973 79.7136 13.744L81.6816 12.736C82.055 13.728 82.887 14.224 84.1776 14.224H84.3856C85.7403 14.224 86.4176 13.7867 86.4176 12.912V12.752C86.4176 12.4107 86.3003 12.1173 86.0656 11.872C85.831 11.6267 85.495 11.4773 85.0576 11.424L83.3136 11.216C82.247 11.088 81.4363 10.7573 80.8816 10.224C80.327 9.68 80.0496 8.944 80.0496 8.016V7.824C80.0496 7.16267 80.2203 6.592 80.5616 6.112C80.903 5.62133 81.383 5.24267 82.0016 4.976C82.631 4.70933 83.367 4.576 84.2096 4.576H84.4496C85.4736 4.576 86.3376 4.784 87.0416 5.2C87.7456 5.60533 88.2523 6.19733 88.5616 6.976L86.5136 7.84C86.2256 6.99733 85.5323 6.576 84.4336 6.576H84.2256C83.6496 6.576 83.1963 6.688 82.8656 6.912C82.5456 7.136 82.3856 7.43467 82.3856 7.808V7.968C82.3856 8.61867 82.8336 9.00267 83.7296 9.12L85.4736 9.328C86.5616 9.456 87.3776 9.81333 87.9216 10.4C88.4763 10.9867 88.7536 11.7493 88.7536 12.688V12.88C88.7536 13.9467 88.3803 14.7733 87.6336 15.36C86.887 15.936 85.815 16.224 84.4176 16.224H84.1776ZM93.7948 16.224C92.5361 16.224 91.5601 15.8667 90.8668 15.152C90.1734 14.4373 89.8268 13.4293 89.8268 12.128V11.648C89.8268 10.3467 90.1788 9.33333 90.8828 8.608C91.5868 7.88267 92.5574 7.52 93.7948 7.52H93.9227C95.0961 7.52 96.0081 7.87733 96.6588 8.592C97.3201 9.296 97.6508 10.272 97.6508 11.52V12.528H92.0348C92.1094 13.7973 92.6961 14.432 93.7948 14.432H94.0188C94.8614 14.432 95.4534 14.1493 95.7948 13.584L97.4108 14.656C97.1121 15.1467 96.6641 15.5307 96.0668 15.808C95.4801 16.0853 94.8028 16.224 94.0348 16.224H93.7948ZM92.0508 11.024H95.4748V10.976C95.4748 9.86667 94.9574 9.312 93.9227 9.312H93.7948C92.7708 9.312 92.1894 9.88267 92.0508 11.024ZM101.612 16.224C100.726 16.224 100.038 16.0053 99.5475 15.568C99.0675 15.1307 98.8275 14.5173 98.8275 13.728C98.8275 13.0027 99.0462 12.4213 99.4835 11.984C99.9315 11.5467 100.577 11.2747 101.42 11.168L104.012 10.832V10.768C104.012 9.79733 103.569 9.312 102.684 9.312H102.524C102.129 9.312 101.798 9.38667 101.532 9.536C101.265 9.67467 101.041 9.92533 100.86 10.288L99.1475 9.392C99.3928 8.82667 99.8035 8.37333 100.38 8.032C100.966 7.69067 101.676 7.52 102.508 7.52H102.748C105.084 7.52 106.252 8.61333 106.252 10.8V16H104.3V14.96C104.044 15.3547 103.686 15.664 103.228 15.888C102.78 16.112 102.268 16.224 101.692 16.224H101.612ZM104.012 12.336L102.299 12.576C101.809 12.6507 101.468 12.7573 101.276 12.896C101.084 13.024 100.988 13.2373 100.988 13.536C100.988 13.824 101.094 14.0533 101.308 14.224C101.532 14.384 101.825 14.464 102.188 14.464H102.316C102.849 14.464 103.265 14.3093 103.564 14C103.862 13.6907 104.012 13.2693 104.012 12.736V12.336ZM108.243 16V7.744H110.195V9.152C110.419 8.672 110.702 8.304 111.043 8.048C111.384 7.78133 111.848 7.648 112.435 7.648H113.315V9.712H112.515C112.195 9.712 111.88 9.776 111.571 9.904C111.262 10.032 111 10.256 110.787 10.576C110.584 10.8853 110.483 11.3173 110.483 11.872V16H108.243ZM118.109 16.224C116.872 16.224 115.885 15.872 115.149 15.168C114.424 14.464 114.061 13.4453 114.061 12.112V11.632C114.061 10.7573 114.226 10.016 114.557 9.408C114.898 8.78933 115.373 8.32 115.981 8C116.589 7.68 117.298 7.52 118.109 7.52H118.237C119.037 7.52 119.709 7.712 120.253 8.096C120.808 8.48 121.202 8.98667 121.437 9.616L119.629 10.384C119.501 10.1067 119.32 9.88267 119.085 9.712C118.861 9.53067 118.578 9.44 118.237 9.44H118.125C117.581 9.44 117.138 9.616 116.797 9.968C116.466 10.3093 116.301 10.848 116.301 11.584V12.16C116.301 12.9173 116.461 13.4667 116.781 13.808C117.112 14.1387 117.56 14.304 118.125 14.304H118.237C118.61 14.304 118.92 14.224 119.165 14.064C119.41 13.904 119.602 13.6853 119.741 13.408L121.485 14.32C121.25 14.864 120.85 15.3173 120.285 15.68C119.72 16.0427 119.037 16.224 118.237 16.224H118.109ZM122.978 16V4.32H125.218V8.496C125.783 7.84533 126.524 7.52 127.442 7.52H127.602C128.54 7.52 129.282 7.81333 129.826 8.4C130.38 8.976 130.658 9.80267 130.658 10.88V16H128.418V11.184C128.418 10.6293 128.3 10.2027 128.066 9.904C127.842 9.59467 127.484 9.44 126.994 9.44H126.866C126.599 9.44 126.338 9.50933 126.082 9.648C125.836 9.78667 125.628 10 125.458 10.288C125.298 10.576 125.218 10.9547 125.218 11.424V16H122.978Z" fill="white"/> <path d="M149.031 10L148.5 10.5312L142.531 16.5312L142 17.0625L140.938 16L141.469 15.4688L146.938 10L141.469 4.53125L140.938 4L142 2.96875L142.531 3.5L148.531 9.46875L149.062 10H149.031Z" fill="#76B900"/></svg></span></div></a>
+			</div>
+		</div>	
+	
+	
+</div>
+
+</div>
+
+								</div>
+							</div>
+						</div>
+						<div style="float:left"></div>
+					
+					
+				
+			</div>
+			
+				
+				<div class="overlay bannerTracking op-0 lap-op-0 tab-op-0 mob-op-0"
+						 data-bannerType="nv_banner" 
+						
+						data-bannerclass="banner-tracking">
+				</div>
+				
+				
+			
+	
+
+								
+							
+						</article>
+				
+			</div>
+		</div>
+		
+
+	</div>
+</div>
+
+<!-- /Hero Banner -->
+
+<!-- Horizontal divider Line Starts here -->
+
+
+   
+        
+     
+   
+
+
+   
+<!-- Horizontal divider Line Ends here -->
+
+	<script type="text/javascript">
+	
+		NVIDIAGDC.funcQueue.addToQueue({
+			id : "herobanner_copy7e1e684f_15b7_4675_bf83_c1c853853b16",
+			method : "herobanner",
+			params : [{
+				lastSlide:"slide1-herobanner_copy7e1e684f_15b7_4675_bf83_c1c853853b16",
+				slidecount:1,
+				period:7,
+				autoslidedisable:false,
+				pageoldbreakpointvalue: 'false',
+				id:"herobanner_copy7e1e684f_15b7_4675_bf83_c1c853853b16",
+				articleID:"herobanner_copy7e1e684f_15b7_4675_bf83_c1c853853b16",
+				lazyloded: true
+				}]
+		});
+	</script>
+
+</div>
+<div class="sectionenhanced parbase section">
+
+
+
+
+
+
+
+                      
+
+
+
+
+
+
+   
+   
+     
+   
+
+
+
+<section    class=" background-white p-t-75 p-b-75 lap-p-t-75 lap-p-b-75 tab-p-t-45 tab-p-b-45 mob-p-t-45 mob-p-b-45      ">
+	<div  id="sectionenhancedb2593181_4a3e_4e7d_ab1b_07cfc239688f" class="general-container ">
+	<div class="large-12 large-12 medium-12 small-12 center">
+    		
+	<div class="container">
+		<div class="page-section-par parsys"><div class="rawHtml section">
+
+
+
+
+
+
+
+
+
+
+                      
+
+
+
+
+
+<div class=' p-t-15 p-b-15 lap-p-t-15 lap-p-b-15 mob-p-t-15 mob-p-b-15 tab-p-t-15 tab-p-b-15' >
+	
+
+
+
+
+
+
+
+
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+<div id="nvidia-gallery-widget0" class="widget" data-affinity="Other"></div>
+	    
+</div> </div>
+<div class="rawHtml section">
+
+
+
+
+
+
+
+
+
+
+                      
+
+
+
+
+
+<div class=' p-t-75 p-b-15 lap-p-t-75 lap-p-b-15 mob-p-t-45 mob-p-b-15 tab-p-t-45 tab-p-b-15' >
+	
+
+
+
+
+
+
+
+
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+<div id="nvidia-gallery-widget2" class="widget" data-affinity="Other"></div>
+	    
+</div> </div>
+
+</div>
+
+	</div>
+	</div>
+</div>
+</section>
+
+
+<script type="text/javascript">
+	
+	NVIDIAGDC.funcQueue.addToQueue({
+		id : "sectionenhancedb2593181_4a3e_4e7d_ab1b_07cfc239688f",
+		method : "sectionEnhancedComponent",
+		params : [{
+				imageDesktopUrl:' ',
+				imageLaptopUrl:' ',
+				imageTabletUrl:' ',
+              	imageMobileUrl:' ',
+              	secpageobpvalue: 'false',
+              	sectionurl: '',
+              	sectionurltarget: '_self',
+              	secCustBgColor:''
+			}]
+	});
+</script>
+
+
+
+<!-- Horizontal divider Line Starts here -->
+
+
+   
+       
+   		
+   
+
+
+
+<!-- Horizontal divider Line Ends here -->
+
+
+</div>
+<div class="sectionenhanced parbase section">
+
+
+
+
+
+
+
+                      
+
+
+
+
+
+
+   
+   
+     
+   
+
+
+
+<section   id="events-section"  class=" background-white p-t-45 p-b-0 lap-p-t-45 lap-p-b-0 tab-p-t-30 tab-p-b-0 mob-p-t-30 mob-p-b-0      ">
+	<div  id="sectionenhanced_20735902244d7e36e0_b97f_4de3_bcd3_9f433ed41a60" class="general-container ">
+	<div class="large-12 large-12 medium-12 small-12 center">
+    		
+	<div class="container">
+		<div class="page-section-par parsys"><div class="textcomponentenhanced section">
+
+
+
+
+
+
+
+                      
+
+
+
+
+
+    <div id="textcomponentenhancef8f2a081_f5bc_4a5f_a2c0_225ac0c9b679">
+
+
+   
+   
+     
+   
+
+
+   
+   
+     
+   
+
+
+   
+   
+     
+   
+
+
+	<div  class="general-container-text small-12 mob-p-content medium-12 tab-p-content large-12 lap-p-content large-12 d-p-content  p-t-0 p-b-0  lap-p-t-0 lap-p-b-0  tab-p-t-0 tab-p-b-0  mob-p-t-0 mob-p-b-0 ">
+
+		
+		
+    	
+		
+    	
+
+        <div class="text-center lap-text-center tab-text-center mob-text-center">
+			
+
+                
+                
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+                
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+
+	            
+	            <h2  class="title color-black   h2 uppercase" >Recent Events</h2>
+	            
+            
+            
+            
+            <div class="text-button">
+				<div class="textCmpEnhancedButton-par parsys"><div class="textcomponentenhanced section">
+
+
+
+
+
+
+
+                      
+
+
+
+
+
+    <div id="textcomponentenhance_773268402a09d97b5_61d7_48e9_9ab3_4fe73b497470">
+
+
+   
+   
+     
+   
+
+
+   
+   
+     
+   
+
+
+   
+   
+     
+   
+
+
+	<div  class="general-container-text small-12 mob-p-content medium-12 tab-p-content large-12 lap-p-content large-12 d-p-content  p-t-30 p-b-0  lap-p-t-30 lap-p-b-0  tab-p-t-0 tab-p-b-0  mob-p-t-0 mob-p-b-0 ">
+
+		
+		
+    	
+		
+    	
+
+        <div class="text-center lap-text-center tab-text-center mob-text-center">
+			
+            
+
+                
+                
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+                
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+
+	            
+	            <h3    class="title color-black  h3 uppercase">AI Day Seoul 2025</h3>
+	            
+            
+            
+            <div class="text-button">
+				<div class="textCmpEnhancedButton-par parsys"><div class="rawHtml section">
+
+
+
+
+
+
+
+
+
+
+                      
+
+
+
+
+
+<div class=' p-t-45 p-b-15 lap-p-t-45 lap-p-b-15 mob-p-t-45 mob-p-b-15 tab-p-t-45 tab-p-b-15' >
+	
+
+
+
+
+
+
+
+
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+<div id="nvidia-gallery-widget-ai-day-seoul" class="widget" data-affinity="Other"></div>
+	    
+</div> </div>
+
+</div>
+
+			</div>
+        </div>
+    </div>
+</div>
+</div>
+<div class="textcomponentenhanced section">
+
+
+
+
+
+
+
+                      
+
+
+
+
+
+    <div id="textcomponentenhance_627024727579cf9a1_de98_4301_943d_79b8a7b46be9">
+
+
+   
+   
+     
+   
+
+
+   
+   
+     
+   
+
+
+   
+   
+     
+   
+
+
+	<div  class="general-container-text small-12 mob-p-content medium-12 tab-p-content large-12 lap-p-content large-12 d-p-content  p-t-15 p-b-0  lap-p-t-15 lap-p-b-0  tab-p-t-15 tab-p-b-0  mob-p-t-0 mob-p-b-0 ">
+
+		
+		
+    	
+		
+    	
+
+        <div class="text-center lap-text-center tab-text-center mob-text-center">
+			
+            
+
+                
+                
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+                
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+
+	            
+	            <h3    class="title color-black  h3 uppercase">GTC Washington, D.C. 2025</h3>
+	            
+            
+            
+            <div class="text-button">
+				<div class="textCmpEnhancedButton-par parsys"><div class="rawHtml section">
+
+
+
+
+
+
+
+
+
+
+                      
+
+
+
+
+
+<div class=' p-t-45 p-b-15 lap-p-t-45 lap-p-b-15 mob-p-t-45 mob-p-b-15 tab-p-t-45 tab-p-b-15' >
+	
+
+
+
+
+
+
+
+
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+<div id="nvidia-gallery-widget-gtcdc" class="widget" data-affinity="Other"></div>
+	    
+</div> </div>
+
+</div>
+
+			</div>
+        </div>
+    </div>
+</div>
+</div>
+<div class="textcomponentenhanced section">
+
+
+
+
+
+
+
+                      
+
+
+
+
+
+    <div id="textcomponentenhance_7372378f5a84b33_efaa_4b49_a6ac_c9202e00898b">
+
+
+   
+   
+     
+   
+
+
+   
+   
+     
+   
+
+
+   
+   
+     
+   
+
+
+	<div  class="general-container-text small-12 mob-p-content medium-12 tab-p-content large-12 lap-p-content large-12 d-p-content  p-t-15 p-b-0  lap-p-t-15 lap-p-b-0  tab-p-t-15 tab-p-b-0  mob-p-t-0 mob-p-b-0 ">
+
+		
+		
+    	
+		
+    	
+
+        <div class="text-center lap-text-center tab-text-center mob-text-center">
+			
+            
+
+                
+                
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+                
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+
+	            
+	            <h3    class="title color-black  h3 uppercase">AI Day Sydney 2025</h3>
+	            
+            
+            
+            <div class="text-button">
+				<div class="textCmpEnhancedButton-par parsys"><div class="rawHtml section">
+
+
+
+
+
+
+
+
+
+
+                      
+
+
+
+
+
+<div class=' p-t-45 p-b-15 lap-p-t-45 lap-p-b-15 mob-p-t-45 mob-p-b-15 tab-p-t-45 tab-p-b-15' >
+	
+
+
+
+
+
+
+
+
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+<div id="nvidia-gallery-widget-sydney" class="widget" data-affinity="Other"></div>
+	    
+</div> </div>
+
+</div>
+
+			</div>
+        </div>
+    </div>
+</div>
+</div>
+<div class="textcomponentenhanced section">
+
+
+
+
+
+
+
+                      
+
+
+
+
+
+    <div id="textcomponentenhanceeb9edf06_3175_4a52_a6c9_48d6f2990e40">
+
+
+   
+   
+     
+   
+
+
+   
+   
+     
+   
+
+
+   
+   
+     
+   
+
+
+	<div  class="general-container-text small-12 mob-p-content medium-12 tab-p-content large-12 lap-p-content large-12 d-p-content  p-t-30 p-b-0  lap-p-t-30 lap-p-b-0  tab-p-t-0 tab-p-b-0  mob-p-t-0 mob-p-b-0 ">
+
+		
+		
+    	
+		
+    	
+
+        <div class="text-center lap-text-center tab-text-center mob-text-center">
+			
+            
+
+                
+                
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+                
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+
+	            
+	            <h3    class="title color-black  h3 uppercase">AI Day Tokyo 2025</h3>
+	            
+            
+            
+            <div class="text-button">
+				<div class="textCmpEnhancedButton-par parsys"><div class="rawHtml section">
+
+
+
+
+
+
+
+
+
+
+                      
+
+
+
+
+
+<div class=' p-t-45 p-b-15 lap-p-t-45 lap-p-b-15 mob-p-t-45 mob-p-b-15 tab-p-t-45 tab-p-b-15' >
+	
+
+
+
+
+
+
+
+
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+<div id="nvidia-gallery-widget-tokoyo" class="widget" data-affinity="Other"></div>
+	    
+</div> </div>
+
+</div>
+
+			</div>
+        </div>
+    </div>
+</div>
+</div>
+<div class="textcomponentenhanced section">
+
+
+
+
+
+
+
+                      
+
+
+
+
+
+    <div id="textcomponentenhance_184317019f516f212_621d_402e_9eea_7eb3a0bdfb44">
+
+
+   
+   
+     
+   
+
+
+   
+   
+     
+   
+
+
+   
+   
+     
+   
+
+
+	<div  class="general-container-text small-12 mob-p-content medium-12 tab-p-content large-12 lap-p-content large-12 d-p-content  p-t-30 p-b-0  lap-p-t-30 lap-p-b-0  tab-p-t-0 tab-p-b-0  mob-p-t-0 mob-p-b-0 ">
+
+		
+		
+    	
+		
+    	
+
+        <div class="text-center lap-text-center tab-text-center mob-text-center">
+			
+            
+
+                
+                
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+                
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+
+	            
+	            <h3    class="title color-black  h3 uppercase">Ho Chi Minh City 2025</h3>
+	            
+            
+            
+            <div class="text-button">
+				<div class="textCmpEnhancedButton-par parsys"><div class="rawHtml section">
+
+
+
+
+
+
+
+
+
+
+                      
+
+
+
+
+
+<div class=' p-t-45 p-b-15 lap-p-t-45 lap-p-b-15 mob-p-t-45 mob-p-b-15 tab-p-t-45 tab-p-b-15' >
+	
+
+
+
+
+
+
+
+
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+<div id="nvidia-gallery-widget-hochiminh" class="widget" data-affinity="Other"></div>
+	    
+</div> </div>
+
+</div>
+
+			</div>
+        </div>
+    </div>
+</div>
+</div>
+
+</div>
+
+			</div>
+        </div>
+    </div>
+</div>
+</div>
+<div class="textcomponentenhanced section">
+
+
+
+
+
+
+
+                      
+
+
+
+
+
+    <div id="textcomponentenhance_10346144233578c4e0_f51a_4d32_8210_412b5005f28d">
+
+
+   
+   
+     
+   
+
+
+   
+   
+     
+   
+
+
+   
+   
+     
+   
+
+
+	<div  class="general-container-text small-12 mob-p-content medium-12 tab-p-content large-12 lap-p-content large-12 d-p-content  p-t-30 p-b-0  lap-p-t-30 lap-p-b-0  tab-p-t-0 tab-p-b-0  mob-p-t-0 mob-p-b-0 ">
+
+		
+		
+    	
+		
+    	
+
+        <div class="text-center lap-text-center tab-text-center mob-text-center">
+			
+            
+
+                
+                
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+                
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+
+	            
+	            <h3    class="title color-black  h3 uppercase">GTC Paris 2025</h3>
+	            
+            
+            
+            <div class="text-button">
+				<div class="textCmpEnhancedButton-par parsys"><div class="rawHtml section">
+
+
+
+
+
+
+
+
+
+
+                      
+
+
+
+
+
+<div class=' p-t-45 p-b-15 lap-p-t-45 lap-p-b-15 mob-p-t-45 mob-p-b-15 tab-p-t-45 tab-p-b-15' >
+	
+
+
+
+
+
+
+
+
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+<div id="nvidia-gallery-widget1" class="widget" data-affinity="Other"></div>
+	    
+</div> </div>
+
+</div>
+
+			</div>
+        </div>
+    </div>
+</div>
+</div>
+<div class="textcomponentenhanced section">
+
+
+
+
+
+
+
+                      
+
+
+
+
+
+    <div id="textcomponentenhance_739317872410a6003_421a_4d37_b682_50ab656e7c26">
+
+
+   
+   
+     
+   
+
+
+   
+   
+     
+   
+
+
+   
+   
+     
+   
+
+
+	<div  class="general-container-text small-12 mob-p-content medium-12 tab-p-content large-12 lap-p-content large-12 d-p-content  p-t-30 p-b-0  lap-p-t-30 lap-p-b-0  tab-p-t-0 tab-p-b-0  mob-p-t-0 mob-p-b-0 ">
+
+		
+		
+    	
+		
+    	
+
+        <div class="text-center lap-text-center tab-text-center mob-text-center">
+			
+            
+
+                
+                
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+                
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+
+	            
+	            <h3    class="title color-black  h3 uppercase">GTC Taipei 2025</h3>
+	            
+            
+            
+            <div class="text-button">
+				<div class="textCmpEnhancedButton-par parsys"><div class="rawHtml section">
+
+
+
+
+
+
+
+
+
+
+                      
+
+
+
+
+
+<div class=' p-t-45 p-b-15 lap-p-t-45 lap-p-b-15 mob-p-t-45 mob-p-b-15 tab-p-t-45 tab-p-b-15' >
+	
+
+
+
+
+
+
+
+
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+<div id="nvidia-gallery-widget3" class="widget" data-affinity="Other"></div>
+	    
+</div> </div>
+
+</div>
+
+			</div>
+        </div>
+    </div>
+</div>
+</div>
+<div class="textcomponentenhanced section">
+
+
+
+
+
+
+
+                      
+
+
+
+
+
+    <div id="textcomponentenhance_1824761311bdbebe20_b331_4d57_8464_dbca473511ac">
+
+
+   
+   
+     
+   
+
+
+   
+   
+     
+   
+
+
+   
+   
+     
+   
+
+
+	<div  class="general-container-text small-12 mob-p-content medium-12 tab-p-content large-12 lap-p-content large-12 d-p-content  p-t-60 p-b-0  lap-p-t-60 lap-p-b-0  tab-p-t-45 tab-p-b-0  mob-p-t-30 mob-p-b-0 ">
+
+		
+		
+    	
+		
+    	
+
+        <div class="text-center lap-text-center tab-text-center mob-text-center">
+			
+            
+
+                
+                
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+                
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+
+	            
+	            <h3    class="title color-black  h3 uppercase">GTC 2025</h3>
+	            
+            
+            
+            <div class="text-button">
+				<div class="textCmpEnhancedButton-par parsys"><div class="rawHtml section">
+
+
+
+
+
+
+
+
+
+
+                      
+
+
+
+
+
+<div class=' p-t-45 p-b-15 lap-p-t-45 lap-p-b-15 mob-p-t-45 mob-p-b-15 tab-p-t-45 tab-p-b-15' >
+	
+
+
+
+
+
+
+
+
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+<div id="nvidia-gallery-widget14" class="widget" data-affinity="Other"></div>
+	    
+</div> </div>
+<div class="rawHtml section">
+
+
+
+
+
+
+
+
+
+
+                      
+
+
+
+
+
+<div class=' p-t-45 p-b-15 lap-p-t-45 lap-p-b-15 mob-p-t-45 mob-p-b-15 tab-p-t-45 tab-p-b-15' >
+	
+
+
+
+
+
+
+
+
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+<div id="nvidia-gallery-widget17" class="widget" data-affinity="Other"></div>
+	    
+</div> </div>
+<div class="rawHtml section">
+
+
+
+
+
+
+
+
+
+
+                      
+
+
+
+
+
+<div class=' p-t-45 p-b-15 lap-p-t-45 lap-p-b-15 mob-p-t-45 mob-p-b-15 tab-p-t-45 tab-p-b-15' >
+	
+
+
+
+
+
+
+
+
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+<div id="nvidia-gallery-widget16" class="widget" data-affinity="Other"></div>
+	    
+</div> </div>
+<div class="rawHtml section">
+
+
+
+
+
+
+
+
+
+
+                      
+
+
+
+
+
+<div class=' p-t-45 p-b-15 lap-p-t-45 lap-p-b-15 mob-p-t-45 mob-p-b-15 tab-p-t-45 tab-p-b-15' >
+	
+
+
+
+
+
+
+
+
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+<div id="nvidia-gallery-widget18" class="widget" data-affinity="Other"></div>
+	    
+</div> </div>
+<div class="rawHtml section">
+
+
+
+
+
+
+
+
+
+
+                      
+
+
+
+
+
+<div class=' p-t-45 p-b-15 lap-p-t-45 lap-p-b-15 mob-p-t-45 mob-p-b-15 tab-p-t-45 tab-p-b-15' >
+	
+
+
+
+
+
+
+
+
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+<div id="nvidia-gallery-widget19" class="widget" data-affinity="Other"></div>
+	    
+</div> </div>
+<div class="rawHtml section">
+
+
+
+
+
+
+
+
+
+
+                      
+
+
+
+
+
+<div class=' p-t-45 p-b-15 lap-p-t-45 lap-p-b-15 mob-p-t-45 mob-p-b-15 tab-p-t-45 tab-p-b-15' >
+	
+
+
+
+
+
+
+
+
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+<div id="nvidia-gallery-widget20" class="widget" data-affinity="Other"></div>
+	    
+</div> </div>
+<div class="rawHtml section">
+
+
+
+
+
+
+
+
+
+
+                      
+
+
+
+
+
+<div class=' p-t-45 p-b-15 lap-p-t-45 lap-p-b-15 mob-p-t-45 mob-p-b-15 tab-p-t-45 tab-p-b-15' >
+	
+
+
+
+
+
+
+
+
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+<div id="nvidia-gallery-widget15" class="widget" data-affinity="Other"></div>
+	    
+</div> </div>
+<div class="rawHtml section">
+
+
+
+
+
+
+
+
+
+
+                      
+
+
+
+
+
+<div class=' p-t-30 p-b-30 lap-p-t-30 lap-p-b-30 mob-p-t-30 mob-p-b-30 tab-p-t-30 tab-p-b-30' >
+	
+
+
+
+
+
+
+
+
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+<hr style="border-top: 1px solid #999999">
+	    
+</div> </div>
+
+</div>
+
+			</div>
+        </div>
+    </div>
+</div>
+</div>
+<div class="textcomponentenhanced section">
+
+
+
+
+
+
+
+                      
+
+
+
+
+
+    <div id="textcomponentenhance_633463525c8d9156e_f506_466b_8261_24e7adc744c7">
+
+
+   
+   
+     
+   
+
+
+   
+   
+     
+   
+
+
+   
+   
+     
+   
+
+
+	<div  class="general-container-text small-12 mob-p-content medium-12 tab-p-content large-12 lap-p-content large-12 d-p-content  p-t-30 p-b-0  lap-p-t-30 lap-p-b-0  tab-p-t-0 tab-p-b-0  mob-p-t-0 mob-p-b-0 ">
+
+		
+		
+    	
+		
+    	
+
+        <div class="text-center lap-text-center tab-text-center mob-text-center">
+			
+            
+
+                
+                
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+                
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+
+	            
+	            <h3    class="title color-black  h3 uppercase">GDC 2025</h3>
+	            
+            
+            
+            <div class="text-button">
+				<div class="textCmpEnhancedButton-par parsys"><div class="rawHtml section">
+
+
+
+
+
+
+
+
+
+
+                      
+
+
+
+
+
+<div class=' p-t-45 p-b-15 lap-p-t-45 lap-p-b-15 mob-p-t-45 mob-p-b-0 tab-p-t-45 tab-p-b-15' >
+	
+
+
+
+
+
+
+
+
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+<div id="nvidia-gallery-widget-gdc2025-1" class="widget" data-affinity="Other"></div>
+	    
+</div> </div>
+<div class="rawHtml section">
+
+
+
+
+
+
+
+
+
+
+                      
+
+
+
+
+
+<div class=' p-t-30 p-b-30 lap-p-t-30 lap-p-b-30 mob-p-t-30 mob-p-b-30 tab-p-t-30 tab-p-b-30' >
+	
+
+
+
+
+
+
+
+
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+<hr style="border-top: 1px solid #999999">
+	    
+</div> </div>
+
+</div>
+
+			</div>
+        </div>
+    </div>
+</div>
+</div>
+
+</div>
+
+	</div>
+	</div>
+</div>
+</section>
+
+
+<script type="text/javascript">
+	
+	NVIDIAGDC.funcQueue.addToQueue({
+		id : "sectionenhanced_20735902244d7e36e0_b97f_4de3_bcd3_9f433ed41a60",
+		method : "sectionEnhancedComponent",
+		params : [{
+				imageDesktopUrl:' ',
+				imageLaptopUrl:' ',
+				imageTabletUrl:' ',
+              	imageMobileUrl:' ',
+              	secpageobpvalue: 'false',
+              	sectionurl: '',
+              	sectionurltarget: '_self',
+              	secCustBgColor:''
+			}]
+	});
+</script>
+
+
+
+<!-- Horizontal divider Line Starts here -->
+
+
+   
+       
+   		
+   
+
+
+
+<!-- Horizontal divider Line Ends here -->
+
+
+</div>
+<div class="sectionenhanced parbase section">
+
+
+
+
+
+
+
+                      
+
+
+
+
+
+
+   
+   
+     
+   
+
+
+
+<section   id="training-section"  class=" background-white p-t-75 p-b-75 lap-p-t-75 lap-p-b-75 tab-p-t-45 tab-p-b-45 mob-p-t-45 mob-p-b-45      ">
+	<div  id="sectionenhanced_1450911462aba249c_49d2_47a7_b35a_f44caa83a257" class="general-container ">
+	<div class="large-12 large-12 medium-12 small-12 center">
+    		
+	<div class="container">
+		<div class="page-section-par parsys"><div class="textcomponentenhanced section">
+
+
+
+
+
+
+
+                      
+
+
+
+
+
+    <div id="textcomponentenhanced6036b3b_e6e9_4206_9de5_227dd63ca7b5">
+
+
+   
+   
+     
+   
+
+
+   
+   
+     
+   
+
+
+   
+   
+     
+   
+
+
+	<div  class="general-container-text small-12 mob-p-content medium-12 tab-p-content large-12 lap-p-content large-12 d-p-content  p-t-0 p-b-0  lap-p-t-0 lap-p-b-0  tab-p-t-0 tab-p-b-0  mob-p-t-0 mob-p-b-0 ">
+
+		
+		
+    	
+		
+    	
+
+        <div class="text-center lap-text-center tab-text-center mob-text-center">
+			
+
+                
+                
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+                
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+
+	            
+	            <h2  class="title color-black   h2 uppercase" >NVIDIA Tools and Training Resources</h2>
+	            
+            
+            
+            
+            <div class="text-button">
+				<div class="textCmpEnhancedButton-par parsys">
+</div>
+
+			</div>
+        </div>
+    </div>
+</div>
+</div>
+<div class="textcomponentenhanced section">
+
+
+
+
+
+
+
+                      
+
+
+
+
+
+    <div id="textcomponentenhance_942626430a4fdfe82_b600_4c6f_a201_525e270346ca">
+
+
+   
+   
+     
+   
+
+
+   
+   
+     
+   
+
+
+   
+   
+     
+   
+
+
+	<div  class="general-container-text small-12 mob-p-content medium-12 tab-p-content large-12 lap-p-content large-12 d-p-content  p-t-30 p-b-0  lap-p-t-30 lap-p-b-0  tab-p-t-0 tab-p-b-0  mob-p-t-0 mob-p-b-0 ">
+
+		
+		
+    	
+		
+    	
+
+        <div class="text-center lap-text-center tab-text-center mob-text-center">
+			
+            
+
+                
+                
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+                
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+    				
+				
+
+	            
+	            <h3    class="title color-black  h3 uppercase">NVIDIA Training Labs</h3>
+	            
+            
+            
+            <div class="text-button">
+				<div class="textCmpEnhancedButton-par parsys"><div class="rawHtml section">
+
+
+
+
+
+
+
+
+
+
+                      
+
+
+
+
+
+<div class=' p-t-45 p-b-15 lap-p-t-45 lap-p-b-15 mob-p-t-45 mob-p-b-15 tab-p-t-45 tab-p-b-15' >
+	
+
+
+
+
+
+
+
+
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+<div id="nvidia-gallery-widget13" class="widget"></div>
+	    
+</div> </div>
+
+</div>
+
+			</div>
+        </div>
+    </div>
+</div>
+</div>
+
+</div>
+
+	</div>
+	</div>
+</div>
+</section>
+
+
+<script type="text/javascript">
+	
+	NVIDIAGDC.funcQueue.addToQueue({
+		id : "sectionenhanced_1450911462aba249c_49d2_47a7_b35a_f44caa83a257",
+		method : "sectionEnhancedComponent",
+		params : [{
+				imageDesktopUrl:' ',
+				imageLaptopUrl:' ',
+				imageTabletUrl:' ',
+              	imageMobileUrl:' ',
+              	secpageobpvalue: 'false',
+              	sectionurl: '',
+              	sectionurltarget: '_self',
+              	secCustBgColor:''
+			}]
+	});
+</script>
+
+
+
+<!-- Horizontal divider Line Starts here -->
+
+
+   
+       
+   		
+   
+
+
+
+<!-- Horizontal divider Line Ends here -->
+
+
+</div>
+<div class="rawHtml section">
+
+
+
+
+
+
+
+
+
+
+                      
+
+
+
+
+
+<div class=' p-t-0 p-b-0 lap-p-t-0 lap-p-b-0 mob-p-t-0 mob-p-b-0 tab-p-t-0 tab-p-b-0' >
+	
+
+
+
+
+
+
+
+
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+<script>
+
+ 
+   
+    function updateWidget() {
+
+        NvidiaSearchLibrary.GalleryWidget.unmountAll();
+        var searchJWTToken = '';
+        var roles = '';
+        var jwtToken = '';
+        var destinationSite = window.location.origin;
+        var site = destinationSite;
+        var language = $('html').attr('lang');
+        var voltronApiUrl = 'https://api-prod.nvidia.com/services/nod/api/v1/';
+        var apiUrl = NVIDIAGDC.nod.searchsrvc;
+
+         if (typeof NVIDIAGDC.NOD!== "undefined" && NVIDIAGDC.NOD.getSession() ) {
+			
+			if(NVIDIAGDC.NOD.getSession().message==='VALID_SESSION'){
+            //logged in   
+            jwtToken = NVIDIAGDC.NOD.getSession().id_token;
+            if (typeof Cookies !== "undefined" && typeof Cookies.get("nv.profile") !== "undefined") {
+                searchJWTToken = JSON.parse(decodeURI($.base64.decode(Cookies.get("nv.profile"))))["jwtToken"];
+                roles = JSON.parse(decodeURI($.base64.decode(Cookies.get("nv.profile"))))["nv.program"];
+            } else if (typeof Cookies !== "undefined" && typeof Cookies.get("nv.profile") === "undefined") {
+                var tokenAPI = NVIDIAGDC.nod.srvcendpoint + "/nod/api/v1/kaltura/session/create";
+                $.ajax({
+                    url: tokenAPI,
+                    headers: {
+                        Authorization: 'Bearer ' + jwtToken,
+                    },
+                    xhrFields: {
+                        withCredentials: true
+                    },
+                    success: function (data) {
+                        roles = JSON.parse(decodeURI($.base64.decode(Cookies.get("nv.profile"))))["nv.program"];
+                        searchJWTToken = JSON.parse(decodeURI($.base64.decode(Cookies.get("nv.profile"))))["jwtToken"];
+                    }
+                });
+            }
+            
+            } else if(NVIDIAGDC.NOD.getSession().message=='EXPIRED_SESSION') {
+						NVIDIAGDC.NOD.logout()
+					}
+        } 
+
+        var searchInput1 = {
+            query: '-',
+            maxResults: '12',
+            sortType: 'date',
+        };
+        var searchInput2 = {
+            query: '-',
+            maxResults: '12',
+            sortType: 'date',
+        };
+        var searchInput3 = {
+            query: '-',
+            maxResults: '12',
+            sortType: 'date',
+        };
+
+        var searchInput4 = {
+            query: '-',
+            maxResults: '12',
+        };
+
+        var searchInput5 = {
+            query: 'Featured Playlist',
+            maxResults: '12',
+        };
+
+        var searchInput6 = {
+            query: 'Featured Playlist',
+            maxResults: '12',
+        };
+
+        var searchInput7 = {
+            query: 'Featured Playlist',
+            maxResults: '12',
+        };
+
+        var searchInput8 = {
+            query: '-',
+            maxResults: '12',
+        };
+
+        var searchInput9 = {
+            query: 'Featured Playlist',
+            maxResults: '12',
+        };
+
+        var searchInput10 = {
+            query: 'Featured Playlist',
+            maxResults: '12',
+        };
+
+        var searchInput11 = {
+            query: 'Featured Playlist',
+            maxResults: '12',
+        };
+        var searchInput12 = {
+            query: '-',
+            maxResults: '12',
+            sortType: 'date',
+        };
+var searchInput13 = {
+            query: '-',
+            maxResults: '12',
+        };
+
+var searchInput17 = {
+            query: '-',
+            maxResults: '24',
+           event_name: ['Siggraph'],
+           event_year: ['2024'],
+        };
+
+        NvidiaSearchLibrary.GalleryWidget.mount({
+            elementId: 'nvidia-gallery-widget0',
+            searchInput: searchInput1,
+            site: 'https://www.nvidia.com',
+            language: $('html').attr('lang'),
+            voltronApiUrl: voltronApiUrl,
+            apiUrl: NVIDIAGDC.nod.searchsrvc,
+            playlistId: 'playList-5d17c33f-65f5-4fb1-9fed-bc5b7f4dec44',
+            isFeatured: true,
+            header: 'NVIDIA Keynotes and Related Talks',
+            destinationSite: destinationSite,
+            destination: destinationSite + '/en-us/on-demand/playlist/playList-5d17c33f-65f5-4fb1-9fed-bc5b7f4dec44/',
+            jwtToken: jwtToken,
+            onLogin: () => { NVIDIAGDC.NOD.login() },
+            onLogout: () => { },
+            searchToken: searchJWTToken,
+            accessRoles: roles,
+            widgetPlacementId: 'nvod-home-featured-1',
+
+        });
+		
+		
+
+
+        NvidiaSearchLibrary.GalleryWidget.mount({
+            elementId: 'nvidia-gallery-widget3',
+            header: 'GTC Taipei 2025 Top Talks',
+            searchInput: searchInput3,
+            site: site,
+            language: language,
+            voltronApiUrl: voltronApiUrl,
+            apiUrl: apiUrl,
+            isFeaturedPlaylist: false,
+            playlistId: 'playList-4f91f603-7a6b-4cfb-aea1-cb893a2b88e9',
+            destination: destinationSite + '/en-us/on-demand/playlist/playList-4f91f603-7a6b-4cfb-aea1-cb893a2b88e9/',
+            destinationSite: destinationSite,
+            jwtToken: jwtToken,
+            onLogin: () => { NVIDIAGDC.NOD.login() },
+            onLogout: () => { },
+            searchToken: searchJWTToken,
+            accessRoles: roles,
+            widgetPlacementId: 'nvod-home-widget-playlist-3'
+        });
+		
+	 NvidiaSearchLibrary.GalleryWidget.mount({
+            elementId: 'nvidia-gallery-widget1',
+            header: 'GTC Paris 2025 Top Talks',
+            searchInput: searchInput3,
+            site: site,
+            language: language,
+            voltronApiUrl: voltronApiUrl,
+            apiUrl: apiUrl,
+            isFeaturedPlaylist: false,
+            playlistId: 'playList-0dc0b10a-eb85-47fe-a6b2-e5a7757d5480',
+            destination: destinationSite + '/en-us/on-demand/playlist/playList-0dc0b10a-eb85-47fe-a6b2-e5a7757d5480/',
+            destinationSite: destinationSite,
+            jwtToken: jwtToken,
+            onLogin: () => { NVIDIAGDC.NOD.login() },
+            onLogout: () => { },
+            searchToken: searchJWTToken,
+            accessRoles: roles,
+            widgetPlacementId: 'nvod-home-widget-playlist-3'
+        });	
+
+
+
+ NvidiaSearchLibrary.GalleryWidget.mount({
+            elementId: 'nvidia-gallery-widget-tokoyo',
+            header: 'AI Day Tokyo 2025 Top Talks',
+            searchInput: searchInput3,
+            site: site,
+            language: language,
+            voltronApiUrl: voltronApiUrl,
+            apiUrl: apiUrl,
+            isFeaturedPlaylist: false,
+            playlistId: 'playList-ee679ca4-a92f-49ee-b893-c8d0fa6ce8bc',
+            destination: destinationSite + '/en-us/on-demand/playlist/playList-ee679ca4-a92f-49ee-b893-c8d0fa6ce8bc/',
+            destinationSite: destinationSite,
+            jwtToken: jwtToken,
+            onLogin: () => { NVIDIAGDC.NOD.login() },
+            onLogout: () => { },
+            searchToken: searchJWTToken,
+            accessRoles: roles,
+            widgetPlacementId: 'nvod-home-widget-playlist-3'
+        });
+
+
+ NvidiaSearchLibrary.GalleryWidget.mount({
+            elementId: 'nvidia-gallery-widget-hochiminh',
+            header: 'AI Day Ho Chi Minh City 2025 Top Talks',
+            searchInput: searchInput3,
+            site: site,
+            language: language,
+            voltronApiUrl: voltronApiUrl,
+            apiUrl: apiUrl,
+            isFeaturedPlaylist: false,
+            playlistId: 'playList-409fa9ac-9a95-4ec8-a050-85db0ee55ec1',
+            destination: destinationSite + '/en-us/on-demand/playlist/playList-409fa9ac-9a95-4ec8-a050-85db0ee55ec1/',
+            destinationSite: destinationSite,
+            jwtToken: jwtToken,
+            onLogin: () => { NVIDIAGDC.NOD.login() },
+            onLogout: () => { },
+            searchToken: searchJWTToken,
+            accessRoles: roles,
+            widgetPlacementId: 'nvod-home-widget-playlist-3'
+        });	
+		
+	
+
+		
+	NvidiaSearchLibrary.GalleryWidget.mount({
+            elementId: 'nvidia-gallery-widget13',
+            header: 'Featured Training Labs',
+            searchInput: searchInput5,
+            site: 'https://www.nvidia.com',
+            language: $('html').attr('lang'),
+            voltronApiUrl: voltronApiUrl,
+            apiUrl: apiUrl, 
+            isFeaturedPlaylist: false,
+            playlistId: 'playList-5906792e-0f3d-436b-bc30-3abf911a95a6',
+            destination: 'https://www.nvidia.com/en-us/on-demand/playlist/playList-108242b0-35ac-4765-9796-d6961cb026c4/',
+            destinationSite: 'https://www.nvidia.com',
+            jwtToken: jwtToken,
+            onLogin: () => { NVIDIAGDC.NOD.login() },
+            onLogout: () => {  },
+            searchToken: searchJWTToken,
+            accessRoles: roles,
+	    linkUrlPrefix:'https://www.nvidia.com/en-us/on-demand/session/',
+            openSessionInNewTab: true,
+            widgetPlacementId: 'nvod-home-widget-playlist-13'
+        });	
+		
+		
+       NvidiaSearchLibrary.GalleryWidget.mount({
+            elementId: 'nvidia-gallery-widget14',
+            searchInput: searchInput5,
+            site: 'https://www.nvidia.com',
+            language: $('html').attr('lang'),
+            voltronApiUrl: voltronApiUrl,
+            apiUrl: NVIDIAGDC.nod.searchsrvc,
+            playlistId: 'playList-79f11c8a-c249-4bc5-b27f-a8ebcf18497a',
+            isFeatured: false,
+            header: 'GTC 2025 Top Talks',
+            destinationSite: destinationSite,
+            destination: destinationSite + '/en-us/on-demand/playlist/playList-79f11c8a-c249-4bc5-b27f-a8ebcf18497a/',
+            jwtToken: jwtToken,
+            onLogin: () => { NVIDIAGDC.NOD.login() },
+            onLogout: () => { },
+            searchToken: searchJWTToken,
+            accessRoles: roles,
+            widgetPlacementId: 'nvod-home-featured-8',
+        });   
+
+     NvidiaSearchLibrary.GalleryWidget.mount({
+            elementId: 'nvidia-gallery-widget15',
+            searchInput: searchInput5,
+            site: 'https://www.nvidia.com',
+            language: $('html').attr('lang'),
+            voltronApiUrl: voltronApiUrl,
+            apiUrl: NVIDIAGDC.nod.searchsrvc,
+            playlistId: 'playList-23382a96-2539-43c8-ae8e-f907b851f750',
+            isFeatured: false,
+            header: 'Latest in AI for Good',
+            destinationSite: destinationSite,
+            destination: destinationSite + '/en-us/on-demand/playlist/playList-23382a96-2539-43c8-ae8e-f907b851f750/',
+            jwtToken: jwtToken,
+            onLogin: () => { NVIDIAGDC.NOD.login() },
+            onLogout: () => { },
+            searchToken: searchJWTToken,
+            accessRoles: roles,
+            widgetPlacementId: 'nvod-home-featured-8',
+        });   
+
+    NvidiaSearchLibrary.GalleryWidget.mount({
+            elementId: 'nvidia-gallery-widget16',
+            searchInput: searchInput5,
+            site: 'https://www.nvidia.com',
+            language: $('html').attr('lang'),
+            voltronApiUrl: voltronApiUrl,
+            apiUrl: NVIDIAGDC.nod.searchsrvc,
+            playlistId: 'playList-48cd6254-aaf2-4176-b612-f6b92574092b',
+            isFeatured: false,
+            header: 'Latest in AI for Science and Computing',
+            destinationSite: destinationSite,
+            destination: destinationSite + '/en-us/on-demand/playlist/playList-48cd6254-aaf2-4176-b612-f6b92574092b/',
+            jwtToken: jwtToken,
+            onLogin: () => { NVIDIAGDC.NOD.login() },
+            onLogout: () => { },
+            searchToken: searchJWTToken,
+            accessRoles: roles,
+            widgetPlacementId: 'nvod-home-featured-8',
+        });  
+
+
+    NvidiaSearchLibrary.GalleryWidget.mount({
+            elementId: 'nvidia-gallery-widget17',
+            searchInput: searchInput5,
+            site: 'https://www.nvidia.com',
+            language: $('html').attr('lang'),
+            voltronApiUrl: voltronApiUrl,
+            apiUrl: NVIDIAGDC.nod.searchsrvc,
+            playlistId: 'playList-1520a961-42dc-4f65-97c2-c83e35cf4a33',
+            isFeatured: false,
+            header: 'Latest in Physical AI and Robotics',
+            destinationSite: destinationSite,
+            destination: destinationSite + '/en-us/on-demand/playlist/playList-1520a961-42dc-4f65-97c2-c83e35cf4a33/',
+            jwtToken: jwtToken,
+            onLogin: () => { NVIDIAGDC.NOD.login() },
+            onLogout: () => { },
+            searchToken: searchJWTToken,
+            accessRoles: roles,
+            widgetPlacementId: 'nvod-home-featured-8',
+        }); 
+
+    NvidiaSearchLibrary.GalleryWidget.mount({
+            elementId: 'nvidia-gallery-widget18',
+            searchInput: searchInput5,
+            site: 'https://www.nvidia.com',
+            language: $('html').attr('lang'),
+            voltronApiUrl: voltronApiUrl,
+            apiUrl: NVIDIAGDC.nod.searchsrvc,
+            playlistId: 'playList-600dacf3-7db9-45fe-b0a2-e0156a792bc5',
+            isFeatured: false,
+            header: 'Latest in Tools & Trainings ',
+            destinationSite: destinationSite,
+            destination: destinationSite + '/en-us/on-demand/playlist/playList-600dacf3-7db9-45fe-b0a2-e0156a792bc5/',
+            jwtToken: jwtToken,
+            onLogin: () => { NVIDIAGDC.NOD.login() },
+            onLogout: () => { },
+            searchToken: searchJWTToken,
+            accessRoles: roles,
+            widgetPlacementId: 'nvod-home-featured-8',
+        });
+
+    NvidiaSearchLibrary.GalleryWidget.mount({
+            elementId: 'nvidia-gallery-widget19',
+            searchInput: searchInput5,
+            site: 'https://www.nvidia.com',
+            language: $('html').attr('lang'),
+            voltronApiUrl: voltronApiUrl,
+            apiUrl: NVIDIAGDC.nod.searchsrvc,
+            playlistId: 'playList-c4eaf607-43c8-4070-8f76-3336a5942129',
+            isFeatured: false,
+            header: 'Latest in AI for Productivity / Process Automation',
+            destinationSite: destinationSite,
+            destination: destinationSite + '/en-us/on-demand/playlist/playList-c4eaf607-43c8-4070-8f76-3336a5942129/',
+            jwtToken: jwtToken,
+            onLogin: () => { NVIDIAGDC.NOD.login() },
+            onLogout: () => { },
+            searchToken: searchJWTToken,
+            accessRoles: roles,
+            widgetPlacementId: 'nvod-home-featured-8',
+        });
+
+    NvidiaSearchLibrary.GalleryWidget.mount({
+            elementId: 'nvidia-gallery-widget20',
+            searchInput: searchInput5,
+            site: 'https://www.nvidia.com',
+            language: $('html').attr('lang'),
+            voltronApiUrl: voltronApiUrl,
+            apiUrl: NVIDIAGDC.nod.searchsrvc,
+            playlistId: 'playList-15a318ec-d0f8-40e0-a303-2cf90596b8ba',
+            isFeatured: false,
+            header: 'Latest in AI for Customer Experiences',
+            destinationSite: destinationSite,
+            destination: destinationSite + '/en-us/on-demand/playlist/playList-15a318ec-d0f8-40e0-a303-2cf90596b8ba/',
+            jwtToken: jwtToken,
+            onLogin: () => { NVIDIAGDC.NOD.login() },
+            onLogout: () => { },
+            searchToken: searchJWTToken,
+            accessRoles: roles,
+            widgetPlacementId: 'nvod-home-featured-8',
+        });
+
+ NvidiaSearchLibrary.GalleryWidget.mount({
+            elementId: 'nvidia-gallery-widget-gdc2025-1',
+            searchInput: searchInput5,
+            site: 'https://www.nvidia.com',
+            language: $('html').attr('lang'),
+            voltronApiUrl: voltronApiUrl,
+            apiUrl: NVIDIAGDC.nod.searchsrvc,
+            playlistId: 'playList-dd2de018-a9f8-4069-9553-f16e6c93d8d8',
+            isFeatured: false,
+            header: 'GDC 2025 Top Talks',
+            destinationSite: destinationSite,
+            destination: destinationSite + '/en-us/on-demand/playlist/playList-dd2de018-a9f8-4069-9553-f16e6c93d8d8/',
+            jwtToken: jwtToken,
+            onLogin: () => { NVIDIAGDC.NOD.login() },
+            onLogout: () => { },
+            searchToken: searchJWTToken,
+            accessRoles: roles,
+            widgetPlacementId: 'nvod-home-featured-8',
+        });
+
+
+
+
+ NvidiaSearchLibrary.GalleryWidget.mount({
+            elementId: 'nvidia-gallery-widget-sydney',
+            searchInput: searchInput5,
+            site: 'https://www.nvidia.com',
+            language: $('html').attr('lang'),
+            voltronApiUrl: voltronApiUrl,
+            apiUrl: NVIDIAGDC.nod.searchsrvc,
+            playlistId: 'playList-71dfc7ff-80df-441f-8a90-101eeabcc217',
+            isFeatured: false,
+            header: 'AI Day Sydney 2025 Top Talks',
+            destinationSite: destinationSite,
+            destination: destinationSite + '/en-us/on-demand/playlist/playList-71dfc7ff-80df-441f-8a90-101eeabcc217/',
+            jwtToken: jwtToken,
+            onLogin: () => { NVIDIAGDC.NOD.login() },
+            onLogout: () => { },
+            searchToken: searchJWTToken,
+            accessRoles: roles,
+            widgetPlacementId: 'nvod-home-featured-8',
+        });
+
+
+
+NvidiaSearchLibrary.GalleryWidget.mount({
+            elementId: 'nvidia-gallery-widget-ai-day-seoul',
+            searchInput: searchInput5,
+            site: 'https://www.nvidia.com',
+            language: $('html').attr('lang'),
+            voltronApiUrl: voltronApiUrl,
+            apiUrl: NVIDIAGDC.nod.searchsrvc,
+            playlistId: 'playList-ab9414c5-8ff4-436d-98d0-fc065907cdb9',
+            isFeatured: false,
+            header: 'AI Day Seoul Top Talks',
+            destinationSite: destinationSite,
+            destination: destinationSite + '/en-us/on-demand/playlist/playList-ab9414c5-8ff4-436d-98d0-fc065907cdb9/',
+            jwtToken: jwtToken,
+            onLogin: () => { NVIDIAGDC.NOD.login() },
+            onLogout: () => { },
+            searchToken: searchJWTToken,
+            accessRoles: roles,
+            widgetPlacementId: 'nvod-home-featured-8',
+        });
+
+NvidiaSearchLibrary.GalleryWidget.mount({
+            elementId: 'nvidia-gallery-widget-gtcdc',
+            searchInput: searchInput5,
+            site: 'https://www.nvidia.com',
+            language: $('html').attr('lang'),
+            voltronApiUrl: voltronApiUrl,
+            apiUrl: NVIDIAGDC.nod.searchsrvc,
+            playlistId: 'playList-45965c6b-80b8-47a1-a460-babada13b57e',
+            isFeatured: false,
+            header: 'GTC Washington, D.C. 2025 Top Talks',
+            destinationSite: destinationSite,
+            destination: destinationSite + '/en-us/on-demand/playlist/playList-45965c6b-80b8-47a1-a460-babada13b57e/',
+            jwtToken: jwtToken,
+            onLogin: () => { NVIDIAGDC.NOD.login() },
+            onLogout: () => { },
+            searchToken: searchJWTToken,
+            accessRoles: roles,
+            widgetPlacementId: 'nvod-home-featured-8',
+        });
+
+
+
+if (  typeof nvodSessions!== "undefined" && nvodSessions.length>0) {
+
+var data = JSON.stringify({
+    "inputs": [
+      {
+        "name": "url_id_list__values",
+        "data": nvodSessions,
+        "datatype": "BYTES",
+        "shape": [
+          nvodSessions.length
+        ]
+      },
+		        {
+		            "name": "url_id_list__offsets",
+		            "datatype": "INT32",
+		            "data": [
+		                0,
+		                 nvodSessions.length
+		            ],
+		            "shape":[2]
+		        },
+
+		        {
+		            "name": "assets_returned",
+		            "data": [
+		               "nvod"
+		            ],
+		            "datatype": "BYTES",
+		            "shape": [1]
+
+		        }
+		    ]
+  });
+
+$.ajax({
+     url: "https://api-prod.nvidia.com/nvidia-asset-recommender/",
+     type: "POST",
+     data: data,
+    contentType: "application/json",
+     success: function(data) {
+   // var Stringrecc =data.outputs[8].data;
+   const recc =data.outputs[10].data;
+   const Stringrecc = recc .join(',');
+    console.log('data', data);
+       NvidiaSearchLibrary.GalleryWidget.mount({
+            elementId: 'nvidia-gallery-widget2',
+            header: 'Recommended For You',
+            searchInput: searchInput5,
+            site: site,
+            language: language,
+            voltronApiUrl: voltronApiUrl,
+            apiUrl: apiUrl,
+            facets: 'mimetype, subcollection',
+            isFeaturedPlaylist: false,
+            playlistId: Stringrecc ,
+            destination: destinationSite + '/en-us/on-demand/featured-playlist/' ,
+            destinationSite: destinationSite,
+
+            jwtToken: jwtToken,
+            onLogin: () => { NVIDIAGDC.NOD.login() },
+            onLogout: () => { },
+            searchToken: searchJWTToken,
+            accessRoles: roles,
+            widgetPlacementId: 'nvod-home-widget-playlist-2'
+        });
+		
+ 	}
+  
+ });
+
+
+
+}
+
+
+    }
+
+
+ setTimeout(function() { updateWidget(); }, 2000);
+
+    NVIDIAGDC.Browser.reMountAll = function () {
+        updateWidget();
+        
+    }
+
+</script> 
+<style>
+/* CSS for see all prev/next CTA */
+@media screen and (min-width: 690px){
+	div[id^="nvidia-gallery-widget"] .cleanslate .gallery-wrapper .prev {
+	    margin: 0px 0px 0px 0px;
+	}
+	div[id^="nvidia-gallery-widget"] .cleanslate .gallery-wrapper .next {
+	 	margin: 0px 0px 0px 0px;
+	}
+}
+</style>
+	    
+</div> </div>
+
+</div>
+
+</div>
+
+	
+
+
+
+
+
+
+                      
+
+	<div class="footer">
+
+
+
+
+
+
+
+
+
+                      
+
+
+
+
+
+
+
+    
+    
+        
+    
+
+
+
+<!-- Footer -->
+    
+	<div class="page-footer-wrapper" id="brandFooter">
+	
+	    <div class="page-footer">
+	        
+	        <!-- Links -->
+	        <div class="page-footer__links">
+	
+	            <div class="page-footer-link-set set-3">
+	
+	                <div class="page-footer-link-set__title">Company Information</div>
+	
+	                <ul class="page-footer-link-set__links">
+	                	
+	            		
+	            			<li>
+	                			<a href="https://www.nvidia.com/en-us/about-nvidia/" target="_self">About Us</a>
+	            			</li>
+	        			
+	            		
+	            			<li>
+	                			<a href="https://images.nvidia.com/aem-dam/Solutions/homepage/pdf/NVIDIA-Story.pdf" target="_blank" rel="noopener noreferrer">Company Overview</a>
+	            			</li>
+	        			
+	            		
+	            			<li>
+	                			<a href="https://investor.nvidia.com/home/default.aspx" target="_blank" rel="noopener noreferrer">Investors</a>
+	            			</li>
+	        			
+	            		
+	            			<li>
+	                			<a href="https://www.nventures.ai" target="_self">Venture Capital (NVentures)</a>
+	            			</li>
+	        			
+	            		
+	            			<li>
+	                			<a href="https://www.nvidia.com/en-us/foundation/" target="_self">NVIDIA Foundation</a>
+	            			</li>
+	        			
+	            		
+	            			<li>
+	                			<a href="https://www.nvidia.com/en-us/research/" target="_self">Research</a>
+	            			</li>
+	        			
+	            		
+	            			<li>
+	                			<a href="https://www.nvidia.com/en-us/sustainability/" target="_self">Corporate Sustainability</a>
+	            			</li>
+	        			
+	            		
+	            			<li>
+	                			<a href="https://www.nvidia.com/en-us/technologies/" target="_self">Technologies</a>
+	            			</li>
+	        			
+	            		
+	            			<li>
+	                			<a href="https://www.nvidia.com/en-us/about-nvidia/careers/" target="_self">Careers</a>
+	            			</li>
+	        			
+	                </ul>
+	
+	            </div>
+	
+	            <div class="page-footer-link-set set-3">
+	
+	                <div class="page-footer-link-set__title">News and Events</div>
+	
+	                <ul class="page-footer-link-set__links">
+	                    
+	            		
+	            			<li>
+	                			<a href="https://nvidianews.nvidia.com/" target="_blank" rel="noopener noreferrer">Newsroom</a>
+	            			</li>
+	        			
+	            		
+	            			<li>
+	                			<a href="https://blogs.nvidia.com/" target="_blank" rel="noopener noreferrer">Company Blog</a>
+	            			</li>
+	        			
+	            		
+	            			<li>
+	                			<a href="https://developer.nvidia.com/blog/" target="_blank" rel="noopener noreferrer">Technical Blog</a>
+	            			</li>
+	        			
+	            		
+	            			<li>
+	                			<a href="https://www.nvidia.com/en-us/about-nvidia/webinar-portal/" target="_self">Webinars</a>
+	            			</li>
+	        			
+	            		
+	            			<li>
+	                			<a href="https://www.nvidia.com/en-us/preferences/email-signup/" target="_self">Stay Informed</a>
+	            			</li>
+	        			
+	            		
+	            			<li>
+	                			<a href="https://www.nvidia.com/en-us/events/" target="_self">Events Calendar</a>
+	            			</li>
+	        			
+	            		
+	            			<li>
+	                			<a href="https://www.nvidia.com/gtc/events/" target="_self">GTC AI Conference</a>
+	            			</li>
+	        			
+	            		
+	            			<li>
+	                			<a href="https://www.nvidia.com/en-us/on-demand/" target="_self">NVIDIA On-Demand</a>
+	            			</li>
+	        			
+	                </ul>
+	
+	            </div>
+				
+		            <div class="page-footer-link-set set-3">
+		
+		                <div class="page-footer-link-set__title">Popular Links</div>
+		
+		                <ul class="page-footer-link-set__links">
+		                    
+		            		
+		            			<li>
+		                			<a href="https://developer.nvidia.com/" target="_blank" rel="noopener noreferrer">Developers</a>
+		            			</li>
+		        			
+		            		
+		            			<li>
+		                			<a href="https://www.nvidia.com/en-us/about-nvidia/partners/" target="_self">Partners</a>
+		            			</li>
+		        			
+		            		
+		            			<li>
+		                			<a href="https://www.nvidia.com/en-us/executive-insights/" target="_self">Executive Insights</a>
+		            			</li>
+		        			
+		            		
+		            			<li>
+		                			<a href="https://www.nvidia.com/en-us/startups/" target="_self">Startups and VCs</a>
+		            			</li>
+		        			
+		            		
+		            			<li>
+		                			<a href="https://www.nvidia.com/en-us/programs/isv/" target="_self">NVIDIA Connect for ISVs</a>
+		            			</li>
+		        			
+		            		
+		            			<li>
+		                			<a href="https://docs.nvidia.com/" target="_blank" rel="noopener noreferrer">Documentation</a>
+		            			</li>
+		        			
+		            		
+		            			<li>
+		                			<a href="https://www.nvidia.com/en-us/learn/organizations/" target="_self">Technical Training</a>
+		            			</li>
+		        			
+		            		
+		            			<li>
+		                			<a href="https://www.nvidia.com/en-us/support/enterprise/advisory-services/" target="_self">Professional Services for Data Science</a>
+		            			</li>
+		        			
+		                </ul>
+		
+		            </div>
+		        
+	            
+	
+	        </div>
+	        <!-- /Links -->
+	
+	
+	        
+	        <div class="page-footer__subscribe">
+				<div class="par-common-content reference parbase">
+</div>
+
+	        </div>
+	        <!-- /Subscribe -->
+	
+	        <!-- Social -->
+	        <div class="page-footer__social">
+	
+	            <div class="page-footer__social__label">Follow NVIDIA  </div>
+	            
+	            
+	            
+		            <a href="https://www.facebook.com/NVIDIA" class="page-footer__social__link facebook" target="_blank" rel="noopener noreferrer" alt='Follow GeForce on Facebook' title='Follow GeForce on Facebook'>
+		               <svg xmlns="http://www.w3.org/2000/svg" width="22" height="46" viewBox="0 0 22 46"><title>Facebook</title><path d="M28.638,16.072V12.109a8.484,8.484,0,0,1,.085-1.381,2.648,2.648,0,0,1,.387-0.963,1.579,1.579,0,0,1,.974-0.656,7.1,7.1,0,0,1,1.791-.182h4.066V1h-6.5Q23.8,1,21.335,3.609T18.872,11.3v4.773H14V24h4.869V47h9.766V24h6.5L36,16.072h-7.36Z" transform="translate(-14 -1)"/></svg>
+		            </a>
+	            
+	            
+		            <a href="https://www.instagram.com/nvidia/?hl=en" class="page-footer__social__link" target="_blank" rel="noopener noreferrer">
+                         <svg xmlns="http://www.w3.org/2000/svg" id="Layer_1" data-name="Layer 1" viewBox="0 0 1000 1000"><title>Instagram</title><path d="M295.42,6c-53.2,2.51-89.53,11-121.29,23.48-32.87,12.81-60.73,30-88.45,57.82S40.89,143,28.17,175.92c-12.31,31.83-20.65,68.19-23,121.42S2.3,367.68,2.56,503.46,3.42,656.26,6,709.6c2.54,53.19,11,89.51,23.48,121.28,12.83,32.87,30,60.72,57.83,88.45S143,964.09,176,976.83c31.8,12.29,68.17,20.67,121.39,23s70.35,2.87,206.09,2.61,152.83-.86,206.16-3.39S799.1,988,830.88,975.58c32.87-12.86,60.74-30,88.45-57.84S964.1,862,976.81,829.06c12.32-31.8,20.69-68.17,23-121.35,2.33-53.37,2.88-70.41,2.62-206.17s-.87-152.78-3.4-206.1-11-89.53-23.47-121.32c-12.85-32.87-30-60.7-57.82-88.45S862,40.87,829.07,28.19c-31.82-12.31-68.17-20.7-121.39-23S637.33,2.3,501.54,2.56,348.75,3.4,295.42,6m5.84,903.88c-48.75-2.12-75.22-10.22-92.86-17-23.36-9-40-19.88-57.58-37.29s-28.38-34.11-37.5-57.42c-6.85-17.64-15.1-44.08-17.38-92.83-2.48-52.69-3-68.51-3.29-202s.22-149.29,2.53-202c2.08-48.71,10.23-75.21,17-92.84,9-23.39,19.84-40,37.29-57.57s34.1-28.39,57.43-37.51c17.62-6.88,44.06-15.06,92.79-17.38,52.73-2.5,68.53-3,202-3.29s149.31.21,202.06,2.53c48.71,2.12,75.22,10.19,92.83,17,23.37,9,40,19.81,57.57,37.29s28.4,34.07,37.52,57.45c6.89,17.57,15.07,44,17.37,92.76,2.51,52.73,3.08,68.54,3.32,202s-.23,149.31-2.54,202c-2.13,48.75-10.21,75.23-17,92.89-9,23.35-19.85,40-37.31,57.56s-34.09,28.38-57.43,37.5c-17.6,6.87-44.07,15.07-92.76,17.39-52.73,2.48-68.53,3-202.05,3.29s-149.27-.25-202-2.53m407.6-674.61a60,60,0,1,0,59.88-60.1,60,60,0,0,0-59.88,60.1M245.77,503c.28,141.8,115.44,256.49,257.21,256.22S759.52,643.8,759.25,502,643.79,245.48,502,245.76,245.5,361.22,245.77,503m90.06-.18a166.67,166.67,0,1,1,167,166.34,166.65,166.65,0,0,1-167-166.34" transform="translate(-2.5 -2.5)"/></svg>
+					</a>
+				
+				
+		            <a href="https://www.linkedin.com/company/nvidia/" class="page-footer__social__link" target="_blank" rel="noopener noreferrer">
+						<svg xmlns="http://www.w3.org/2000/svg" width="46" height="44" viewBox="0 0 46 44"><title>LinkedIn</title><path d="M1.569,16.3h9.883V45.985H1.569V16.3Zm42.317,2.711a10.635,10.635,0,0,0-8.235-3.4,11.875,11.875,0,0,0-3.43.464,7.783,7.783,0,0,0-2.605,1.3,11.16,11.16,0,0,0-2.86,3.142V16.3H16.9l0.03,1.438q0.03,1.438.03,8.866T16.9,45.985h9.853V29.421a7.242,7.242,0,0,1,.329-2.426,6.365,6.365,0,0,1,1.9-2.561,4.849,4.849,0,0,1,3.16-1.034,4.26,4.26,0,0,1,3.789,1.782,8.667,8.667,0,0,1,1.213,4.927V45.984H47V28.972Q47,22.412,43.886,19.014ZM6.57,2.015A5.637,5.637,0,0,0,2.542,3.468,4.823,4.823,0,0,0,1,7.137a4.909,4.909,0,0,0,1.5,3.654A5.4,5.4,0,0,0,6.45,12.258H6.51a5.642,5.642,0,0,0,4.058-1.468,4.742,4.742,0,0,0,1.512-3.654,5,5,0,0,0-1.527-3.669A5.475,5.475,0,0,0,6.57,2.015Z" transform="translate(-1 -2)"/></svg>
+					</a>
+				
+	            
+				
+				
+				 
+		            <a href="https://twitter.com/nvidia" class="page-footer__social__link" target="_blank" rel="noopener noreferrer" alt='Follow GeForce on Twitter' title='Follow GeForce on Twitter'>
+		                 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1227" viewBox="0 0 1200 1227"><title>Twitter</title><path d="M714.163 519.284L1160.89 0H1055.03L667.137 450.887L357.328 0H0L468.492 681.821L0 1226.37H105.866L515.491 750.218L842.672 1226.37H1200L714.137 519.284H714.163ZM569.165 687.828L521.697 619.934L144.011 79.6944H306.615L611.412 515.685L658.88 583.579L1055.08 1150.3H892.476L569.165 687.854V687.828Z"/></svg>
+		            </a>
+	            
+	            				  
+				
+				
+				
+					
+								
+				
+		            <a href="https://www.youtube.com/user/nvidia" class="page-footer__social__link" target="_blank" rel="noopener noreferrer">
+					
+						<svg xmlns="http://www.w3.org/2000/svg" width="38.125" height="46" viewBox="0 0 576 512"><title>YouTube</title><path d="M549.655 124.083c-6.281-23.65-24.787-42.276-48.284-48.597C458.781 64 288 64 288 64S117.22 64 74.629 75.486c-23.497 6.322-42.003 24.947-48.284 48.597-11.412 42.867-11.412 132.305-11.412 132.305s0 89.438 11.412 132.305c6.281 23.65 24.787 41.5 48.284 47.821C117.22 448 288 448 288 448s170.78 0 213.371-11.486c23.497-6.321 42.003-24.171 48.284-47.821 11.412-42.867 11.412-132.305 11.412-132.305s0-89.438-11.412-132.305zm-317.51 213.508V175.185l142.739 81.205-142.739 81.201z"/></svg>
+					</a>
+				
+	        </div>
+	        <!-- /Social -->
+
+	    </div>
+
+	</div>
+	
+<!-- /Footer -->
+
+<!-- Global footer -->
+<div class="global-footer-container">
+	<div class="global-footer" id="globalFooter">
+	
+	    <svg class="global-footer__logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 407.8 1000 184.4" enable-background="new 0 407.8 1000 184.4" xml:space="preserve">
+	    	<title>NVIDIA</title>
+	    	<g id="nvidia-logo">
+	    		<path d="M987.1 555.7v-2.8h1.7c0.9 0 2.3 0.1 2.3 1.2 0 1.2-0.7 1.5-1.8 1.5H987.1M987.1 557.6h1.2l2.8 4.8h3l-3.1-5c1.5-0.1 2.9-0.8 2.9-3 0-2.7-1.8-3.5-4.9-3.5h-4.4v11.5h2.6L987.1 557.6M1000 556.7c0-6.8-5.2-10.7-11.1-10.7 -5.8 0-11.1 3.9-11.1 10.7 0 6.8 5.2 10.7 11.1 10.7S1000 563.5 1000 556.7M996.8 556.7c0 4.9-3.6 8.2-7.9 8.2l0 0c-4.4 0-7.9-3.3-7.9-8.2 0-4.9 3.6-8.2 7.9-8.2C993.2 548.6 996.8 551.9 996.8 556.7z"></path>
+	    		<path d="M593.2 442.7v121.1h34.2V442.7H593.2zM324.4 442.5v121.2h34.5v-94.1l26.9 0.1c8.8 0 15 2.2 19.2 6.7 5.4 5.7 7.6 15.1 7.6 32v55.3H446v-66.9c0-47.8-30.5-54.3-60.2-54.3C385.8 442.5 324.4 442.5 324.4 442.5zM648.3 442.7v121.1h55.4c29.5 0 39.2-4.9 49.6-15.9 7.4-7.7 12.1-24.7 12.1-43.3 0-17-4-32.2-11.1-41.7 -12.5-16.9-30.8-20.2-58.1-20.2H648.3zM682.2 469h14.7c21.3 0 35.1 9.5 35.1 34.4 0 24.8-13.7 34.4-35.1 34.4h-14.7V469zM544 442.7l-28.5 95.9 -27.3-95.9h-36.9l39 121.1h49.2l39.3-121.1H544zM781.4 563.7h34.2v-121h-34.2V563.7zM877.2 442.7l-47.7 121h33.7l7.6-21.3h56.5l7.2 21.3h36.6l-48.2-121H877.2zM899.4 464.8l20.7 56.6H878L899.4 464.8z"></path>
+	    		<path d="M103.9 462.8v-16.6c1.6-0.1 3.3-0.2 4.9-0.2 45.6-1.4 75.4 39.1 75.4 39.1s-32.2 44.8-66.8 44.8c-5 0-9.4-0.8-13.4-2.2v-50.5c17.7 2.2 21.3 10 32 27.7l23.7-20c0 0-17.3-22.7-46.5-22.7C110 462.3 106.9 462.5 103.9 462.8M103.9 407.8v24.8c1.6-0.1 3.3-0.2 4.9-0.3 63.3-2.2 104.6 51.9 104.6 51.9s-47.4 57.7-96.7 57.7c-4.5 0-8.7-0.4-12.7-1.1v15.4c3.4 0.4 7 0.7 10.6 0.7 46 0 79.2-23.5 111.4-51.2 5.3 4.3 27.2 14.7 31.7 19.2 -30.6 25.6-101.9 46.3-142.3 46.3 -3.9 0-7.6-0.2-11.3-0.6v21.6h174.7V407.8H103.9zM103.9 527.8v13.1c-42.5-7.6-54.3-51.8-54.3-51.8s20.4-22.6 54.3-26.3v14.4c0 0 0 0-0.1 0 -17.7-2.2-31.7 14.5-31.7 14.5S80 519.6 103.9 527.8M28.4 487.2c0 0 25.2-37.1 75.5-41v-13.5C48.2 437.2 0 484.4 0 484.4s27.3 79 103.9 86.3v-14.4C47.7 549.2 28.4 487.2 28.4 487.2z"></path>
+	    	</g>
+	    </svg>
+	
+	    <div class="global-footer__region">
+	     
+			<a href="https://www.nvidia.com/en-us/location-selector/" target="_self">
+		 		
+		
+		        <span class="global-footer__region__label">
+		           United States
+		        </span>
+		        
+			</a>
+		  			
+	    </div>
+	
+	    <ul class="global-footer__links">
+	        
+	        
+	        	<li>
+	           		<a href="https://www.nvidia.com/en-us/about-nvidia/privacy-policy/" target="_blank" rel="noopener noreferrer">Privacy Policy</a>
+	        	</li>
+	  		
+	        
+	        	<li>
+	           		<a href="https://www.nvidia.com/en-us/about-nvidia/privacy-center/" target="_blank" rel="noopener noreferrer">Your Privacy Choices</a>
+	        	</li>
+	  		
+	        
+	        	<li>
+	           		<a href="https://www.nvidia.com/en-us/about-nvidia/terms-of-service/" target="_blank" rel="noopener noreferrer">Terms of Service</a>
+	        	</li>
+	  		
+	        
+	        	<li>
+	           		<a href="https://www.nvidia.com/en-us/about-nvidia/accessibility/" target="_blank" rel="noopener noreferrer">Accessibility</a>
+	        	</li>
+	  		
+	        
+	        	<li>
+	           		<a href="https://www.nvidia.com/en-us/about-nvidia/company-policies/" target="_self">Corporate Policies</a>
+	        	</li>
+	  		
+	        
+	        	<li>
+	           		<a href="https://www.nvidia.com/en-us/product-security/" target="_blank" rel="noopener noreferrer">Product Security</a>
+	        	</li>
+	  		
+	        
+	        	<li>
+	           		<a href="https://www.nvidia.com/en-us/contact/" target="_blank" rel="noopener noreferrer">Contact</a>
+	        	</li>
+	  		
+	    </ul>
+	
+	    <div class="global-footer__copyright">Copyright © 2026 NVIDIA Corporation</div>
+	    
+	    
+			
+			
+			
+
+
+
+
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+ <script> $(function() {    if (window.location.href.indexOf("/industries/finance") > -1) {
+ if(!$('#main-header').find(".sub-brand-nav").length){ $( "#unibrow-container" ).after('<div class="sub-brand-nav"><div class="sub-brand-nav-container"><div class="brand-nav-left" style="width: auto;"><div id="sub-brand"><a class="sub-brand-name " href="https://www.nvidia.com/en-us/industries/"><span class="sub-brand-label size-small">Industries</span></a></div></div><div class="brand-nav-right financectadiv"><a href="#finance-subscribe" data-analytics="btn-manual:" data-title="Subscribe" data-href="#finance-subscribe" target="overlay" class="financecta breadcrumb-page-link model-popup cta link-btn btn-manual lb_iframe brand-green regular-btn " onclick="NVIDIAGDC.button.click(this, $(this).data(&quot;href&quot;),true, function() { ;return NVIDIAGDC.button.callbacks(this); }); return false;"><div class="btn"><span><strong>Subscribe Now</strong></span></div></a> </div></div></div>') ; } 
+ $("body").removeClass("nv-megamenu");
+}else{
+if (window.location.href.indexOf("/industries/") > -1) {
+if(!$('#main-header').find(".sub-brand-nav").length){ $( "#unibrow-container" ).after('<div class="sub-brand-nav"><div class="sub-brand-nav-container"><div class="brand-nav-left"><div id="sub-brand"><a class="sub-brand-name " href="https://www.nvidia.com/en-us/industries/"><span class="sub-brand-label size-small">Industries</span></a></div></div></div></div>') ; } 
+ $("body").removeClass("nv-megamenu");
+}
+}
+ }); </script>
+<style>
+.navigation .global-nav .desktop-nav .nav-header-container #tab4-nv-level2-tab8:checked~.menu3-container .nv-level3-tab8 {
+  background-color:#eee;
+  opacity:1;
+  -webkit-transform:rotateX(0);
+  transform:rotateX(0);
+  transition:.2s ease-out;
+  -webkit-transition:.2s ease-out;
+  -o-transition:.2s ease-out;
+  visibility:visible;
+  width:100%
+}
+.navigation .global-nav .desktop-nav .nav-header-container #tab4-nv-level2-tab8:checked ~ .nv-level2-list-container .nv-menu-level2-list .slider-menu {
+  opacity: 1;
+}
+</style>
+		
+	</div>
+</div>
+<!-- /Global footer -->
+<!-- Locale level script injection for pages -->
+<div class="hide" style="display: none;"> <style>
+    .image-container{
+        position:relative;
+    }
+.image-credit {
+    color: #ccc;
+    font-size: 11px;
+    line-height: 1.4em;
+    position:absolute;
+}
+.image-credit.credit--dark{
+    color: #333;
+}
+    .image-credit.position--top-left{
+        top:12px;
+        left:15px;
+    } 
+    .image-credit.position--top-right{
+        top:12px;
+        right:15px;
+    } 
+    .image-credit.position--bottom-left{
+        bottom:27px;
+        left:15px;
+    } 
+    .image-credit.position--bottom-right{
+        bottom:27px;
+        right:15px;
+    } 
+</style>
+<script>
+$(document).ready(function(){
+    $('.image-credit').each(function(){
+        var imageOuter = $(this).parent().parent().prev().children('.image-container').append(this);
+    })
+})
+</script>
+
+<style>
+.navigation .global-nav .desktop-nav .nav-header-container #tab4-nv-level2-tab8:checked~.menu3-container .nv-level3-tab8 {
+  background-color:#eee;
+  opacity:1;
+  -webkit-transform:rotateX(0);
+  transform:rotateX(0);
+  transition:.2s ease-out;
+  -webkit-transition:.2s ease-out;
+  -o-transition:.2s ease-out;
+  visibility:visible;
+  width:100%
+}
+.navigation .global-nav .desktop-nav .nav-header-container #tab4-nv-level2-tab8:checked ~ .nv-level2-list-container .nv-menu-level2-list .slider-menu {
+  opacity: 1;
+}
+
+
+.navigation .global-nav .desktop-nav .nav-header-container #tab4-nv-level2-tab9:checked~.menu3-container .nv-level3-tab9 {
+  background-color:#eee;
+  opacity:1;
+  -webkit-transform:rotateX(0);
+  transform:rotateX(0);
+  transition:.2s ease-out;
+  -webkit-transition:.2s ease-out;
+  -o-transition:.2s ease-out;
+  visibility:visible;
+  width:100%
+}
+.navigation .global-nav .desktop-nav .nav-header-container #tab4-nv-level2-tab9:checked ~ .nv-level2-list-container .nv-menu-level2-list .slider-menu {
+  opacity: 1;
+}
+
+.navigation .global-nav .desktop-nav .nav-header-container #tab4-nv-level2-tab10:checked~.menu3-container .nv-level3-tab10 {
+  background-color:#eee;
+  opacity:1;
+  -webkit-transform:rotateX(0);
+  transform:rotateX(0);
+  transition:.2s ease-out;
+  -webkit-transition:.2s ease-out;
+  -o-transition:.2s ease-out;
+  visibility:visible;
+  width:100%
+}
+.navigation .global-nav .desktop-nav .nav-header-container #tab4-nv-level2-tab10:checked ~ .nv-level2-list-container .nv-menu-level2-list .slider-menu {
+  opacity: 1;
+}
+</style> </div>
+<!-- End of Locale level script injection for pages -->
+
+ 
+ 	<script src="/content/dam/en-zz/Solutions/librarian/bundle-search-prod-pub-v3.js" defer></script>
+<div id="librarian-search"></div>
+<script defer>
+window.addEventListener('load', () => {
+    LIBRARIAN.Home.mount({
+                elementId: 'librarian-search',
+                searchPage: false,
+                placeholder:'Start your search',
+                site : 'https://www.nvidia.com',
+                generateSummary: false,
+                page:"",  
+                searchRedirectPath: '',
+                preSelectedFilters: '',
+                retainFilters: false,
+                suggestedSearchPills: [
+"Gaming on GeForce NOW",
+                "Download CUDA Toolkit",
+                "cuDNN library",
+                "NVIDIA Broadcast",
+                "Custom gaming PC",
+                "NVIDIA App",
+                "PhysX SDK for game development",
+                "Videos about RTX 4090",
+                "Computer vision for self-driving cars",
+                "AI training with H100",
+                "GeForce Experience features",
+                "Generative AI for healthcare",
+                "Explain DLSS",
+                "4060 specs",
+                "Building a RAG-powered AI chatbot"
+                
+            ]
+	})
+});
+</script>
+ </div>
+   
+
+
+	
+
+
+
+
+
+
+
+                      
+
+
+         
+    
+	
+        <script src="/etc/designs/nvidiaGDC/clientlibs_base.min.1afa4e1ce41613475b87312ecf229246.js"></script>
+
+    
+
+<script src="/etc/designs/nvidiaGDC/clientlibs-all.min.5cc875fbdeb9f521257e45ed5c4b27fd.js"></script>
+
+<script type="text/javascript">
+		NVIDIAGDC.funcQueue.executeQueue();
+		//DTM code Execution
+		if(typeof _satellite !== "undefined"){
+			_satellite.pageBottom();
+		}
+		
+		/*Logic to handle window resize , All window resize should be handled here at global Level*/
+		var windowResizeID,
+		screenWidth,
+		pixelSize = window.devicePixelRatio;
+		
+		var preResizeViewPort=NVIDIAGDC.Browser.getViewport();
+		$(window).resize(function() {
+		    clearTimeout(windowResizeID);
+		    windowResizeID = setTimeout(handleWindowResizing, 500);
+		    
+		});
+
+		function handleWindowResizing(){
+			var viewPort = NVIDIAGDC.Browser.getViewport();	
+			if(viewPort!==preResizeViewPort) {
+				preResizeViewPort=viewPort;
+				var heroBannerarticles=$(".heroBanner").find("article.lazyloaded");
+				heroBannerarticles.each(function(index,element) {
+					var bcgImagePath = '';
+					var bg = $(this).css('background-image');
+					var currentBGimage=bg.replace('url(','').replace(')','');
+						if(viewPort === "mobile"){
+							bcgImagePath = $(this).attr('data-bcgimagemobile');
+						} else if(viewPort === "tablet"){
+							bcgImagePath = $(this).attr('data-bcgimagetablet'); 
+						} else if(viewPort === "desktop"){
+							bcgImagePath = $(this).attr('data-bcgimagepc');
+						}else if(viewPort === "laptop"){
+							bcgImagePath = $(this).attr('data-bcgimagelaptop');
+						}
+						if(bcgImagePath !== "undefined" && bcgImagePath !== "" && currentBGimage!==bcgImagePath){
+							$(this).css("background-image" , "url('" + bcgImagePath +"')");
+						} 
+					
+				});
+				
+				var lazylodedimages=$(".image").find("img.lazyloaded");
+				var loadedimages=lazylodedimages.length;
+				lazylodedimages.each(function(index,element) {
+					var imagescr=""
+					var currentscr=$(this).attr("src");
+					if(pixelSize >= 1.5) {
+						
+						if(viewPort === "mobile"){
+							imagescr = $(this).attr('data-src-mobile-retina');
+						} else if(viewPort === "tablet"){
+							imagescr = $(this).attr('data-src-tablet-retina'); 
+						} else if(viewPort === "laptop"){
+							imagescr = $(this).attr('data-src-laptop-retina');
+						} else {
+							imagescr = $(this).attr('data-src-desktop-retina');
+						}
+						
+					}else {
+						
+						if(viewPort === "mobile"){
+							imagescr = $(this).attr('data-bcgimagemobile');
+						} else if(viewPort === "tablet"){
+							imagescr = $(this).attr('data-src-tablet'); 
+						} else if(viewPort === "laptop"){
+							imagescr = $(this).attr('data-src-laptop');
+						} else {
+							imagescr = $(this).attr('data-src-desktop');
+						}
+						
+					}
+					if(imagescr !== "undefined" && imagescr !== "" && currentscr!==imagescr){
+						$(this).attr("src" , imagescr);
+					}
+				});
+				
+				
+			}
+		}
+		/*load model images post page load*/
+		$(window).load(function() { 
+			if(typeof(lazySizes) != "undefined"){
+				$(".modalContent").find(".lazyload").each(function(){
+                    lazySizes.loader.unveil(this);
+				});
+				
+			
+			}
+			
+		});
+		
+</script>
+
+	
+
+
+
+
+
+
+
+
+
+
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+<script>
+$(document).ready(function() {
+	NVIDIAGDC.Browser.getUrlParameter('ncid')
+	var ncidval = NVIDIAGDC.Browser.getUrlParameter("ncid");
+		if (ncidval && ncidval.length > 1) {
+			const cookieName = "SESSncid";
+			const cookieValue = ncidval;
+			document.cookie = cookieName + '=' + cookieValue + ';path=/' + '; domain=.nvidia.com'; 
+		}
+	
+});
+
+</script>
+</body>
+
+</html>

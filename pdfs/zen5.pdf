@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+
+<html lang="en-US">
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    <head>
+        <meta http-equiv="content-type" content="text/html; charset=utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        
+        <meta name="ft-tenant-base-url" content="https://docs.amd.com/">
+        <link rel="icon" href="https://docs.amd.com/favicon.ico">
+        
+        
+        
+        
+        <title>AMD Technical Information Portal</title>
+        <link id="FT-boot-styles" rel="stylesheet" href="https://docs.amd.com/stylesheets/bootstrap.css?v=710a2d51">
+        <link id="FT-application-styles" rel="stylesheet" href="https://docs.amd.com/stylesheets/fluidtopicsclient.css?v=2489cbe4">
+        <link id="FT-customization-styles" rel="stylesheet" href="https://docs.amd.com/stylesheets/customizations.css?v=2a3075c9">
+        <script nonce="168e2461-a18d-4d2b-9029-dfe1bba15486" src="https://docs.amd.com/scripts/bootstrap.js?v=316b339a"></script><script nonce="168e2461-a18d-4d2b-9029-dfe1bba15486" src="https://docs.amd.com/scripts/fluidtopics.min.js?v=33918f38"></script><script nonce="168e2461-a18d-4d2b-9029-dfe1bba15486" src="https://docs.amd.com/fluidtopicsclient.nocache.js?cb=7d2abf8b"></script>
+        <script nonce="168e2461-a18d-4d2b-9029-dfe1bba15486" src="https://docs.amd.com/scripts/ft-app-context-dependencies.js?v=40aa0377" type="module"></script>
+        <script nonce="168e2461-a18d-4d2b-9029-dfe1bba15486" src="https://docs.amd.com/third-party/scripts/momentjs/min/moment.min.js?v=08cc86ae" defer></script>
+        <link rel="preload" as="image" href="https://docs.amd.com/internal/api/webapp/splash-image?v=9d225e32">
+        <link rel="preload" as="image" href="https://docs.amd.com/internal/api/webapp/header/logo?v=c5ea3faf">
+    </head>
+    <body class="FT-version-5-2">
+        <div id="FT-application-loader">
+            <div>
+                <img aria-hidden="true" src="https://docs.amd.com/internal/api/webapp/splash-image?v=9d225e32" alt="Loading application...">
+                <span>Loading application...</span>
+            </div>
+        </div>
+        
+        <script nonce="168e2461-a18d-4d2b-9029-dfe1bba15486" id="FT-tenant-custom-js" src="https://docs.amd.com/scripts/custom.js?v=5ff4dbb3"></script>
+        <noscript>Your web browser must have JavaScript enabled in order for this application to display correctly.</noscript>
+    </body>
+</html>

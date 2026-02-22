@@ -9,6 +9,7 @@ bibtex: |
     booktitle={CIDR},
     year={2013}
   }
+pdf: mcsherry2013differential.pdf
 ---
 
 ## Summary
@@ -16,4 +17,3 @@ bibtex: |
 ## Key Contributions
 
 ## Notes
-

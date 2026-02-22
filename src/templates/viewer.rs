@@ -54,8 +54,10 @@ pub fn render_viewer(
             r#"<div class="mode-toggle">
                 <button class="active">View</button>
                 <button onclick="window.location.href='/note/{}?edit=true'">Edit</button>
+                <button onclick="openSharePanel('{}')" title="Create collaborative copy">Share</button>
                 <button class="delete-btn" onclick="confirmDelete('{}', '{}')">Delete</button>
             </div>"#,
+            note.key,
             note.key,
             note.key,
             html_escape(&note.title).replace('\'', "\\'")
@@ -832,6 +834,58 @@ pub fn render_viewer(
             gap: 0.5rem;
             align-items: center;
         }}
+        /* Share panel - reuses citation panel styles */
+        .share-panel {{
+            position: fixed;
+            top: 60px;
+            right: 20px;
+            width: 380px;
+            max-height: 70vh;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+            z-index: 1000;
+            display: none;
+            flex-direction: column;
+            overflow: hidden;
+        }}
+        .share-panel.active {{ display: flex; }}
+
+        .share-link-item {{
+            padding: 0.5rem 0;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.8rem;
+        }}
+        .share-link-item:last-child {{ border-bottom: none; }}
+        .share-link-url {{
+            font-family: monospace;
+            color: var(--link);
+            font-size: 0.75rem;
+            word-break: break-all;
+            cursor: pointer;
+        }}
+        .share-link-url:hover {{ text-decoration: underline; }}
+        .share-link-meta {{
+            color: var(--muted);
+            font-size: 0.7rem;
+            margin-top: 0.2rem;
+        }}
+        .share-link-actions {{
+            display: flex;
+            gap: 0.3rem;
+            margin-top: 0.3rem;
+        }}
+        .share-active-badge {{
+            display: inline-block;
+            font-size: 0.65rem;
+            padding: 0.1rem 0.3rem;
+            border-radius: 3px;
+            font-weight: 600;
+        }}
+        .share-active-badge.active {{ background: var(--green); color: white; }}
+        .share-active-badge.inactive {{ background: var(--red); color: white; }}
+
         .citation-panel-footer .citation-stats {{
             flex: 1;
             font-size: 0.8rem;
@@ -899,6 +953,31 @@ pub fn render_viewer(
                 </span>
             </div>
             <div class="mini-graph-body" id="mini-graph-body"></div>
+        </div>
+        <div class="share-panel" id="share-panel">
+            <div class="citation-panel-header">
+                <span>Share Note</span>
+                <button class="citation-panel-close" onclick="closeSharePanel()">&times;</button>
+            </div>
+            <div class="citation-panel-body" id="share-panel-body">
+                <div style="margin-bottom:1rem;">
+                    <div style="font-size:0.85rem;font-weight:600;margin-bottom:0.5rem;">Create New Shared Copy</div>
+                    <div style="font-size:0.8rem;color:var(--muted);margin-bottom:0.5rem;">
+                        Add contributor names (optional):
+                    </div>
+                    <div id="contributor-fields">
+                        <div style="display:flex;gap:0.3rem;margin-bottom:0.3rem;">
+                            <input type="text" class="contrib-name-input" placeholder="Name (e.g., Yihao)" style="flex:1;padding:0.3rem 0.5rem;border:1px solid var(--border);border-radius:3px;font-size:0.8rem;background:var(--bg);color:var(--fg);">
+                            <button class="pdf-toggle-btn" onclick="addContributorField()">+</button>
+                        </div>
+                    </div>
+                    <button class="pdf-toggle-btn" style="margin-top:0.5rem;background:var(--link);color:white;border-color:var(--link);" onclick="createSharedNote()" id="create-share-btn">Create Shared Link</button>
+                    <div id="create-share-status" style="font-size:0.8rem;margin-top:0.5rem;"></div>
+                </div>
+                <hr style="border:none;border-top:1px solid var(--border);margin:1rem 0;">
+                <div style="font-size:0.85rem;font-weight:600;margin-bottom:0.5rem;">Existing Shared Links</div>
+                <div id="share-list" style="font-size:0.8rem;color:var(--muted);">Loading...</div>
+            </div>
         </div>
         <div class="citation-panel" id="citation-panel">
             <div class="citation-panel-header">
@@ -2096,6 +2175,122 @@ pub fn render_viewer(
                 document.body.style.userSelect = '';
             }});
         }})();
+
+        // =====================================================================
+        // Share Panel
+        // =====================================================================
+
+        function openSharePanel(noteKeyParam) {{
+            const panel = document.getElementById('share-panel');
+            panel.classList.add('active');
+            loadShareList();
+        }}
+
+        function closeSharePanel() {{
+            document.getElementById('share-panel').classList.remove('active');
+        }}
+
+        function addContributorField() {{
+            const container = document.getElementById('contributor-fields');
+            const div = document.createElement('div');
+            div.style = 'display:flex;gap:0.3rem;margin-bottom:0.3rem;';
+            div.innerHTML = '<input type="text" class="contrib-name-input" placeholder="Name" style="flex:1;padding:0.3rem 0.5rem;border:1px solid var(--border);border-radius:3px;font-size:0.8rem;background:var(--bg);color:var(--fg);">' +
+                '<button class="pdf-toggle-btn" onclick="this.parentElement.remove()">-</button>';
+            container.appendChild(div);
+        }}
+
+        async function createSharedNote() {{
+            const btn = document.getElementById('create-share-btn');
+            const status = document.getElementById('create-share-status');
+            btn.disabled = true;
+            status.textContent = 'Creating...';
+            status.style.color = 'var(--muted)';
+
+            const nameInputs = document.querySelectorAll('.contrib-name-input');
+            const contributors = [];
+            nameInputs.forEach(input => {{
+                const name = input.value.trim();
+                if (name) contributors.push({{ name: name }});
+            }});
+
+            try {{
+                const resp = await fetch('/api/shared/create', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{ note_key: noteKey, contributors: contributors }})
+                }});
+
+                if (resp.ok) {{
+                    const data = await resp.json();
+                    const fullUrl = window.location.origin + data.url;
+                    status.innerHTML = '<span style="color:var(--green);">Created!</span> <a href="' + data.url + '" target="_blank" style="color:var(--link);">' + fullUrl + '</a>';
+                    navigator.clipboard.writeText(fullUrl).then(() => {{
+                        status.innerHTML += ' <span style="color:var(--muted);">(copied)</span>';
+                    }});
+                    loadShareList();
+                }} else {{
+                    const err = await resp.text();
+                    status.textContent = 'Error: ' + err;
+                    status.style.color = 'var(--red)';
+                }}
+            }} catch (e) {{
+                status.textContent = 'Error: ' + e.message;
+                status.style.color = 'var(--red)';
+            }}
+
+            btn.disabled = false;
+        }}
+
+        async function loadShareList() {{
+            const container = document.getElementById('share-list');
+
+            try {{
+                const resp = await fetch('/api/shared/list/' + encodeURIComponent(noteKey));
+                if (!resp.ok) {{
+                    container.textContent = 'Failed to load';
+                    return;
+                }}
+
+                const shares = await resp.json();
+                if (shares.length === 0) {{
+                    container.textContent = 'No shared links yet.';
+                    return;
+                }}
+
+                let html = '';
+                for (const share of shares) {{
+                    const fullUrl = window.location.origin + '/shared/' + share.share_token;
+                    const truncToken = share.share_token.substring(0, 8) + '...';
+                    const activeBadge = share.active
+                        ? '<span class="share-active-badge active">Active</span>'
+                        : '<span class="share-active-badge inactive">Inactive</span>';
+                    const contribs = share.contributors.map(c => c.name).join(', ') || 'No contributors';
+                    const created = new Date(share.created_at).toLocaleDateString();
+
+                    html += '<div class="share-link-item">' +
+                        '<div>' + activeBadge + ' <span class="share-link-url" onclick="navigator.clipboard.writeText(\'' + fullUrl + '\');this.style.color=\'var(--green)\';setTimeout(()=>this.style.color=\'\',1000);" title="Click to copy">' + truncToken + '</span></div>' +
+                        '<div class="share-link-meta">' + contribs + ' &middot; ' + created + '</div>' +
+                        '<div class="share-link-actions">' +
+                        '<a href="/shared/' + share.share_token + '" target="_blank" class="pdf-toggle-btn" style="text-decoration:none;font-size:0.7rem;">Open</a>' +
+                        '<button class="pdf-toggle-btn" style="font-size:0.7rem;" onclick="toggleShareActive(\'' + share.share_token + '\')">' + (share.active ? 'Deactivate' : 'Activate') + '</button>' +
+                        '</div></div>';
+                }}
+                container.innerHTML = html;
+            }} catch (e) {{
+                container.textContent = 'Error: ' + e.message;
+            }}
+        }}
+
+        async function toggleShareActive(token) {{
+            try {{
+                const resp = await fetch('/api/shared/' + token + '/deactivate', {{ method: 'POST' }});
+                if (resp.ok) {{
+                    loadShareList();
+                }}
+            }} catch (e) {{
+                console.error('Failed to toggle share:', e);
+            }}
+        }}
 
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', function() {{

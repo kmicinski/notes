@@ -11,6 +11,7 @@ bibtex: |
   	year={2010},
   	organization={Springer}
   }
+pdf: dedalus_dl2.pdf
 ---
 
 ## Summary
@@ -18,4 +19,3 @@ bibtex: |
 ## Key Contributions
 
 ## Notes
-
