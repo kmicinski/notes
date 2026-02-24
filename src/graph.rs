@@ -908,9 +908,10 @@ pub async fn graph_page(
                 d.fy = null;
             }}
 
-            // Zoom support
+            // Zoom support — filter out shift so shift+click reaches node handlers
             const zoom = d3.zoom()
                 .scaleExtent([0.3, 3])
+                .filter(event => !event.button && !event.shiftKey)
                 .on('zoom', (event) => {{
                     linkG.attr('transform', event.transform);
                     nodeG.attr('transform', event.transform);
