@@ -663,6 +663,7 @@ pub async fn graph_page(
                     return cls;
                 }})
                 .call(d3.drag()
+                    .filter(event => !event.shiftKey && !event.button)
                     .on('start', dragstarted)
                     .on('drag', dragged)
                     .on('end', dragended));
