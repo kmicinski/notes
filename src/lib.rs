@@ -16,6 +16,7 @@ pub mod auth;
 pub mod citations;
 pub mod graph;
 pub mod graph_index;
+pub mod graph_query;
 pub mod handlers;
 pub mod models;
 pub mod notes;
@@ -242,6 +243,8 @@ pub use auth::{
 };
 
 pub use graph::{build_knowledge_graph, find_reachable, find_shortest_path};
+
+pub use graph_query::query_graph;
 
 pub use graph_index::{reconcile, reindex_note, remove_note, load_all_edges, load_all_nodes};
 

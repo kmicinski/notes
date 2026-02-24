@@ -1460,10 +1460,16 @@ pub async fn download_pdf_from_url(
         .redirect(reqwest::redirect::Policy::limited(10))
         .build()
         .unwrap_or_else(|_| reqwest::Client::new());
+    // Derive Referer from the URL's origin — many academic publishers (ACM, IEEE, Springer) 403 without it
+    let referer = url::Url::parse(&body.url)
+        .ok()
+        .map(|u| format!("{}://{}/", u.scheme(), u.host_str().unwrap_or("")))
+        .unwrap_or_default();
     let response = match client
         .get(&body.url)
         .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
         .header("Accept", "application/pdf,*/*")
+        .header("Referer", &referer)
         .send()
         .await
     {
@@ -1938,6 +1944,35 @@ fn remove_note_pdf_frontmatter(notes_dir: &PathBuf, note_path: &PathBuf) -> Resu
 
 fn update_note_pdf_frontmatter(notes_dir: &PathBuf, note_path: &PathBuf, pdf_filename: &str) -> Result<(), String> {
     let full_path = notes_dir.join(note_path);
+
+    // Defensive: if cached path doesn't exist, try to find the note by filename on disk
+    let full_path = if full_path.exists() {
+        full_path
+    } else {
+        // note_path is typically "subdir/key.md" or "key.md" — try the filename in notes_dir
+        let filename = note_path.file_name().ok_or("Invalid note path")?;
+        let alt = notes_dir.join(filename);
+        if alt.exists() {
+            alt
+        } else {
+            // Walk one level of subdirs
+            let mut found = None;
+            if let Ok(entries) = fs::read_dir(notes_dir) {
+                for entry in entries.flatten() {
+                    let p = entry.path();
+                    if p.is_dir() {
+                        let candidate = p.join(filename);
+                        if candidate.exists() {
+                            found = Some(candidate);
+                            break;
+                        }
+                    }
+                }
+            }
+            found.ok_or_else(|| format!("Note file not found: {:?} (cached path: {:?})", filename, note_path))?
+        }
+    };
+
     let content = fs::read_to_string(&full_path)
         .map_err(|e| format!("Failed to read note: {}", e))?;
 

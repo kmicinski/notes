@@ -23,6 +23,11 @@ use notes::{auth, citations, graph, handlers, shared, smart_add, AppState, NOTES
 
 #[tokio::main]
 async fn main() {
+    rayon::ThreadPoolBuilder::new()
+        .num_threads(16)
+        .build_global()
+        .unwrap();
+
     let state = Arc::new(AppState::new());
 
     let app = Router::new()

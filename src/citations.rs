@@ -431,65 +431,79 @@ pub struct NotePoolIndex {
 impl NotePoolIndex {
     /// Build lookup maps from all notes in the pool.
     pub fn build(notes: &[Note]) -> Self {
-        let mut doi_to_key = HashMap::new();
-        let mut arxiv_to_key = HashMap::new();
-        let mut title_to_key = HashMap::new();
-        let mut author_year_to_keys: HashMap<String, Vec<String>> = HashMap::new();
+        use rayon::prelude::*;
 
-        for note in notes {
-            let key = &note.key;
+        let name_re = Regex::new(r"\b([A-Z][a-z]{1,20})\b").unwrap();
 
-            if let NoteType::Paper(ref meta) = note.note_type {
-                // Index DOIs and arXiv IDs from sources
-                for source in &meta.sources {
-                    match source.source_type.as_str() {
-                        "doi" => {
-                            doi_to_key
-                                .insert(source.identifier.to_lowercase(), key.clone());
+        // Parallel per-note extraction
+        let per_note: Vec<_> = notes
+            .par_iter()
+            .map(|note| {
+                let key = &note.key;
+                let mut dois = Vec::new();
+                let mut arxivs = Vec::new();
+                let mut title_entry = None;
+                let mut author_years = Vec::new();
+
+                if let NoteType::Paper(ref meta) = note.note_type {
+                    for source in &meta.sources {
+                        match source.source_type.as_str() {
+                            "doi" => dois.push((source.identifier.to_lowercase(), key.clone())),
+                            "arxiv" => arxivs.push((source.identifier.clone(), key.clone())),
+                            _ => {}
                         }
-                        "arxiv" => {
-                            arxiv_to_key.insert(source.identifier.clone(), key.clone());
-                        }
-                        _ => {}
                     }
-                }
 
-                // Also extract DOI/arXiv from bibtex entries
-                for bib_entry in &meta.bibtex_entries {
-                    if let Some(parsed) = parse_bibtex(bib_entry) {
-                        if let Some(ref doi) = parsed.doi {
-                            doi_to_key
-                                .entry(doi.to_lowercase())
-                                .or_insert_with(|| key.clone());
-                        }
-                        if let Some(ref eprint) = parsed.eprint {
-                            arxiv_to_key
-                                .entry(eprint.clone())
-                                .or_insert_with(|| key.clone());
-                        }
-
-                        // Index by author last names + year
-                        if let (Some(ref authors), Some(year)) = (&parsed.author, parsed.year) {
-                            let name_re = Regex::new(r"\b([A-Z][a-z]{1,20})\b").unwrap();
-                            for cap in name_re.captures_iter(authors) {
-                                if let Some(name) = cap.get(1) {
-                                    let lookup =
-                                        format!("{}_{}", name.as_str().to_lowercase(), year);
-                                    author_year_to_keys
-                                        .entry(lookup)
-                                        .or_default()
-                                        .push(key.clone());
+                    for bib_entry in &meta.bibtex_entries {
+                        if let Some(parsed) = parse_bibtex(bib_entry) {
+                            if let Some(ref doi) = parsed.doi {
+                                dois.push((doi.to_lowercase(), key.clone()));
+                            }
+                            if let Some(ref eprint) = parsed.eprint {
+                                arxivs.push((eprint.clone(), key.clone()));
+                            }
+                            if let (Some(ref authors), Some(year)) =
+                                (&parsed.author, parsed.year)
+                            {
+                                for cap in name_re.captures_iter(authors) {
+                                    if let Some(name) = cap.get(1) {
+                                        let lookup =
+                                            format!("{}_{}", name.as_str().to_lowercase(), year);
+                                        author_years.push((lookup, key.clone()));
+                                    }
                                 }
                             }
                         }
                     }
                 }
-            }
 
-            // Index by normalized title
-            let norm = normalize_title(&note.title);
-            if norm.len() >= 5 {
-                title_to_key.insert(norm, key.clone());
+                let norm = normalize_title(&note.title);
+                if norm.len() >= 5 {
+                    title_entry = Some((norm, key.clone()));
+                }
+
+                (dois, arxivs, title_entry, author_years)
+            })
+            .collect();
+
+        // Sequential merge
+        let mut doi_to_key = HashMap::new();
+        let mut arxiv_to_key = HashMap::new();
+        let mut title_to_key = HashMap::new();
+        let mut author_year_to_keys: HashMap<String, Vec<String>> = HashMap::new();
+
+        for (dois, arxivs, title_entry, author_years) in per_note {
+            for (doi, key) in dois {
+                doi_to_key.entry(doi).or_insert(key);
+            }
+            for (arxiv, key) in arxivs {
+                arxiv_to_key.entry(arxiv).or_insert(key);
+            }
+            if let Some((norm, key)) = title_entry {
+                title_to_key.insert(norm, key);
+            }
+            for (lookup, key) in author_years {
+                author_year_to_keys.entry(lookup).or_default().push(key);
             }
         }
 
@@ -610,9 +624,10 @@ fn save_cached_result(db: &sled::Db, result: &CitationScanResult) -> Result<(), 
 // Core Scan Logic
 // ============================================================================
 
-fn scan_note_pdf(
+/// Core scan logic that uses a pre-built NotePoolIndex.
+fn scan_note_pdf_with_index(
     note: &Note,
-    notes: &[Note],
+    index: &NotePoolIndex,
     pdfs_dir: &Path,
     db: &sled::Db,
     force: bool,
@@ -646,8 +661,6 @@ fn scan_note_pdf(
         .map(|(i, r)| parse_reference_text(r, i))
         .collect();
 
-    // Build index and match
-    let index = NotePoolIndex::build(notes);
     let mut matches = Vec::new();
     let mut matched_keys = std::collections::HashSet::new();
     let mut unmatched = 0;
@@ -675,6 +688,17 @@ fn scan_note_pdf(
     save_cached_result(db, &result)?;
 
     Ok(result)
+}
+
+fn scan_note_pdf(
+    note: &Note,
+    notes: &[Note],
+    pdfs_dir: &Path,
+    db: &sled::Db,
+    force: bool,
+) -> Result<CitationScanResult, String> {
+    let index = NotePoolIndex::build(notes);
+    scan_note_pdf_with_index(note, &index, pdfs_dir, db, force)
 }
 
 // ============================================================================
@@ -847,37 +871,64 @@ pub async fn citation_scan_all(
     let db = state.db.clone();
 
     let result = tokio::task::spawn_blocking(move || {
-        let mut scanned = 0;
-        let mut skipped_cached = 0;
-        let mut skipped_no_pdf = 0;
-        let mut total_matches = 0;
-        let mut errors = Vec::new();
+        use rayon::prelude::*;
 
-        for note in &notes {
-            if note.pdf.is_none() {
-                skipped_no_pdf += 1;
-                continue;
-            }
+        let notes_with_pdf: Vec<&Note> = notes.iter().filter(|n| n.pdf.is_some()).collect();
+        let skipped_no_pdf = notes.len() - notes_with_pdf.len();
 
-            // Check cache first
-            if let Some(cached) = load_cached_result(&db, &note.key) {
-                let pdf_path = pdfs_dir.join(note.pdf.as_deref().unwrap());
-                if let Ok(hash) = hash_pdf(&pdf_path) {
-                    if cached.pdf_hash == hash {
-                        skipped_cached += 1;
-                        total_matches += cached.matches.len();
-                        continue;
+        // Parallel cache check + hash computation
+        let cache_status: Vec<(&Note, bool, usize)> = notes_with_pdf
+            .par_iter()
+            .map(|&note| {
+                if let Some(cached) = load_cached_result(&db, &note.key) {
+                    let pdf_path = pdfs_dir.join(note.pdf.as_deref().unwrap());
+                    if let Ok(hash) = hash_pdf(&pdf_path) {
+                        if cached.pdf_hash == hash {
+                            return (note, true, cached.matches.len());
+                        }
                     }
                 }
-            }
+                (note, false, 0)
+            })
+            .collect();
 
-            match scan_note_pdf(note, &notes, &pdfs_dir, &db, false) {
-                Ok(result) => {
-                    total_matches += result.matches.len();
+        let mut skipped_cached = 0;
+        let mut cached_matches = 0;
+        let mut to_scan = Vec::new();
+
+        for (note, is_cached, match_count) in cache_status {
+            if is_cached {
+                skipped_cached += 1;
+                cached_matches += match_count;
+            } else {
+                to_scan.push(note);
+            }
+        }
+
+        // Build index once for all uncached scans
+        let index = NotePoolIndex::build(&notes);
+
+        // Parallel scan for uncached notes
+        let scan_results: Vec<(String, Result<CitationScanResult, String>)> = to_scan
+            .par_iter()
+            .map(|note| {
+                let result = scan_note_pdf_with_index(note, &index, &pdfs_dir, &db, false);
+                (note.key.clone(), result)
+            })
+            .collect();
+
+        let mut scanned = 0;
+        let mut total_matches = cached_matches;
+        let mut errors = Vec::new();
+
+        for (key, result) in scan_results {
+            match result {
+                Ok(r) => {
+                    total_matches += r.matches.len();
                     scanned += 1;
                 }
                 Err(e) => {
-                    errors.push(format!("{}: {}", note.key, e));
+                    errors.push(format!("{}: {}", key, e));
                 }
             }
         }

@@ -132,6 +132,8 @@ pub fn search_local_for_match(
     input: &str,
     input_type: &InputType,
 ) -> Option<LocalMatch> {
+    use rayon::prelude::*;
+
     let input_lower = input.to_lowercase();
 
     // Helper to check if a note has a matching source
@@ -149,82 +151,78 @@ pub fn search_local_for_match(
 
     // For arXiv IDs, check sources and content
     if let InputType::ArxivUrl { arxiv_id } = input_type {
-        for note in notes {
-            if check_source(note, "arxiv", arxiv_id) {
-                return Some(LocalMatch {
-                    key: note.key.clone(),
-                    title: note.title.clone(),
-                    match_type: "arxiv".to_string(),
-                });
-            }
+        if let Some(note) = notes.par_iter().find_first(|note| {
+            check_source(note, "arxiv", arxiv_id)
+        }) {
+            return Some(LocalMatch {
+                key: note.key.clone(),
+                title: note.title.clone(),
+                match_type: "arxiv".to_string(),
+            });
         }
     }
 
     // For DOIs, check sources and content
     if let InputType::DoiUrl { doi } = input_type {
-        for note in notes {
-            if check_source(note, "doi", doi) {
-                return Some(LocalMatch {
-                    key: note.key.clone(),
-                    title: note.title.clone(),
-                    match_type: "doi".to_string(),
-                });
-            }
+        if let Some(note) = notes.par_iter().find_first(|note| {
+            check_source(note, "doi", doi)
+        }) {
+            return Some(LocalMatch {
+                key: note.key.clone(),
+                title: note.title.clone(),
+                match_type: "doi".to_string(),
+            });
         }
     }
 
     // For any URL, try to extract a DOI and search for it
     if let Some(doi) = extract_doi(input) {
-        for note in notes {
-            if check_source(note, "doi", &doi) {
-                return Some(LocalMatch {
-                    key: note.key.clone(),
-                    title: note.title.clone(),
-                    match_type: "doi".to_string(),
-                });
-            }
-        }
-    }
-
-    // Check for title matches
-    for note in notes {
-        let note_title_lower = note.title.to_lowercase();
-
-        // Exact title match
-        if note_title_lower == input_lower {
+        if let Some(note) = notes.par_iter().find_first(|note| {
+            check_source(note, "doi", &doi)
+        }) {
             return Some(LocalMatch {
                 key: note.key.clone(),
                 title: note.title.clone(),
-                match_type: "exact".to_string(),
+                match_type: "doi".to_string(),
             });
         }
     }
 
+    // Check for exact title matches
+    if let Some(note) = notes.par_iter().find_first(|note| {
+        note.title.to_lowercase() == input_lower
+    }) {
+        return Some(LocalMatch {
+            key: note.key.clone(),
+            title: note.title.clone(),
+            match_type: "exact".to_string(),
+        });
+    }
+
     // Fuzzy title match (for papers, check title match)
-    for note in notes {
+    let input_words: Vec<&str> = input_lower.split_whitespace().collect();
+    if let Some(note) = notes.par_iter().find_first(|note| {
         if let NoteType::Paper(_) = note.note_type {
             let note_title_lower = note.title.to_lowercase();
-
-            // Check if input contains significant portion of title
             let title_words: Vec<&str> = note_title_lower.split_whitespace().collect();
-            let input_words: Vec<&str> = input_lower.split_whitespace().collect();
-
             if title_words.len() >= 3 {
                 let matching_words = title_words
                     .iter()
                     .filter(|w| w.len() > 3 && input_words.contains(w))
                     .count();
-
-                if matching_words >= title_words.len() * 2 / 3 {
-                    // Good title match found
-                    return Some(LocalMatch {
-                        key: note.key.clone(),
-                        title: note.title.clone(),
-                        match_type: "title".to_string(),
-                    });
-                }
+                matching_words >= title_words.len() * 2 / 3
+            } else {
+                false
             }
+        } else {
+            false
         }
+    }) {
+        return Some(LocalMatch {
+            key: note.key.clone(),
+            title: note.title.clone(),
+            match_type: "title".to_string(),
+        });
     }
 
     None

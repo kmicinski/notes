@@ -291,7 +291,7 @@ pub async fn graph_page(
     let logged_in = is_logged_in(&jar, &state.db);
     let query_str = params.q.as_deref().unwrap_or("");
     let query = GraphQuery::parse(query_str);
-    let graph = build_knowledge_graph(&query, &state.db);
+    let graph = crate::graph_query::query_graph(&query, &state.db);
 
     let graph_styles = r#"
         .graph-container {
@@ -638,7 +638,7 @@ pub async fn graph_api(
 ) -> Response {
     let query_str = params.q.as_deref().unwrap_or("");
     let query = GraphQuery::parse(query_str);
-    let graph = build_knowledge_graph(&query, &state.db);
+    let graph = crate::graph_query::query_graph(&query, &state.db);
 
     (
         [("content-type", "application/json")],
