@@ -54,8 +54,8 @@ USER notes
 EXPOSE 3000
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD curl -f http://127.0.0.1:3000/ || exit 1
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+    CMD bash -c 'echo > /dev/tcp/127.0.0.1/3000' || exit 1
 
 # Run the application
 CMD ["/app/notes"]
