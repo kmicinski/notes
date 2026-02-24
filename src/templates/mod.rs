@@ -13,6 +13,7 @@
 mod styles;
 mod components;
 mod editor;
+pub mod shared_editor;
 mod viewer;
 
 // Re-export public items for backward compatibility

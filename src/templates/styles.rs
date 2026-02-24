@@ -124,7 +124,7 @@ h1 { font-size: 1.5rem; }
 .note-item:last-child { border-bottom: none; }
 .note-item .title { font-size: 1rem; }
 .note-item .meta { font-size: 0.8rem; color: var(--muted); white-space: nowrap; }
-.note-item .key { font-family: monospace; font-size: 0.7rem; color: var(--muted); margin-left: 0.5rem; }
+.note-item .key { font-family: "SF Mono", "Consolas", "Liberation Mono", monospace; font-size: 0.7rem; color: var(--muted); margin-left: 0.5rem; }
 .note-item.paper { background: var(--paper-bg); margin: 0 -1rem; padding-left: 1rem; padding-right: 1rem; }
 
 .type-badge {
@@ -246,7 +246,7 @@ h1 { font-size: 1.5rem; }
 .history-list { font-size: 0.85rem; }
 .history-item { padding: 0.5rem 0; border-bottom: 1px solid var(--border); }
 .history-item:last-child { border-bottom: none; }
-.history-hash { font-family: monospace; color: var(--muted); }
+.history-hash { font-family: "SF Mono", "Consolas", "Liberation Mono", monospace; color: var(--muted); }
 
 .sub-notes { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border); }
 .sub-notes h3 { font-size: 1rem; margin-top: 0; }
@@ -266,7 +266,7 @@ h1 { font-size: 1.5rem; }
 .cat-other { background: var(--base0); }
 
 .search-results .match {
-    font-family: monospace;
+    font-family: "SF Mono", "Consolas", "Liberation Mono", monospace;
     font-size: 0.85rem;
     background: var(--accent);
     padding: 0.25rem 0.5rem;
@@ -675,7 +675,7 @@ h1 { font-size: 1.5rem; }
     border-radius: 4px;
     background: var(--bg);
     color: var(--fg);
-    font-family: monospace;
+    font-family: "SF Mono", "Consolas", "Liberation Mono", monospace;
     font-size: 0.85rem;
     min-height: 100px;
     resize: vertical;
@@ -816,7 +816,7 @@ h1 { font-size: 1.5rem; }
     background: var(--bg);
     color: var(--fg);
     font-size: 0.8rem;
-    font-family: monospace;
+    font-family: "SF Mono", "Consolas", "Liberation Mono", monospace;
     width: 250px;
 }
 
@@ -842,7 +842,7 @@ h1 { font-size: 1.5rem; }
     background: var(--bg);
     color: var(--fg);
     font-size: 0.8rem;
-    font-family: monospace;
+    font-family: "SF Mono", "Consolas", "Liberation Mono", monospace;
     width: 200px;
 }
 

@@ -15,7 +15,7 @@ use axum::{extract::DefaultBodyLimit, routing::get, Router};
 use std::sync::Arc;
 use tower_http::services::ServeDir;
 
-use notes::{auth, citations, graph, handlers, smart_add, AppState, NOTES_DIR};
+use notes::{auth, citations, graph, handlers, shared, smart_add, AppState, NOTES_DIR};
 
 // ============================================================================
 // Main
@@ -62,6 +62,14 @@ async fn main() {
         .route("/api/citations/scan-all", axum::routing::post(citations::citation_scan_all))
         // Export routes
         .route("/bibliography.bib", get(handlers::bibliography))
+        // Shared notes routes
+        .route("/api/shared/create", axum::routing::post(shared::create_shared_note))
+        .route("/api/shared/list/{note_key}", get(shared::list_shared_notes))
+        .route("/api/shared/{token}/deactivate", axum::routing::post(shared::deactivate_shared_note))
+        .route("/api/shared/{token}/contributors", axum::routing::post(shared::manage_contributors))
+        .route("/shared/{token}", get(shared::shared_editor_page))
+        .route("/shared/{token}/ws", get(shared::ws_handler))
+        .route("/api/shared/{token}/attribution", get(shared::get_attribution))
         // PDF routes
         .nest_service("/pdfs", ServeDir::new("pdfs"))
         .route("/api/pdf/upload", axum::routing::post(handlers::upload_pdf)

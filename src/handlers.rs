@@ -259,15 +259,11 @@ pub async fn view_note(
     render_view(note, &notes_map, &state.notes_dir, logged_in).into_response()
 }
 
-fn render_view(
-    note: &Note,
-    notes_map: &HashMap<String, Note>,
-    notes_dir: &PathBuf,
-    logged_in: bool,
-) -> Html<String> {
+/// Build the meta HTML block (key, date, paper metadata, bibtex) for a note.
+/// Used by both regular view and shared view.
+pub fn build_note_meta_html(note: &Note, notes_map: &HashMap<String, Note>) -> String {
     let mut meta_html = String::from("<div class=\"meta-block\">");
 
-    // Helper macro for rows
     fn meta_row(label: &str, value: &str) -> String {
         format!(
             r#"<div class="meta-row"><span class="meta-label">{}</span><span class="meta-value">{}</span></div>"#,
@@ -354,6 +350,17 @@ fn render_view(
             ));
         }
     }
+
+    meta_html
+}
+
+fn render_view(
+    note: &Note,
+    notes_map: &HashMap<String, Note>,
+    notes_dir: &PathBuf,
+    logged_in: bool,
+) -> Html<String> {
+    let meta_html = build_note_meta_html(note, notes_map);
 
     let content_with_links = process_crosslinks(&note.raw_content, notes_map);
     let rendered_content = render_markdown(&content_with_links);
@@ -2330,4 +2337,212 @@ function doSkip(idx) {{
         true,
     ))
     .into_response()
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::{Note, NoteType, PaperMeta, PaperSource};
+    use chrono::Utc;
+    use std::path::PathBuf;
+
+    fn make_note(key: &str, title: &str) -> Note {
+        Note {
+            key: key.to_string(),
+            path: PathBuf::from(format!("{}.md", key)),
+            title: title.to_string(),
+            date: None,
+            note_type: NoteType::Note,
+            parent_key: None,
+            time_entries: vec![],
+            raw_content: "Some content.".to_string(),
+            full_file_content: "---\ntitle: Test\n---\n\nSome content.\n".to_string(),
+            modified: Utc::now(),
+            pdf: None,
+            hidden: false,
+        }
+    }
+
+    fn make_paper_note(key: &str, title: &str, bibtex: &str) -> Note {
+        Note {
+            key: key.to_string(),
+            path: PathBuf::from(format!("{}.md", key)),
+            title: title.to_string(),
+            date: Some(chrono::NaiveDate::from_ymd_opt(2024, 1, 15).unwrap()),
+            note_type: NoteType::Paper(PaperMeta {
+                bibtex_entries: vec![bibtex.to_string()],
+                canonical_key: None,
+                sources: vec![
+                    PaperSource {
+                        source_type: "arxiv".to_string(),
+                        identifier: "2401.12345".to_string(),
+                    },
+                    PaperSource {
+                        source_type: "doi".to_string(),
+                        identifier: "10.1234/test".to_string(),
+                    },
+                ],
+            }),
+            parent_key: None,
+            time_entries: vec![],
+            raw_content: "Paper content.".to_string(),
+            full_file_content: "---\ntitle: Test Paper\n---\n\nPaper content.\n".to_string(),
+            modified: Utc::now(),
+            pdf: Some("test.pdf".to_string()),
+            hidden: false,
+        }
+    }
+
+    // ---- build_note_meta_html tests ----
+
+    #[test]
+    fn test_meta_html_contains_key() {
+        let note = make_note("test-key", "Test Note");
+        let html = build_note_meta_html(&note, &HashMap::new());
+        assert!(html.contains("[@test-key]"));
+    }
+
+    #[test]
+    fn test_meta_html_contains_date() {
+        let mut note = make_note("test", "Test");
+        note.date = Some(chrono::NaiveDate::from_ymd_opt(2024, 6, 15).unwrap());
+        let html = build_note_meta_html(&note, &HashMap::new());
+        assert!(html.contains("2024-06-15"));
+    }
+
+    #[test]
+    fn test_meta_html_no_date_when_none() {
+        let note = make_note("test", "Test");
+        let html = build_note_meta_html(&note, &HashMap::new());
+        assert!(!html.contains("Date"));
+    }
+
+    #[test]
+    fn test_meta_html_paper_cite_key() {
+        let bibtex = r#"@article{smith2024test,
+  title={Test Paper},
+  author={Smith, John},
+  year={2024}
+}"#;
+        let note = make_paper_note("test", "Test Paper", bibtex);
+        let html = build_note_meta_html(&note, &HashMap::new());
+        assert!(html.contains("smith2024test"));
+        assert!(html.contains("Cite"));
+    }
+
+    #[test]
+    fn test_meta_html_paper_authors() {
+        let bibtex = r#"@article{smith2024test,
+  title={Test Paper},
+  author={Smith, John and Doe, Jane},
+  year={2024}
+}"#;
+        let note = make_paper_note("test", "Test Paper", bibtex);
+        let html = build_note_meta_html(&note, &HashMap::new());
+        assert!(html.contains("Authors"));
+        assert!(html.contains("Smith"));
+    }
+
+    #[test]
+    fn test_meta_html_paper_year() {
+        let bibtex = r#"@article{smith2024test,
+  title={Test Paper},
+  author={Smith, John},
+  year={2024}
+}"#;
+        let note = make_paper_note("test", "Test Paper", bibtex);
+        let html = build_note_meta_html(&note, &HashMap::new());
+        assert!(html.contains("Year"));
+        assert!(html.contains("2024"));
+    }
+
+    #[test]
+    fn test_meta_html_paper_sources() {
+        let bibtex = r#"@article{smith2024test,
+  title={Test},
+  author={Smith},
+  year={2024}
+}"#;
+        let note = make_paper_note("test", "Test", bibtex);
+        let html = build_note_meta_html(&note, &HashMap::new());
+        assert!(html.contains("Sources"));
+        assert!(html.contains("arxiv.org"));
+        assert!(html.contains("doi.org"));
+    }
+
+    #[test]
+    fn test_meta_html_bibtex_block() {
+        let bibtex = r#"@article{smith2024test,
+  title={Test Paper},
+  author={Smith, John},
+  year={2024}
+}"#;
+        let note = make_paper_note("test", "Test Paper", bibtex);
+        let html = build_note_meta_html(&note, &HashMap::new());
+        assert!(html.contains("bibtex-block"));
+        assert!(html.contains("BibTeX"));
+        assert!(html.contains("Click to copy"));
+    }
+
+    #[test]
+    fn test_meta_html_regular_note_no_bibtex() {
+        let note = make_note("test", "Test");
+        let html = build_note_meta_html(&note, &HashMap::new());
+        assert!(!html.contains("bibtex-block"));
+        assert!(!html.contains("BibTeX"));
+        assert!(!html.contains("Cite"));
+    }
+
+    #[test]
+    fn test_meta_html_parent_link() {
+        let parent = make_note("parent-note", "Parent Note");
+        let mut child = make_note("child-note", "Child Note");
+        child.parent_key = Some("parent-note".to_string());
+
+        let mut notes_map = HashMap::new();
+        notes_map.insert("parent-note".to_string(), parent);
+        notes_map.insert("child-note".to_string(), child.clone());
+
+        let html = build_note_meta_html(&child, &notes_map);
+        assert!(html.contains("Parent"));
+        assert!(html.contains("Parent Note"));
+        assert!(html.contains("/note/parent-note"));
+    }
+
+    #[test]
+    fn test_meta_html_parent_missing() {
+        let mut note = make_note("child", "Child");
+        note.parent_key = Some("nonexistent".to_string());
+        let html = build_note_meta_html(&note, &HashMap::new());
+        // Should not crash, just skip the parent row
+        assert!(!html.contains("Parent"));
+    }
+
+    #[test]
+    fn test_meta_html_wraps_in_meta_block() {
+        let note = make_note("test", "Test");
+        let html = build_note_meta_html(&note, &HashMap::new());
+        assert!(html.starts_with("<div class=\"meta-block\">"));
+        assert!(html.contains("</div>"));
+    }
+
+    #[test]
+    fn test_meta_html_escapes_special_chars() {
+        let note = make_note("test", "Note with <script> & \"quotes\"");
+        let html = build_note_meta_html(&note, &HashMap::new());
+        // The key is escaped properly — HTML special chars in title don't appear raw
+        assert!(!html.contains("<script>"));
+    }
+
+    #[test]
+    fn test_meta_html_empty_notes_map() {
+        let note = make_note("test", "Test");
+        let html = build_note_meta_html(&note, &HashMap::new());
+        // Should work fine with empty notes map
+        assert!(html.contains("[@test]"));
+    }
 }
