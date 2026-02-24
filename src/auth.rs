@@ -64,13 +64,23 @@ pub fn verify_password(attempt: &str, password_hash: &str) -> bool {
 // Authentication Check
 // ============================================================================
 
+/// Check if proxy-level auth is trusted (e.g., behind Authelia).
+/// When TRUST_PROXY_AUTH is set, all requests are treated as authenticated.
+fn trust_proxy_auth() -> bool {
+    env::var("TRUST_PROXY_AUTH").is_ok()
+}
+
 /// Check if authentication is enabled
 pub fn is_auth_enabled() -> bool {
-    env::var("NOTES_PASSWORD").is_ok()
+    trust_proxy_auth() || env::var("NOTES_PASSWORD").is_ok()
 }
 
 /// Check if the user is logged in via cookie (server-side session lookup).
 pub fn is_logged_in(jar: &CookieJar, db: &sled::Db) -> bool {
+    if trust_proxy_auth() {
+        return true;
+    }
+
     if !is_auth_enabled() {
         return false;
     }
