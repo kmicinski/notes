@@ -32,6 +32,7 @@ FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     git \
+    poppler-utils \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
@@ -46,6 +47,9 @@ COPY --from=builder /build/target/release/notes /app/notes
 
 # Set ownership
 RUN chown -R notes:notes /app
+
+# Create .claude directory for Claude CLI config/state
+RUN mkdir -p /home/notes/.claude && chown notes:notes /home/notes/.claude
 
 # Switch to non-root user
 USER notes
