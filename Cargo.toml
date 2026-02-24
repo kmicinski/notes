@@ -25,3 +25,5 @@ tower-http = { version = "0.6", features = ["fs"] }
 ammonia = "4"
 automerge = "0.5"
 futures-util = "0.3"
+rayon = "1"
+ascent = "0.8"
