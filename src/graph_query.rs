@@ -257,6 +257,7 @@ pub fn query_graph(query: &GraphQuery, db: &sled::Db) -> KnowledgeGraph {
 
     // Build edges (only between included nodes)
     let included: HashSet<String> = graph_nodes.iter().map(|n| n.id.clone()).collect();
+    let annotations = graph_index::load_manual_edge_annotations(db).unwrap_or_default();
     let mut graph_edges = Vec::new();
 
     for ((src, tgt), weight) in &edge_counts {
@@ -265,11 +266,13 @@ pub fn query_graph(query: &GraphQuery, db: &sled::Db) -> KnowledgeGraph {
                 .get(&(src.clone(), tgt.clone()))
                 .cloned()
                 .unwrap_or_else(|| "crosslink".to_string());
+            let annotation = annotations.get(&(src.clone(), tgt.clone())).cloned();
             graph_edges.push(GraphEdge {
                 source: src.clone(),
                 target: tgt.clone(),
                 weight: *weight,
                 edge_type: etype,
+                annotation,
             });
         }
     }

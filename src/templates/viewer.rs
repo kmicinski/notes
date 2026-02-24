@@ -1252,6 +1252,9 @@ pub fn render_viewer(
             textLayerDiv.className = 'textLayer';
             wrapper.appendChild(textLayerDiv);
 
+            // Set scale factor CSS variable for pdf.js text layer
+            wrapper.style.setProperty('--scale-factor', viewport.scale);
+
             await page.render({{
                 canvasContext: ctx,
                 viewport: viewport
@@ -1259,7 +1262,7 @@ pub fn render_viewer(
 
             const textContent = await page.getTextContent();
             pdfjsLib.renderTextLayer({{
-                textContent: textContent,
+                textContentSource: textContent,
                 container: textLayerDiv,
                 viewport: viewport,
                 textDivs: []

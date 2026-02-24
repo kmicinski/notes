@@ -16,6 +16,7 @@ use std::collections::HashMap;
 const EDGES_TREE: &str = "kg:edges";
 const NODES_TREE: &str = "kg:nodes";
 const CITATIONS_TREE: &str = "citations";
+const MANUAL_EDGES_TREE: &str = "kg:manual_edges";
 
 // ============================================================================
 // Types
@@ -415,10 +416,95 @@ pub fn sync_all_citations(db: &sled::Db) -> Result<usize, String> {
 }
 
 // ============================================================================
+// Manual Edges
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ManualEdgeValue {
+    pub annotation: Option<String>,
+    pub created: String,
+}
+
+/// Add a manual edge between two notes.
+pub fn add_manual_edge(db: &sled::Db, source: &str, target: &str, annotation: Option<String>) -> Result<(), String> {
+    let tree = db.open_tree(MANUAL_EDGES_TREE).map_err(|e| e.to_string())?;
+    let key = format!("{}\0{}", source, target);
+    let value = ManualEdgeValue {
+        annotation,
+        created: chrono::Utc::now().to_rfc3339(),
+    };
+    let json = serde_json::to_vec(&value).map_err(|e| e.to_string())?;
+    tree.insert(key.as_bytes(), json).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Remove a manual edge.
+pub fn remove_manual_edge(db: &sled::Db, source: &str, target: &str) -> Result<(), String> {
+    let tree = db.open_tree(MANUAL_EDGES_TREE).map_err(|e| e.to_string())?;
+    let key = format!("{}\0{}", source, target);
+    tree.remove(key.as_bytes()).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Load all manual edges.
+pub fn load_manual_edges(db: &sled::Db) -> Result<Vec<IndexedEdge>, String> {
+    let tree = db.open_tree(MANUAL_EDGES_TREE).map_err(|e| e.to_string())?;
+    let mut edges = Vec::new();
+
+    for entry in tree.iter() {
+        let (k, _v) = entry.map_err(|e| e.to_string())?;
+        let key_str = String::from_utf8_lossy(&k);
+        if let Some((source, target)) = key_str.split_once('\0') {
+            edges.push(IndexedEdge {
+                source: source.to_string(),
+                target: target.to_string(),
+                edge_type: "manual".to_string(),
+                weight: 1,
+            });
+        }
+    }
+
+    Ok(edges)
+}
+
+/// Load annotation for a manual edge, if it exists.
+pub fn get_manual_edge_annotation(db: &sled::Db, source: &str, target: &str) -> Result<Option<String>, String> {
+    let tree = db.open_tree(MANUAL_EDGES_TREE).map_err(|e| e.to_string())?;
+    let key = format!("{}\0{}", source, target);
+    match tree.get(key.as_bytes()).map_err(|e| e.to_string())? {
+        Some(data) => {
+            let val: ManualEdgeValue = serde_json::from_slice(&data).map_err(|e| e.to_string())?;
+            Ok(val.annotation)
+        }
+        None => Ok(None),
+    }
+}
+
+/// Load all manual edge annotations as a map.
+pub fn load_manual_edge_annotations(db: &sled::Db) -> Result<HashMap<(String, String), String>, String> {
+    let tree = db.open_tree(MANUAL_EDGES_TREE).map_err(|e| e.to_string())?;
+    let mut annotations = HashMap::new();
+
+    for entry in tree.iter() {
+        let (k, v) = entry.map_err(|e| e.to_string())?;
+        let key_str = String::from_utf8_lossy(&k);
+        if let Some((source, target)) = key_str.split_once('\0') {
+            if let Ok(val) = serde_json::from_slice::<ManualEdgeValue>(&v) {
+                if let Some(ann) = val.annotation {
+                    annotations.insert((source.to_string(), target.to_string()), ann);
+                }
+            }
+        }
+    }
+
+    Ok(annotations)
+}
+
+// ============================================================================
 // Queries
 // ============================================================================
 
-/// Load all edges from the kg:edges tree.
+/// Load all edges from the kg:edges tree, including manual edges.
 pub fn load_all_edges(db: &sled::Db) -> Result<Vec<IndexedEdge>, String> {
     let edges_tree = db.open_tree(EDGES_TREE).map_err(|e| e.to_string())?;
     let mut edges = Vec::new();
@@ -438,6 +524,11 @@ pub fn load_all_edges(db: &sled::Db) -> Result<Vec<IndexedEdge>, String> {
                 weight,
             });
         }
+    }
+
+    // Merge manual edges
+    if let Ok(manual) = load_manual_edges(db) {
+        edges.extend(manual);
     }
 
     Ok(edges)
