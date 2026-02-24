@@ -295,20 +295,20 @@ pub fn load_note(path: &PathBuf, notes_dir: &PathBuf) -> Option<Note> {
 }
 
 pub fn load_all_notes(notes_dir: &PathBuf) -> Vec<Note> {
-    let mut notes = Vec::new();
+    use rayon::prelude::*;
 
-    for entry in WalkDir::new(notes_dir)
+    let paths: Vec<PathBuf> = WalkDir::new(notes_dir)
         .follow_links(false)
         .into_iter()
         .filter_map(|e| e.ok())
-    {
-        let path = entry.path();
-        if path.extension().map(|e| e == "md").unwrap_or(false) {
-            if let Some(note) = load_note(&path.to_path_buf(), notes_dir) {
-                notes.push(note);
-            }
-        }
-    }
+        .filter(|e| e.path().extension().map(|ext| ext == "md").unwrap_or(false))
+        .map(|e| e.path().to_path_buf())
+        .collect();
+
+    let mut notes: Vec<Note> = paths
+        .par_iter()
+        .filter_map(|path| load_note(path, notes_dir))
+        .collect();
 
     notes.sort_by(|a, b| b.modified.cmp(&a.modified));
     notes
@@ -319,37 +319,41 @@ pub fn load_all_notes(notes_dir: &PathBuf) -> Vec<Note> {
 // ============================================================================
 
 pub fn search_notes(notes: &[Note], query: &str) -> Vec<SearchResult> {
+    use rayon::prelude::*;
+
     let query_lower = query.to_lowercase();
-    let mut results = Vec::new();
 
-    for note in notes {
-        let mut matches = Vec::new();
+    notes
+        .par_iter()
+        .filter_map(|note| {
+            let mut matches = Vec::new();
 
-        if note.title.to_lowercase().contains(&query_lower) {
-            matches.push(SearchMatch {
-                line_number: 0,
-                line_content: format!("Title: {}", note.title),
-            });
-        }
-
-        for (i, line) in note.full_file_content.lines().enumerate() {
-            if line.to_lowercase().contains(&query_lower) {
+            if note.title.to_lowercase().contains(&query_lower) {
                 matches.push(SearchMatch {
-                    line_number: i + 1,
-                    line_content: line.to_string(),
+                    line_number: 0,
+                    line_content: format!("Title: {}", note.title),
                 });
             }
-        }
 
-        if !matches.is_empty() {
-            results.push(SearchResult {
-                note: note.clone(),
-                matches,
-            });
-        }
-    }
+            for (i, line) in note.full_file_content.lines().enumerate() {
+                if line.to_lowercase().contains(&query_lower) {
+                    matches.push(SearchMatch {
+                        line_number: i + 1,
+                        line_content: line.to_string(),
+                    });
+                }
+            }
 
-    results
+            if !matches.is_empty() {
+                Some(SearchResult {
+                    note: note.clone(),
+                    matches,
+                })
+            } else {
+                None
+            }
+        })
+        .collect()
 }
 
 // ============================================================================

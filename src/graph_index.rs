@@ -219,49 +219,54 @@ fn insert_edge(edges_tree: &sled::Tree, source: &str, target: &str, edge_type: &
 
 /// Full reconciliation at startup. Compares sled index with notes on disk.
 pub fn reconcile(db: &sled::Db, notes: &[Note]) -> Result<ReconcileStats, String> {
+    use rayon::prelude::*;
+
     let edges_tree = db.open_tree(EDGES_TREE).map_err(|e| e.to_string())?;
     let nodes_tree = db.open_tree(NODES_TREE).map_err(|e| e.to_string())?;
 
     let all_keys: std::collections::HashSet<String> = notes.iter().map(|n| n.key.clone()).collect();
     let notes_map: HashMap<String, &Note> = notes.iter().map(|n| (n.key.clone(), n)).collect();
 
-    let mut reindexed = 0;
-    let mut unchanged = 0;
-
-    // Check each note against the index
-    for note in notes {
-        let hash = content_hash(&note.full_file_content);
-        let needs_reindex = match nodes_tree.get(note.key.as_bytes()) {
-            Ok(Some(data)) => {
-                match serde_json::from_slice::<IndexedNode>(&data) {
+    // Parallel: compute hashes, check staleness, build nodes + extract edges for changed notes
+    let note_updates: Vec<(String, IndexedNode, Vec<(String, String, String, u32)>)> = notes
+        .par_iter()
+        .filter_map(|note| {
+            let hash = content_hash(&note.full_file_content);
+            let needs_reindex = match nodes_tree.get(note.key.as_bytes()) {
+                Ok(Some(data)) => match serde_json::from_slice::<IndexedNode>(&data) {
                     Ok(existing) => existing.content_hash != hash,
                     Err(_) => true,
-                }
+                },
+                _ => true,
+            };
+
+            if needs_reindex {
+                let indexed = build_indexed_node(note);
+                let new_edges = extract_edges_for_note(note, &all_keys);
+                Some((note.key.clone(), indexed, new_edges))
+            } else {
+                None
             }
-            _ => true,
-        };
+        })
+        .collect();
 
-        if needs_reindex {
-            // Update node
-            let indexed = build_indexed_node(note);
-            let json = serde_json::to_vec(&indexed).map_err(|e| e.to_string())?;
-            nodes_tree.insert(note.key.as_bytes(), json).map_err(|e| e.to_string())?;
+    let reindexed = note_updates.len();
+    let unchanged = notes.len() - reindexed;
 
-            // Update edges: delete old, insert new
-            delete_edges_by_source(&edges_tree, &note.key).map_err(|e| e.to_string())?;
-            let new_edges = extract_edges_for_note(note, &all_keys);
-            for (s, t, ty, w) in new_edges {
-                insert_edge(&edges_tree, &s, &t, &ty, w).map_err(|e| e.to_string())?;
-            }
+    // Sequential: batch sled writes
+    for (key, indexed, new_edges) in &note_updates {
+        let json = serde_json::to_vec(indexed).map_err(|e| e.to_string())?;
+        nodes_tree
+            .insert(key.as_bytes(), json)
+            .map_err(|e| e.to_string())?;
 
-            reindexed += 1;
-        } else {
-            unchanged += 1;
+        delete_edges_by_source(&edges_tree, key).map_err(|e| e.to_string())?;
+        for (s, t, ty, w) in new_edges {
+            insert_edge(&edges_tree, s, t, ty, *w).map_err(|e| e.to_string())?;
         }
     }
 
     // Remove nodes/edges for deleted notes (in sled but not on disk)
-    let mut removed = 0;
     let stale_keys: Vec<String> = nodes_tree
         .iter()
         .filter_map(|r| r.ok())
@@ -275,11 +280,13 @@ pub fn reconcile(db: &sled::Db, notes: &[Note]) -> Result<ReconcileStats, String
         })
         .collect();
 
+    let removed = stale_keys.len();
     for key in &stale_keys {
-        nodes_tree.remove(key.as_bytes()).map_err(|e| e.to_string())?;
+        nodes_tree
+            .remove(key.as_bytes())
+            .map_err(|e| e.to_string())?;
         delete_edges_by_source(&edges_tree, key).map_err(|e| e.to_string())?;
         delete_edges_by_target(&edges_tree, key).map_err(|e| e.to_string())?;
-        removed += 1;
     }
 
     // Sync all citation edges
