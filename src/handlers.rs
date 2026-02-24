@@ -7,7 +7,7 @@ use crate::auth::{
     create_csrf_token, create_session, delete_session, is_logged_in,
     verify_and_consume_csrf_token, verify_password, SESSION_COOKIE, SESSION_TTL_HOURS,
 };
-use crate::models::{Note, NoteType, TimeCategory};
+use crate::models::{AddEdgeRequest, Note, NoteType, TimeCategory};
 use crate::notes::{
     generate_bibliography, generate_key, get_file_at_commit, get_git_history, html_escape,
     parse_frontmatter, process_crosslinks, render_markdown, search_notes,
@@ -1348,6 +1348,58 @@ pub async fn bibliography(State(state): State<Arc<AppState>>) -> Response {
     let bib = generate_bibliography(&notes);
 
     ([("content-type", "text/plain; charset=utf-8")], bib).into_response()
+}
+
+// ============================================================================
+// Graph Edge Handlers
+// ============================================================================
+
+pub async fn add_graph_edge(
+    State(state): State<Arc<AppState>>,
+    jar: CookieJar,
+    axum::Json(req): axum::Json<AddEdgeRequest>,
+) -> Response {
+    if !is_logged_in(&jar, &state.db) {
+        return (StatusCode::UNAUTHORIZED, "Not logged in").into_response();
+    }
+
+    let notes_map = state.notes_map();
+    if !notes_map.contains_key(&req.source) {
+        return (StatusCode::BAD_REQUEST, format!("Source note '{}' not found", req.source)).into_response();
+    }
+    if !notes_map.contains_key(&req.target) {
+        return (StatusCode::BAD_REQUEST, format!("Target note '{}' not found", req.target)).into_response();
+    }
+    if req.source == req.target {
+        return (StatusCode::BAD_REQUEST, "Cannot link a note to itself").into_response();
+    }
+
+    if let Err(e) = crate::graph_index::add_manual_edge(&state.db, &req.source, &req.target, req.annotation.clone()) {
+        return (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to add edge: {}", e)).into_response();
+    }
+
+    (StatusCode::OK, axum::Json(serde_json::json!({
+        "source": req.source,
+        "target": req.target,
+        "edge_type": "manual",
+        "annotation": req.annotation,
+    }))).into_response()
+}
+
+pub async fn delete_graph_edge(
+    State(state): State<Arc<AppState>>,
+    jar: CookieJar,
+    axum::Json(req): axum::Json<AddEdgeRequest>,
+) -> Response {
+    if !is_logged_in(&jar, &state.db) {
+        return (StatusCode::UNAUTHORIZED, "Not logged in").into_response();
+    }
+
+    if let Err(e) = crate::graph_index::remove_manual_edge(&state.db, &req.source, &req.target) {
+        return (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to remove edge: {}", e)).into_response();
+    }
+
+    (StatusCode::OK, "Edge removed").into_response()
 }
 
 // ============================================================================

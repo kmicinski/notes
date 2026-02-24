@@ -1020,6 +1020,9 @@ pub fn render_editor(note: &Note, notes_map: &HashMap<String, Note>, _logged_in:
             textLayerDiv.className = 'textLayer';
             wrapper.appendChild(textLayerDiv);
 
+            // Set scale factor CSS variable for pdf.js text layer
+            wrapper.style.setProperty('--scale-factor', viewport.scale);
+
             // Render canvas
             await page.render({{
                 canvasContext: ctx,
@@ -1029,7 +1032,7 @@ pub fn render_editor(note: &Note, notes_map: &HashMap<String, Note>, _logged_in:
             // Render text layer
             const textContent = await page.getTextContent();
             await pdfjsLib.renderTextLayer({{
-                textContent: textContent,
+                textContentSource: textContent,
                 container: textLayerDiv,
                 viewport: viewport,
                 textDivs: []

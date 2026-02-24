@@ -223,7 +223,15 @@ pub struct GraphEdge {
     pub source: String,
     pub target: String,
     pub weight: usize, // Number of times referenced
-    pub edge_type: String, // "crosslink", "parent", "citation"
+    pub edge_type: String, // "crosslink", "parent", "citation", "manual"
+    pub annotation: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AddEdgeRequest {
+    pub source: String,
+    pub target: String,
+    pub annotation: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
