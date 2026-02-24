@@ -18,7 +18,7 @@ bibtex: |
   isbn="978-3-540-93900-9"
   }
 
-pdf: aposteriori.pdf
+pdf: might2009aposteriori.pdf
 ---
 
 ## Summary
@@ -27,3 +27,12 @@ pdf: aposteriori.pdf
 
 ## Notes
 
+<!-- BEGIN AUTO-CITATIONS -->
+## References
+
+- [@3cccc3] Control Flow Analysis in Scheme
+- [@43c93a] Systematic design of program analysis frameworks
+- [@555ae2] Abstract interpretation
+- [@a26bd0] Polymorphic splitting: an effective polyvariant flow analysis
+- [@a8fc5f] "Environment Analysis via Delta CFA"
+<!-- END AUTO-CITATIONS -->

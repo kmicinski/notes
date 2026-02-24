@@ -11,7 +11,7 @@ bibtex: |
     year={1979}
   }
 
-pdf: cousot1979systematic.pdf
+pdf: CousotCousot-POPL-79-ACM-p269--282-1979.pdf
 ---
 
 ## Summary
@@ -19,4 +19,3 @@ pdf: cousot1979systematic.pdf
 ## Key Contributions
 
 ## Notes
-
