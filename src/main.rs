@@ -80,11 +80,11 @@ async fn main() {
         .route("/api/pdf/smart-find", axum::routing::post(handlers::smart_pdf_find))
         .with_state(state);
 
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:7000")
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000")
         .await
-        .expect("Failed to bind to port 7000");
+        .expect("Failed to bind to port 3000");
 
-    println!("Notes server running at http://127.0.0.1:7000");
+    println!("Notes server running at http://0.0.0.0:3000");
     println!("Notes directory: {}", NOTES_DIR);
 
     if auth::is_auth_enabled() {
