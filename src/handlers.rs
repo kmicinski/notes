@@ -1935,7 +1935,10 @@ fn remove_note_pdf_frontmatter(notes_dir: &PathBuf, note_path: &PathBuf) -> Resu
         .map(|(_, line)| line.to_string())
         .collect();
 
-    let new_content = new_lines.join("\n");
+    let mut new_content = new_lines.join("\n");
+    if !new_content.ends_with('\n') {
+        new_content.push('\n');
+    }
     fs::write(&full_path, new_content)
         .map_err(|e| format!("Failed to write note: {}", e))?;
 
@@ -2011,7 +2014,10 @@ fn update_note_pdf_frontmatter(notes_dir: &PathBuf, note_path: &PathBuf, pdf_fil
         new_lines.insert(end_idx, format!("pdf: {}", pdf_filename));
     }
 
-    let new_content = new_lines.join("\n");
+    let mut new_content = new_lines.join("\n");
+    if !new_content.ends_with('\n') {
+        new_content.push('\n');
+    }
     fs::write(&full_path, new_content)
         .map_err(|e| format!("Failed to write note: {}", e))?;
 
