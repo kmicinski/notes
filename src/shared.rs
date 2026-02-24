@@ -174,6 +174,63 @@ fn generate_token() -> String {
 // Synthetic Note from shared doc
 // ============================================================================
 
+/// Compute block-level attribution from raw text + line-level attribution.
+///
+/// Walks the raw file content to find where the body starts (after frontmatter),
+/// groups consecutive non-blank body lines into "blocks" (matching rendered HTML blocks),
+/// and picks the most recent contributor per block.
+fn compute_block_attribution(text: &str, attribution: &LineAttribution) -> Vec<LineAuthor> {
+    let lines: Vec<&str> = text.lines().collect();
+
+    // Find body start (skip frontmatter)
+    let mut body_start = 0;
+    if lines.first().map(|l| l.trim()) == Some("---") {
+        for (i, line) in lines.iter().enumerate().skip(1) {
+            if line.trim() == "---" {
+                body_start = i + 1;
+                break;
+            }
+        }
+    }
+    // Skip blank lines after frontmatter
+    while body_start < lines.len() && lines[body_start].trim().is_empty() {
+        body_start += 1;
+    }
+
+    // Group body lines into blocks (consecutive non-blank lines)
+    let mut blocks: Vec<Vec<usize>> = vec![];
+    let mut current: Vec<usize> = vec![];
+    for i in body_start..lines.len() {
+        if lines[i].trim().is_empty() {
+            if !current.is_empty() {
+                blocks.push(std::mem::take(&mut current));
+            }
+        } else {
+            current.push(i);
+        }
+    }
+    if !current.is_empty() {
+        blocks.push(current);
+    }
+
+    // For each block, pick the most recent attribution line
+    let now = Utc::now();
+    blocks
+        .iter()
+        .map(|block_lines| {
+            block_lines
+                .iter()
+                .filter_map(|&idx| attribution.lines.get(idx))
+                .max_by_key(|la| la.timestamp)
+                .cloned()
+                .unwrap_or(LineAuthor {
+                    contributor_id: "owner".to_string(),
+                    timestamp: now,
+                })
+        })
+        .collect()
+}
+
 /// Build a Note struct from the automerge doc text for use with render_editor/render_viewer.
 fn build_note_from_text(meta: &SharedNoteMeta, text: &str) -> Note {
     let (fm, body) = crate::notes::parse_frontmatter(text);
@@ -443,8 +500,25 @@ pub async fn shared_editor_page(
             is_paper,
         );
 
+        // Compute block-level attribution for the viewer
+        let attribution = {
+            let rooms = state.shared_rooms.read().await;
+            if let Some(room) = rooms.get(&token) {
+                room.attribution.clone()
+            } else {
+                load_attribution(&state.db, &token)
+            }
+        };
+        let block_attrib = compute_block_attribution(&text, &attribution);
+        let block_attrib_json =
+            serde_json::to_string(&block_attrib).unwrap_or_else(|_| "[]".to_string());
+
         // Inject shared view overlay (attribution hovers, mode toggle, etc.)
-        let overlay = crate::templates::shared_editor::render_shared_view_overlay(&token, &contributors_json);
+        let overlay = crate::templates::shared_editor::render_shared_view_overlay(
+            &token,
+            &contributors_json,
+            &block_attrib_json,
+        );
         let html = base_html.replace("</body>", &format!("{}\n</body>", overlay));
         Html(html).into_response()
     }

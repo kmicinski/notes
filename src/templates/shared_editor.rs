@@ -436,7 +436,7 @@ pub fn render_shared_overlay(token: &str, contributors_json: &str) -> String {
 /// - Modifies the header: removes owner-only buttons, adds shared badge/edit toggle/copy link
 /// - Fetches attribution data and displays colored left borders + tooltips on content blocks
 /// - Shows a contributor legend
-pub fn render_shared_view_overlay(token: &str, contributors_json: &str) -> String {
+pub fn render_shared_view_overlay(token: &str, contributors_json: &str, block_attrib_json: &str) -> String {
     format!(
         r##"<script>
 (function() {{
@@ -444,6 +444,7 @@ pub fn render_shared_view_overlay(token: &str, contributors_json: &str) -> Strin
 
     const SHARE_TOKEN = "{token}";
     const CONTRIBUTORS = {contributors_json};
+    const BLOCK_ATTRIBUTION = {block_attrib_json};
     const contributorColors = {{}};
     const contributorNames = {{}};
     CONTRIBUTORS.forEach(c => {{ contributorColors[c.id] = c.color; contributorNames[c.id] = c.name; }});
@@ -551,83 +552,64 @@ pub fn render_shared_view_overlay(token: &str, contributors_json: &str) -> Strin
         return diffDay + 'd ago';
     }}
 
-    async function fetchAndApplyAttribution() {{
-        try {{
-            const resp = await fetch('/api/shared/' + SHARE_TOKEN + '/attribution');
-            if (!resp.ok) return;
-            const data = await resp.json();
-            if (!data.attribution || !data.attribution.lines) return;
+    function applyBlockAttribution() {{
+        const content = document.querySelector('.note-content');
+        if (!content || BLOCK_ATTRIBUTION.length === 0) return;
 
-            // Build contributor lookup from response
-            if (data.contributors) {{
-                data.contributors.forEach(c => {{
-                    contributorColors[c.id] = c.color;
-                    contributorNames[c.id] = c.name;
-                }});
-            }}
+        // Collect block-level elements in DOM order
+        const blocks = [];
+        // Direct block children
+        content.querySelectorAll(':scope > p, :scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6, :scope > pre, :scope > blockquote, :scope > table').forEach(el => blocks.push(el));
+        // List items
+        content.querySelectorAll(':scope > ul > li, :scope > ol > li').forEach(el => blocks.push(el));
 
-            const content = document.querySelector('.note-content');
-            if (!content) return;
+        // Sort by document order
+        blocks.sort((a, b) => {{
+            const pos = a.compareDocumentPosition(b);
+            return (pos & Node.DOCUMENT_POSITION_FOLLOWING) ? -1 : 1;
+        }});
 
-            // Get block-level children
-            const blockSelectors = 'p, h1, h2, h3, h4, h5, h6, pre, blockquote, table';
-            const blocks = [];
-            // Direct children that are block elements
-            content.querySelectorAll(':scope > ' + blockSelectors).forEach(el => blocks.push(el));
-            // Also list items
-            content.querySelectorAll(':scope > ul > li, :scope > ol > li').forEach(el => blocks.push(el));
+        // 1:1 mapping: block[i] ↔ BLOCK_ATTRIBUTION[i]
+        const seenContributors = new Set();
+        for (let i = 0; i < Math.min(blocks.length, BLOCK_ATTRIBUTION.length); i++) {{
+            const la = BLOCK_ATTRIBUTION[i];
+            if (!la || !la.contributor_id) continue;
 
-            const lines = data.attribution.lines;
-            // Map blocks to lines approximately (each block ~ corresponds to some lines)
-            // Simple heuristic: distribute lines proportionally across blocks
-            if (blocks.length === 0 || lines.length === 0) return;
+            const color = contributorColors[la.contributor_id] || '#93a1a1';
+            const name = contributorNames[la.contributor_id] || la.contributor_id;
+            const time = relativeTime(la.timestamp);
 
-            const linesPerBlock = Math.max(1, Math.ceil(lines.length / blocks.length));
+            blocks[i].style.borderLeftColor = color;
+            blocks[i].title = name + ' \u00B7 ' + time;
+            seenContributors.add(la.contributor_id);
+        }}
 
-            blocks.forEach((block, idx) => {{
-                const lineIdx = Math.min(idx * linesPerBlock, lines.length - 1);
-                const la = lines[lineIdx];
-                if (!la || !la.contributor_id) return;
-
-                const color = contributorColors[la.contributor_id] || '#93a1a1';
-                const name = contributorNames[la.contributor_id] || la.contributor_id;
-                const time = relativeTime(la.timestamp);
-
-                block.style.borderLeftColor = color;
-                block.title = name + ' \u00B7 ' + time;
+        // Add contributor legend
+        if (seenContributors.size > 0) {{
+            const legend = document.createElement('div');
+            legend.className = 'contributor-legend';
+            seenContributors.forEach(cid => {{
+                const color = contributorColors[cid] || '#93a1a1';
+                const name = contributorNames[cid] || cid;
+                const item = document.createElement('span');
+                item.className = 'contributor-legend-item';
+                item.innerHTML = '<span class="contributor-legend-swatch" style="background:' + color + '"></span>' + name;
+                legend.appendChild(item);
             }});
-
-            // Add contributor legend
-            const seenContributors = new Set();
-            lines.forEach(la => {{ if (la && la.contributor_id) seenContributors.add(la.contributor_id); }});
-
-            if (seenContributors.size > 0) {{
-                const legend = document.createElement('div');
-                legend.className = 'contributor-legend';
-                seenContributors.forEach(cid => {{
-                    const color = contributorColors[cid] || '#93a1a1';
-                    const name = contributorNames[cid] || cid;
-                    const item = document.createElement('span');
-                    item.className = 'contributor-legend-item';
-                    item.innerHTML = '<span class="contributor-legend-swatch" style="background:' + color + '"></span>' + name;
-                    legend.appendChild(item);
-                }});
-                content.appendChild(legend);
-            }}
-        }} catch(e) {{
-            console.error('Attribution fetch error:', e);
+            content.appendChild(legend);
         }}
     }}
 
     document.addEventListener('DOMContentLoaded', function() {{
         modifyHeader();
         addAttributionStyles();
-        fetchAndApplyAttribution();
+        applyBlockAttribution();
     }});
 }})();
 </script>"##,
         token = token,
         contributors_json = contributors_json,
+        block_attrib_json = block_attrib_json,
     )
 }
 
@@ -745,26 +727,26 @@ mod tests {
 
     #[test]
     fn test_view_overlay_contains_token() {
-        let html = render_shared_view_overlay("abc123", &sample_contributors_json());
+        let html = render_shared_view_overlay("abc123", &sample_contributors_json(), "[]");
         assert!(html.contains("abc123"));
     }
 
     #[test]
     fn test_view_overlay_contains_contributors() {
-        let html = render_shared_view_overlay("tok", &sample_contributors_json());
+        let html = render_shared_view_overlay("tok", &sample_contributors_json(), "[]");
         assert!(html.contains("Alice"));
         assert!(html.contains("Bob"));
     }
 
     #[test]
     fn test_view_overlay_has_shared_badge() {
-        let html = render_shared_view_overlay("tok", "[]");
+        let html = render_shared_view_overlay("tok", "[]", "[]");
         assert!(html.contains("SHARED"));
     }
 
     #[test]
     fn test_view_overlay_has_edit_link() {
-        let html = render_shared_view_overlay("mytoken", "[]");
+        let html = render_shared_view_overlay("mytoken", "[]", "[]");
         // Token is embedded as SHARE_TOKEN, used in JS concatenation
         assert!(html.contains("\"mytoken\""));
         assert!(html.contains("?edit=true"));
@@ -772,40 +754,40 @@ mod tests {
 
     #[test]
     fn test_view_overlay_has_copy_link() {
-        let html = render_shared_view_overlay("tok", "[]");
+        let html = render_shared_view_overlay("tok", "[]", "[]");
         assert!(html.contains("Copy Link"));
     }
 
     #[test]
-    fn test_view_overlay_fetches_attribution() {
-        let html = render_shared_view_overlay("tok", "[]");
-        // Token is embedded as SHARE_TOKEN, used in JS concatenation
-        assert!(html.contains("/api/shared/' + SHARE_TOKEN + '/attribution"));
+    fn test_view_overlay_has_block_attribution() {
+        let html = render_shared_view_overlay("tok", "[]", "[]");
+        assert!(html.contains("BLOCK_ATTRIBUTION"));
+        assert!(html.contains("applyBlockAttribution"));
     }
 
     #[test]
     fn test_view_overlay_has_attribution_styles() {
-        let html = render_shared_view_overlay("tok", "[]");
+        let html = render_shared_view_overlay("tok", "[]", "[]");
         assert!(html.contains("border-left"));
         assert!(html.contains("contributor-legend"));
     }
 
     #[test]
     fn test_view_overlay_has_relative_time() {
-        let html = render_shared_view_overlay("tok", "[]");
+        let html = render_shared_view_overlay("tok", "[]", "[]");
         assert!(html.contains("relativeTime"));
     }
 
     #[test]
     fn test_view_overlay_does_not_hide_pdf() {
-        let html = render_shared_view_overlay("tok", "[]");
+        let html = render_shared_view_overlay("tok", "[]", "[]");
         // Should NOT hide the pdf-status element
         assert!(!html.contains("pdfStatus"));
     }
 
     #[test]
     fn test_view_overlay_hides_owner_elements() {
-        let html = render_shared_view_overlay("tok", "[]");
+        let html = render_shared_view_overlay("tok", "[]", "[]");
         // Should hide back link and mode toggle (owner-only)
         assert!(html.contains("backLink"));
         assert!(html.contains("display = 'none'"));
@@ -813,14 +795,14 @@ mod tests {
 
     #[test]
     fn test_view_overlay_is_script_tag() {
-        let html = render_shared_view_overlay("tok", "[]");
+        let html = render_shared_view_overlay("tok", "[]", "[]");
         assert!(html.starts_with("<script>"));
         assert!(html.ends_with("</script>"));
     }
 
     #[test]
     fn test_view_overlay_mode_toggle() {
-        let html = render_shared_view_overlay("tok", "[]");
+        let html = render_shared_view_overlay("tok", "[]", "[]");
         // Should add its own mode toggle with View (active) and Edit buttons
         assert!(html.contains("mode-toggle"));
     }
