@@ -400,6 +400,17 @@ pub async fn graph_page(
         .link.manual { stroke: #859900; stroke-opacity: 0.7; }
         .link.highlighted { stroke: var(--link); stroke-opacity: 1; stroke-width: 2px; }
 
+        .link-handle {
+            fill: #859900;
+            stroke: none;
+            cursor: crosshair;
+            opacity: 0;
+            transition: opacity 0.15s;
+        }
+        .node:hover .link-handle { opacity: 0.7; }
+        .node.link-target circle { stroke: #859900 !important; stroke-width: 3px !important; }
+        .temp-link-line { stroke: #859900; stroke-width: 2; stroke-dasharray: 6,4; pointer-events: none; }
+
         .node circle { cursor: pointer; stroke: var(--bg); stroke-width: 1.5px; }
         .node.note circle { fill: var(--link); }
         .node.paper circle { fill: #f4a460; }
@@ -532,7 +543,7 @@ pub async fn graph_page(
         </div>
 
         <div class="graph-help">
-            <strong>Query Language</strong> &nbsp; <em style="font-weight:normal">(shift+click a node to add a link)</em>
+            <strong>Query Language</strong> &nbsp; <em style="font-weight:normal">(drag from green handle to link nodes)</em>
             <div class="graph-help-grid">
                 <span><code>from:KEY</code> — Center on node</span>
                 <span><code>depth:N</code> — Expand N hops</span>
@@ -663,7 +674,7 @@ pub async fn graph_page(
                     return cls;
                 }})
                 .call(d3.drag()
-                    .filter(event => !event.shiftKey && !event.button)
+                    .filter(event => !event.button)
                     .on('start', dragstarted)
                     .on('drag', dragged)
                     .on('end', dragended));
@@ -682,6 +693,23 @@ pub async fn graph_page(
             node.append('text')
                 .text(d => d.title.length > 15 ? d.title.substring(0, 15) + '...' : d.title)
                 .attr('dy', d => -(12 + Math.sqrt(d.in_degree + d.out_degree) * 3));
+
+            // Connector handles for drag-to-link (only when logged in)
+            if (isLoggedIn) {{
+                node.append('circle')
+                    .attr('class', 'link-handle')
+                    .attr('r', 6)
+                    .attr('cx', d => nodeRadius(d) + 4)
+                    .attr('cy', 0)
+                    .each(function(d) {{
+                        this.addEventListener('pointerdown', function(e) {{
+                            e.stopPropagation();
+                            e.stopImmediatePropagation();
+                            e.preventDefault();
+                            startLinkDrag(d, e);
+                        }});
+                    }});
+            }}
 
             // Node hover interactions
             node.on('mouseover', function(event, d) {{
@@ -707,21 +735,87 @@ pub async fn graph_page(
                 tooltip.style('display', 'none');
             }})
             .on('click', function(event, d) {{
-                if (event.shiftKey && isLoggedIn) {{
-                    // Shift+click opens the link creation modal
-                    event.preventDefault();
-                    event.stopPropagation();
-                    openLinkModal(d);
-                    return;
-                }}
                 window.location.href = '/note/' + d.id;
             }})
             .on('dblclick', function(event, d) {{
                 window.location.href = '/graph?q=from:' + d.id + ' depth:2';
             }});
 
+            // Drag-to-link: draw a temporary line from source to cursor,
+            // highlight target node, open modal on drop
+            function startLinkDrag(sourceNode, startEvent) {{
+                const svgEl = svg.node();
+                const tempLine = svg.append('line')
+                    .attr('class', 'temp-link-line');
+
+                let targetNode = null;
+
+                function simToSvg(sx, sy) {{
+                    const t = d3.zoomTransform(svgEl);
+                    return [t.k * sx + t.x, t.k * sy + t.y];
+                }}
+
+                function svgCoords(clientX, clientY) {{
+                    const pt = svgEl.createSVGPoint();
+                    pt.x = clientX;
+                    pt.y = clientY;
+                    return pt.matrixTransform(svgEl.getScreenCTM().inverse());
+                }}
+
+                function getSimCoords(clientX, clientY) {{
+                    const svgPt = svgCoords(clientX, clientY);
+                    const t = d3.zoomTransform(svgEl);
+                    return [(svgPt.x - t.x) / t.k, (svgPt.y - t.y) / t.k];
+                }}
+
+                function updateLine(clientX, clientY) {{
+                    const [sx, sy] = simToSvg(sourceNode.x, sourceNode.y);
+                    const ep = svgCoords(clientX, clientY);
+                    tempLine
+                        .attr('x1', sx).attr('y1', sy)
+                        .attr('x2', ep.x).attr('y2', ep.y);
+                }}
+
+                updateLine(startEvent.clientX, startEvent.clientY);
+
+                function onMove(e) {{
+                    updateLine(e.clientX, e.clientY);
+                    const [mx, my] = getSimCoords(e.clientX, e.clientY);
+
+                    let closest = null;
+                    let minDist = Infinity;
+                    graphData.nodes.forEach(n => {{
+                        if (n === sourceNode) return;
+                        const dx = n.x - mx;
+                        const dy = n.y - my;
+                        const dist = Math.sqrt(dx*dx + dy*dy);
+                        const threshold = nodeRadius(n) + 15;
+                        if (dist < threshold && dist < minDist) {{
+                            minDist = dist;
+                            closest = n;
+                        }}
+                    }});
+                    targetNode = closest;
+                    node.classed('link-target', d => d === closest);
+                }}
+
+                function onUp() {{
+                    window.removeEventListener('pointermove', onMove);
+                    window.removeEventListener('pointerup', onUp);
+                    tempLine.remove();
+                    node.classed('link-target', false);
+
+                    if (targetNode) {{
+                        openLinkModal(sourceNode, targetNode);
+                    }}
+                }}
+
+                window.addEventListener('pointermove', onMove);
+                window.addEventListener('pointerup', onUp);
+            }}
+
             // Link creation modal
-            function openLinkModal(sourceNode) {{
+            function openLinkModal(sourceNode, preSelectedTarget) {{
                 d3.selectAll('.link-modal-overlay').remove();
 
                 const overlay = d3.select('body').append('div')
@@ -730,7 +824,8 @@ pub async fn graph_page(
                 const modal = overlay.append('div')
                     .attr('class', 'link-modal');
 
-                modal.append('h3').text('Add link from "' + sourceNode.title + '"');
+                modal.append('h3').text('Add link from "' + sourceNode.title + '"'
+                    + (preSelectedTarget ? ' to "' + preSelectedTarget.title + '"' : ''));
 
                 modal.append('label').text('Target note');
                 const acWrap = modal.append('div').attr('class', 'autocomplete-wrap');
@@ -743,9 +838,13 @@ pub async fn graph_page(
                     .attr('class', 'autocomplete-dropdown')
                     .style('display', 'none');
 
-                let selectedKey = null;
+                let selectedKey = preSelectedTarget ? preSelectedTarget.id : null;
                 let selectedIdx = -1;
                 let currentMatches = [];
+
+                if (preSelectedTarget) {{
+                    targetInput.property('value', preSelectedTarget.title);
+                }}
 
                 function renderDropdown(matches) {{
                     currentMatches = matches;
@@ -908,10 +1007,9 @@ pub async fn graph_page(
                 d.fy = null;
             }}
 
-            // Zoom support — filter out shift so shift+click reaches node handlers
+            // Zoom support
             const zoom = d3.zoom()
                 .scaleExtent([0.3, 3])
-                .filter(event => !event.button && !event.shiftKey)
                 .on('zoom', (event) => {{
                     linkG.attr('transform', event.transform);
                     nodeG.attr('transform', event.transform);
