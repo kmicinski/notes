@@ -467,6 +467,22 @@ pub fn load_manual_edges(db: &sled::Db) -> Result<Vec<IndexedEdge>, String> {
     Ok(edges)
 }
 
+/// Update the annotation on an existing manual edge, preserving the created timestamp.
+pub fn update_manual_edge_annotation(db: &sled::Db, source: &str, target: &str, annotation: Option<String>) -> Result<(), String> {
+    let tree = db.open_tree(MANUAL_EDGES_TREE).map_err(|e| e.to_string())?;
+    let key = format!("{}\0{}", source, target);
+    match tree.get(key.as_bytes()).map_err(|e| e.to_string())? {
+        Some(data) => {
+            let mut val: ManualEdgeValue = serde_json::from_slice(&data).map_err(|e| e.to_string())?;
+            val.annotation = annotation;
+            let json = serde_json::to_vec(&val).map_err(|e| e.to_string())?;
+            tree.insert(key.as_bytes(), json).map_err(|e| e.to_string())?;
+            Ok(())
+        }
+        None => Err(format!("Manual edge {}->{} not found", source, target)),
+    }
+}
+
 /// Load annotation for a manual edge, if it exists.
 pub fn get_manual_edge_annotation(db: &sled::Db, source: &str, target: &str) -> Result<Option<String>, String> {
     let tree = db.open_tree(MANUAL_EDGES_TREE).map_err(|e| e.to_string())?;

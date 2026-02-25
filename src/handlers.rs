@@ -1351,6 +1351,27 @@ pub async fn bibliography(State(state): State<Arc<AppState>>) -> Response {
 }
 
 // ============================================================================
+// Notes List API (for graph autocomplete)
+// ============================================================================
+
+pub async fn notes_list_api(
+    State(state): State<Arc<AppState>>,
+) -> Response {
+    let notes_list: Vec<serde_json::Value> = state.notes_map().values().map(|n| {
+        let nt = match n.note_type {
+            crate::models::NoteType::Paper(_) => "paper",
+            crate::models::NoteType::Note => "note",
+        };
+        serde_json::json!({"key": n.key, "title": n.title, "node_type": nt})
+    }).collect();
+
+    (
+        [("content-type", "application/json")],
+        serde_json::to_string(&notes_list).unwrap_or("[]".to_string()),
+    ).into_response()
+}
+
+// ============================================================================
 // Graph Edge Handlers
 // ============================================================================
 
@@ -1400,6 +1421,28 @@ pub async fn delete_graph_edge(
     }
 
     (StatusCode::OK, "Edge removed").into_response()
+}
+
+pub async fn update_edge_annotation(
+    State(state): State<Arc<AppState>>,
+    jar: CookieJar,
+    axum::Json(req): axum::Json<AddEdgeRequest>,
+) -> Response {
+    if !is_logged_in(&jar, &state.db) {
+        return (StatusCode::UNAUTHORIZED, "Not logged in").into_response();
+    }
+
+    if let Err(e) = crate::graph_index::update_manual_edge_annotation(
+        &state.db, &req.source, &req.target, req.annotation.clone(),
+    ) {
+        return (StatusCode::BAD_REQUEST, format!("Failed to update annotation: {}", e)).into_response();
+    }
+
+    (StatusCode::OK, axum::Json(serde_json::json!({
+        "source": req.source,
+        "target": req.target,
+        "annotation": req.annotation,
+    }))).into_response()
 }
 
 // ============================================================================

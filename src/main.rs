@@ -53,6 +53,8 @@ async fn main() {
         .route("/graph", get(graph::graph_page))
         .route("/api/graph", get(graph::graph_api))
         .route("/api/graph/edge", axum::routing::post(handlers::add_graph_edge).delete(handlers::delete_graph_edge))
+        .route("/api/graph/edge/annotation", axum::routing::post(handlers::update_edge_annotation))
+        .route("/api/notes/list", get(handlers::notes_list_api))
         // Smart Add routes
         .route("/api/smart-add/lookup", axum::routing::post(smart_add::smart_add_lookup))
         .route("/api/smart-add/create", axum::routing::post(smart_add::smart_add_create))
