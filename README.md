@@ -2,90 +2,79 @@
 
 A personal knowledge management system for academic papers and research notes, built in Rust with Axum.
 
-## Setup
+Manage your research library with markdown notes, PDF attachments, BibTeX metadata, a knowledge graph, and automatic citation extraction — all from a single self-hosted web app with no external database.
 
-### Prerequisites
-
-- [Rust](https://rustup.rs/) (stable toolchain)
-- Git (for version history features)
-- Optional: [Claude CLI](https://docs.anthropic.com/en/docs/claude-cli) (used as a fallback for metadata extraction from URLs)
-
-### Important Security Warnings
-
-This application is designed for **local, single-user use**. It binds to `127.0.0.1` (localhost only) by default. Before running, understand the following:
-
-- **Without `NOTES_PASSWORD`**: The server runs in read-only mode. Anyone who can reach the port can view your notes.
-- **With `NOTES_PASSWORD`**: Editing is gated behind password authentication:
-  - **Argon2id** password hashing (random salt, computed at startup)
-  - **Server-side sessions** stored in sled DB with 32-byte cryptographic random IDs
-  - **CSRF protection** on the login form (one-time tokens, 10-min TTL)
-  - **Rate limiting** with exponential backoff after 5 failed login attempts (capped at 64s)
-  - **Server-side logout** — session revocation, not just cookie deletion
-- **Do not expose this server to the internet** without additional hardening (reverse proxy, TLS, etc.).
-
-### Build & Run
+## Quick Start
 
 ```bash
-# Clone and build
-git clone <repo-url> && cd notes
+git clone https://github.com/kmicinski/notes.git && cd notes
 cargo build --release
-
-# Run in read-only mode
-./target/release/notes
-
-# Run with editing enabled
 NOTES_PASSWORD=yourpassword ./target/release/notes
 ```
 
-The server starts at **http://127.0.0.1:7000**. Notes are stored as markdown files in `content/` and PDFs in `pdfs/`.
+Open **http://localhost:3000**. Without `NOTES_PASSWORD`, the server runs in read-only mode.
+
+### Docker
+
+```bash
+NOTES_PASSWORD=yourpassword docker compose up -d
+```
+
+The compose file includes security hardening (read-only filesystem, dropped capabilities, seccomp, resource limits).
 
 ## Features
 
-### Notes & Papers
-- **Markdown notes** with YAML frontmatter
-- **Paper management** with full BibTeX support (multiple entries per paper)
-- **Paper sources** — attach arXiv, DOI, and URL identifiers to papers
+### Notes and Papers
+- **Markdown notes** with YAML frontmatter for structured metadata
+- **Paper management** — BibTeX support (multiple entries per paper), arXiv/DOI/URL identifiers
 - **Cross-linking** between notes using `[@key]` syntax
 - **Full-text search** across all notes
-- **Git integration** — automatic commits on save, browsable version history
-- **Time tracking** per note with categories (programming, reading, writing, etc.)
-- **Hidden notes** — toggle visibility to keep drafts out of listings
-- **Hierarchical notes** — notes can have parent-child relationships via `parent:` frontmatter
-
-### PDF Management
-- **Upload** PDFs via drag-and-drop or file picker
-- **Download from URL** — paste a direct link to fetch and attach a PDF
-- **Smart Find** — automatically searches arXiv, Semantic Scholar, and Unpaywall for open-access PDFs
-- **Split-pane viewer** — read PDFs side-by-side with notes (PDF.js-based, with zoom and page controls)
-- **Rename** attached PDFs
-- **Unlink** a PDF from a note without deleting the file
+- **Git-backed version history** — automatic commits on save, browsable diffs
+- **Time tracking** per note (reading, programming, writing, teaching, service)
+- **Hierarchical organization** — parent-child relationships, hidden drafts
 
 ### Smart Add
-Floating action button (+) for intelligent paper/note creation:
-- **Auto-detection** of input type (arXiv URL, DOI, generic URL, plain text)
-- **External API integration**: arXiv, CrossRef, Semantic Scholar
-- **Metadata extraction** from web pages (citation meta tags, Open Graph)
-- **Duplicate detection** — checks existing notes by title, DOI, arXiv ID
-- **Claude CLI fallback** for URLs that APIs can't parse
+Intelligent paper creation via the floating action button:
+- **Auto-detects** arXiv URLs, DOIs, generic URLs, and plain text
+- **Fetches metadata** from arXiv, CrossRef, and Semantic Scholar APIs
+- **Duplicate detection** by title, DOI, and arXiv ID
+- **BibTeX bulk import** with deduplication
 
-### BibTeX Import
-- **Bulk import** from `.bib` files
-- **Deduplication** — detects papers already in your library
-- **Secondary entries** — can add additional BibTeX entries to existing papers
+### PDF Management
+- **Upload** via drag-and-drop or file picker
+- **Download from URL** — paste a link to fetch and attach
+- **Smart Find** — searches arXiv, Semantic Scholar, and Unpaywall for open-access PDFs
+- **Split-pane viewer** — read PDFs side-by-side with notes (PDF.js)
+
+### Citation Scanner
+- **Extracts references** from attached PDFs using `pdftotext` and `pdf-extract`
+- **Matches citations** against your note library via DOI, arXiv ID, fuzzy title matching (Levenshtein distance), and author+year
+- **Writes cross-links** back into notes as `[@key]` references
+
+### Knowledge Graph
+- **Interactive D3.js** force-directed visualization of your note network
+- **Query language**: `from:KEY depth:2 type:paper author:NAME year:2024 hubs orphans`
+- **Manual linking** — drag between nodes or search to create edges
+- **Edge annotations** — add context to any connection
+- **Per-note mini-graph** panel on the note viewer
 
 ### Editor
-- **Monaco editor** with solarized-light theme
+- **Monaco editor** with Solarized Light theme
 - **Emacs keybindings** (C-f/C-b, M-f/M-b, C-x C-s, etc.)
-- **Note autocomplete** — `[@` triggers suggestions for cross-linking
-- **Auto-save** after 90 seconds of inactivity with automatic git commit
-- **Quick note types** — Definition, Question, Highlight, Begin/End study buttons when reading a PDF
+- **Cross-link autocomplete** — `[@` triggers note suggestions
+- **Auto-save** with automatic git commit
+- **Quick note buttons** — Definition, Question, Highlight, study timer
 
-### Visualization & Export
-- **Knowledge graph** with D3.js force-directed layout
-- **Graph query language**: `from:KEY depth:2 type:paper has:time orphans hubs`
-- **Bibliography export** at `/bibliography.bib` (combined BibTeX from all papers)
+### Collaborative Editing
+- **Real-time co-editing** via Automerge CRDT and WebSocket sync
+- **Shareable links** with contributor tracking and line-level attribution
+
+### Export
+- **BibTeX bibliography** at `/bibliography.bib` — combined from all papers
 
 ## Note Format
+
+Notes are markdown files with YAML frontmatter:
 
 ```yaml
 ---
@@ -99,8 +88,6 @@ bibtex: |
     booktitle = {NeurIPS},
     year = {2017}
   }
-arxiv: 1706.03762
-doi: 10.5555/3295222.3295349
 pdf: vaswani2017attention.pdf
 time:
   - date: 2024-01-15
@@ -113,42 +100,56 @@ time:
 
 The transformer architecture...
 
-## Notes
-
 See also [@other-paper-key] for related work.
 ```
 
 ## Project Structure
 
 ```
-notes/
-├── src/
-│   ├── main.rs          # Server entrypoint and route definitions
-│   ├── lib.rs           # AppState, configuration, path validation
-│   ├── models.rs        # Data structures (Note, PaperMeta, TimeEntry, etc.)
-│   ├── notes.rs         # Note loading, parsing, search, markdown rendering
-│   ├── handlers.rs      # HTTP route handlers (CRUD, PDF, search, etc.)
-│   ├── smart_add.rs     # Smart paper addition and BibTeX import
-│   ├── auth.rs          # Session management and authentication
-│   ├── graph.rs         # Knowledge graph building and visualization
-│   ├── url_validator.rs # URL/path validation utilities
-│   └── templates/       # HTML/CSS/JS templates (inline, no build step)
-│       ├── viewer.rs    # Note viewer with split-pane PDF support
-│       ├── editor.rs    # Monaco editor with PDF support
-│       └── ...
-├── content/             # Markdown notes (git-tracked)
-├── pdfs/                # PDF files
-├── Cargo.toml
-└── README.md
+src/
+  main.rs            Entry point, route definitions
+  lib.rs             AppState, configuration, startup
+  models.rs          Note, PaperMeta, GraphNode/Edge, etc.
+  notes.rs           File I/O, frontmatter parsing, markdown, search
+  handlers.rs        HTTP handlers (CRUD, auth, PDF, search, citations, graph)
+  auth.rs            Argon2 password hashing, sessions, CSRF, rate limiting
+  smart_add.rs       arXiv/DOI/URL detection, external API queries, BibTeX import
+  citations.rs       PDF text extraction, reference parsing, fuzzy matching
+  graph.rs           Knowledge graph construction, D3.js rendering
+  graph_index.rs     Sled-backed materialized graph index
+  graph_query.rs     Graph query language parser
+  shared.rs          Collaborative editing (Automerge CRDT, WebSocket)
+  url_validator.rs   SSRF protection (domain allowlist, private IP blocking)
+  templates/         Inline HTML/CSS/JS (no build step, no external templates)
+content/             Markdown notes (created at runtime)
+pdfs/                PDF attachments (created at runtime)
+.notes_db/           Sled database (sessions, graph index, citation cache)
 ```
 
-### Architecture Decisions
+## Architecture
 
-- **No database for notes** — notes are markdown files, git is the version history
-- **Sled DB** — used for server-side sessions and CSRF tokens
-- **Inline CSS/JS** — no build step, everything served from Rust template strings
-- **In-memory note index** — notes are re-loaded from disk on each request (simple, no cache invalidation)
+- **Markdown files are the source of truth** — no database for content, git is the version history
+- **Sled DB** — sessions, CSRF tokens, materialized graph index, citation cache
+- **No JS build step** — Monaco, D3.js, PDF.js loaded from CDN; all other JS is inline
+- **In-memory note cache** — `RwLock<Vec<Note>>` invalidated on save
+
+## Security
+
+Designed for **local, single-user use** behind a reverse proxy.
+
+- **Argon2id** password hashing with random salt
+- **Cryptographic sessions** (32-byte random IDs, sled-backed)
+- **CSRF protection** (one-time tokens, 10-minute TTL)
+- **Rate limiting** with exponential backoff on failed logins
+- **SSRF protection** — domain allowlist for external fetches
+- **Docker hardening** — read-only filesystem, dropped capabilities, seccomp profile, non-root user
+
+Do not expose directly to the internet without TLS and a reverse proxy (e.g., Caddy, nginx).
+
+## License
+
+MIT
 
 ---
 
-*Built with Claude Code*
+*Built with [Claude Code](https://claude.ai/claude-code)*

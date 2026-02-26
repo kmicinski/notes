@@ -4,3 +4,6 @@ cookies.txt
 .notes_password
 .env
 server_stderr.log
+content/
+pdfs/
+shared/
