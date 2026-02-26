@@ -31,8 +31,10 @@ pub fn render_viewer(
         } else {
             ""
         };
-        let scan_btn = if is_paper && logged_in {
-            r#" <button class="pdf-toggle-btn" onclick="scanReferences()" title="Scan PDF for references to other papers">Scan Refs</button>"#
+        let cite_btn = if is_paper && logged_in {
+            r#" <button class="pdf-toggle-btn" onclick="scanReferences()" title="Scan PDF and manage citations">Scan &amp; Cite</button>"#
+        } else if logged_in {
+            r#" <button class="pdf-toggle-btn" onclick="openCitationManager()" title="Manage citations manually">Cite</button>"#
         } else {
             ""
         };
@@ -42,10 +44,12 @@ pub fn render_viewer(
             html_escape(pdf),
             html_escape(pdf),
             unlink_btn,
-            scan_btn
+            cite_btn
         )
     } else if is_paper && logged_in {
-        r#"<button class="pdf-toggle-btn" id="pdf-toggle-btn" onclick="togglePdfViewer()">Find PDF</button>"#.to_string()
+        r#"<button class="pdf-toggle-btn" id="pdf-toggle-btn" onclick="togglePdfViewer()">Find PDF</button> <button class="pdf-toggle-btn" onclick="openCitationManager()" title="Manage citations manually">Cite</button>"#.to_string()
+    } else if logged_in {
+        r#"<button class="pdf-toggle-btn" onclick="openCitationManager()" title="Manage citations manually">Cite</button>"#.to_string()
     } else {
         String::new()
     };
@@ -714,13 +718,13 @@ pub fn render_viewer(
         .mini-graph-body svg {{ width: 100%; height: 100%; }}
         {mini_graph_css}
 
-        /* Citation scan results panel */
+        /* Citation Manager panel */
         .citation-panel {{
             position: fixed;
             top: 60px;
             right: 20px;
-            width: 380px;
-            max-height: 70vh;
+            width: 440px;
+            max-height: 80vh;
             background: var(--bg);
             border: 1px solid var(--border);
             border-radius: 8px;
@@ -751,33 +755,8 @@ pub fn render_viewer(
         }}
         .citation-panel-body {{
             overflow-y: auto;
-            padding: 0.75rem 1rem;
+            padding: 0;
             flex: 1;
-        }}
-        .citation-match {{
-            padding: 0.5rem 0;
-            border-bottom: 1px solid var(--border);
-            font-size: 0.85rem;
-        }}
-        .citation-match:last-child {{ border-bottom: none; }}
-        .citation-match .cm-key {{
-            font-family: monospace;
-            color: var(--link);
-            font-size: 0.8rem;
-        }}
-        .citation-match .cm-type {{
-            display: inline-block;
-            font-size: 0.7rem;
-            padding: 0.1rem 0.3rem;
-            border-radius: 3px;
-            background: var(--accent);
-            color: var(--muted);
-            margin-left: 0.3rem;
-        }}
-        .citation-match .cm-title {{
-            display: block;
-            margin-top: 0.2rem;
-            color: var(--fg);
         }}
         .citation-panel-footer {{
             padding: 0.75rem 1rem;
@@ -785,6 +764,196 @@ pub fn render_viewer(
             display: flex;
             gap: 0.5rem;
             align-items: center;
+        }}
+
+        /* Section headers */
+        .cm-section-header {{
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--muted);
+            padding: 0.5rem 1rem 0.3rem;
+            border-bottom: 1px solid var(--border);
+            background: var(--accent);
+        }}
+
+        /* Each scan match item */
+        .cm-item {{
+            padding: 0.5rem 1rem;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.82rem;
+            border-left: 3px solid transparent;
+            transition: opacity 0.2s, border-color 0.2s;
+        }}
+        .cm-item.accepted {{ border-left-color: var(--green); opacity: 1; }}
+        .cm-item.rejected {{ border-left-color: var(--red); opacity: 0.5; }}
+        .cm-item.rejected .cm-key {{ text-decoration: line-through; }}
+        .cm-item-row {{
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            flex-wrap: wrap;
+        }}
+
+        /* Accept/reject toggle buttons */
+        .cm-toggle-btn {{
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 1.5rem;
+            height: 1.5rem;
+            border-radius: 50%;
+            border: 1px solid var(--border);
+            background: var(--bg);
+            cursor: pointer;
+            font-size: 0.75rem;
+            transition: background 0.15s, color 0.15s;
+        }}
+        .cm-toggle-btn:hover {{ background: var(--accent); }}
+        .cm-toggle-btn.accept {{ color: var(--green); border-color: var(--green); }}
+        .cm-toggle-btn.accept:hover {{ background: var(--green); color: white; }}
+        .cm-toggle-btn.reject {{ color: var(--red); border-color: var(--red); }}
+        .cm-toggle-btn.reject:hover {{ background: var(--red); color: white; }}
+        .cm-toggle-btn.active-accept {{ background: var(--green); color: white; border-color: var(--green); }}
+        .cm-toggle-btn.active-reject {{ background: var(--red); color: white; border-color: var(--red); }}
+
+        .cm-key {{
+            font-family: monospace;
+            color: var(--link);
+            font-size: 0.78rem;
+        }}
+        .cm-confidence {{
+            font-size: 0.68rem;
+            color: var(--muted);
+        }}
+
+        /* Match type badges */
+        .cm-badge {{
+            display: inline-block;
+            font-size: 0.65rem;
+            padding: 0.08rem 0.35rem;
+            border-radius: 3px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }}
+        .cm-badge-doi {{ background: #859900; color: white; }}
+        .cm-badge-arxiv {{ background: #268bd2; color: white; }}
+        .cm-badge-title {{ background: #b58900; color: white; }}
+        .cm-badge-author_year {{ background: #cb4b16; color: white; }}
+        .cm-badge-manual {{ background: #6c71c4; color: white; }}
+
+        /* Raw reference text (expandable) */
+        .cm-raw-text {{
+            font-size: 0.75rem;
+            color: var(--muted);
+            margin-top: 0.3rem;
+            max-height: 2.6rem;
+            overflow: hidden;
+            word-break: break-word;
+            line-height: 1.3;
+            transition: max-height 0.25s ease;
+            cursor: pointer;
+        }}
+        .cm-raw-text.expanded {{ max-height: 20rem; }}
+        .cm-raw-text-toggle {{
+            font-size: 0.65rem;
+            color: var(--link);
+            cursor: pointer;
+            margin-top: 0.15rem;
+            display: inline-block;
+        }}
+
+        /* Manual add section */
+        .cm-search-section {{
+            padding: 0.5rem 1rem;
+            border-bottom: 1px solid var(--border);
+        }}
+        .cm-search-wrap {{
+            position: relative;
+        }}
+        .cm-search-input {{
+            width: 100%;
+            padding: 0.4rem 0.6rem;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-size: 0.82rem;
+            background: var(--bg);
+            color: var(--fg);
+            box-sizing: border-box;
+        }}
+        .cm-search-input:focus {{ outline: none; border-color: var(--link); }}
+        .cm-search-dropdown {{
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            max-height: 200px;
+            overflow-y: auto;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-top: none;
+            border-radius: 0 0 4px 4px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+            z-index: 10;
+            display: none;
+        }}
+        .cm-search-dropdown.visible {{ display: block; }}
+        .cm-search-item {{
+            padding: 0.4rem 0.6rem;
+            cursor: pointer;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.8rem;
+        }}
+        .cm-search-item:last-child {{ border-bottom: none; }}
+        .cm-search-item:hover, .cm-search-item.focused {{ background: var(--accent); }}
+        .cm-search-item-title {{ color: var(--fg); }}
+        .cm-search-item-meta {{ font-size: 0.72rem; color: var(--muted); margin-top: 0.1rem; }}
+        .cm-search-item-key {{ font-family: monospace; font-size: 0.7rem; color: var(--link); }}
+
+        /* Accepted list section */
+        .cm-accepted-section {{
+            background: color-mix(in srgb, var(--accent) 50%, var(--bg));
+        }}
+        .cm-accepted-item {{
+            padding: 0.35rem 1rem;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.8rem;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            animation: cm-slide-in 0.2s ease;
+        }}
+        .cm-accepted-item:last-child {{ border-bottom: none; }}
+        .cm-accepted-item .cm-remove-btn {{
+            background: none;
+            border: none;
+            color: var(--red);
+            cursor: pointer;
+            font-size: 0.85rem;
+            padding: 0 0.2rem;
+            opacity: 0.6;
+        }}
+        .cm-accepted-item .cm-remove-btn:hover {{ opacity: 1; }}
+        .cm-accepted-item .cm-accepted-info {{
+            flex: 1;
+            min-width: 0;
+        }}
+        .cm-accepted-item .cm-accepted-title {{
+            color: var(--fg);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }}
+        @keyframes cm-slide-in {{
+            from {{ opacity: 0; transform: translateX(-8px); }}
+            to {{ opacity: 1; transform: translateX(0); }}
+        }}
+        .cm-empty-msg {{
+            padding: 0.5rem 1rem;
+            font-size: 0.8rem;
+            color: var(--muted);
+            font-style: italic;
         }}
         /* Share panel - reuses citation panel styles */
         .share-panel {{
@@ -933,13 +1102,26 @@ pub fn render_viewer(
         </div>
         <div class="citation-panel" id="citation-panel">
             <div class="citation-panel-header">
-                <span>Citation Scan Results</span>
+                <span>Citation Manager</span>
                 <button class="citation-panel-close" onclick="closeCitationPanel()">&times;</button>
             </div>
-            <div class="citation-panel-body" id="citation-panel-body"></div>
-            <div class="citation-panel-footer" id="citation-panel-footer" style="display:none;">
+            <div class="citation-panel-body" id="citation-panel-body">
+                <div id="cm-scan-section"></div>
+                <div class="cm-section-header">Add Citation Manually</div>
+                <div class="cm-search-section">
+                    <div class="cm-search-wrap">
+                        <input type="text" class="cm-search-input" id="cm-search-input"
+                               placeholder="Search by title, author, key..."
+                               autocomplete="off">
+                        <div class="cm-search-dropdown" id="cm-search-dropdown"></div>
+                    </div>
+                </div>
+                <div class="cm-section-header">Accepted Citations (<span id="cm-accepted-count">0</span>)</div>
+                <div class="cm-accepted-section" id="cm-accepted-list"></div>
+            </div>
+            <div class="citation-panel-footer" id="citation-panel-footer">
                 <span class="citation-stats" id="citation-stats"></span>
-                <button class="pdf-toggle-btn" onclick="writeCitations()" id="write-citations-btn">Write to note</button>
+                <button class="pdf-toggle-btn" onclick="writeCitations()" id="write-citations-btn" disabled>Write 0 citations</button>
             </div>
         </div>
     </div>
@@ -1724,18 +1906,33 @@ pub fn render_viewer(
         }}
 
         // =====================================================================
-        // Citation Scanning
+        // Citation Manager — state, scan, accept/reject, manual add, write
         // =====================================================================
+
+        const cmState = {{
+            scanResults: [],    // {{ target_key, match_type, confidence, raw_text, accepted }}
+            manualAdds: [],     // {{ key, title }}
+            allNotes: null,     // loaded from /api/notes/list
+            searchFocusIdx: -1, // keyboard nav index in dropdown
+        }};
+
+        function escHtml(s) {{
+            const d = document.createElement('div');
+            d.textContent = s;
+            return d.innerHTML;
+        }}
+
+        // --- Open citation manager (with or without scan) ---
 
         async function scanReferences() {{
             const panel = document.getElementById('citation-panel');
-            const body = document.getElementById('citation-panel-body');
-            const footer = document.getElementById('citation-panel-footer');
-            const stats = document.getElementById('citation-stats');
-
             panel.classList.add('active');
-            body.innerHTML = '<div style="text-align:center;padding:1rem;color:var(--muted);"><span class="smart-find-spinner"></span> Scanning PDF references...</div>';
-            footer.style.display = 'none';
+            const scanSection = document.getElementById('cm-scan-section');
+            scanSection.innerHTML = '<div style="text-align:center;padding:1rem;color:var(--muted);"><span class="smart-find-spinner"></span> Scanning PDF references...</div>';
+            cmState.scanResults = [];
+            cmState.manualAdds = [];
+            renderAcceptedList();
+            loadNotesForSearch();
 
             try {{
                 const resp = await fetch('/api/citations/scan', {{
@@ -1746,35 +1943,284 @@ pub fn render_viewer(
 
                 if (!resp.ok) {{
                     const err = await resp.text();
-                    body.innerHTML = '<div style="color:var(--red);padding:0.5rem;">' + err + '</div>';
+                    scanSection.innerHTML = '<div style="color:var(--red);padding:0.75rem 1rem;">' + escHtml(err) + '</div>';
                     return;
                 }}
 
                 const data = await resp.json();
+                cmState.scanResults = data.matches.map(m => ({{
+                    ...m,
+                    accepted: m.confidence >= 0.85
+                }}));
 
-                if (data.matches.length === 0) {{
-                    body.innerHTML = '<div style="padding:0.5rem;color:var(--muted);">No matches found among ' + data.unmatched_count + ' references.</div>';
-                    return;
-                }}
-
-                let html = '';
-                for (const m of data.matches) {{
-                    html += '<div class="citation-match">' +
-                        '<span class="cm-key">[@' + m.target_key + ']</span>' +
-                        '<span class="cm-type">' + m.match_type + ' ' + Math.round(m.confidence * 100) + '%</span>' +
-                        '<span class="cm-title">' + (m.raw_text.substring(0, 120)) + '</span>' +
-                        '</div>';
-                }}
-                body.innerHTML = html;
-
-                stats.textContent = data.matches.length + ' match(es), ' + data.unmatched_count + ' unmatched';
-                footer.style.display = 'flex';
+                renderScanResults(data.unmatched_count);
+                renderAcceptedList();
             }} catch (e) {{
-                body.innerHTML = '<div style="color:var(--red);padding:0.5rem;">Error: ' + e.message + '</div>';
+                scanSection.innerHTML = '<div style="color:var(--red);padding:0.75rem 1rem;">Error: ' + escHtml(e.message) + '</div>';
             }}
         }}
 
+        function openCitationManager() {{
+            const panel = document.getElementById('citation-panel');
+            panel.classList.add('active');
+            const scanSection = document.getElementById('cm-scan-section');
+            cmState.scanResults = [];
+            cmState.manualAdds = [];
+            scanSection.innerHTML = '<div class="cm-empty-msg">No PDF scan — use search below to add citations manually.</div>';
+            renderAcceptedList();
+            loadNotesForSearch();
+        }}
+
+        function closeCitationPanel() {{
+            document.getElementById('citation-panel').classList.remove('active');
+        }}
+
+        // --- Notes list for autocomplete ---
+
+        async function loadNotesForSearch() {{
+            if (cmState.allNotes) return;
+            try {{
+                const resp = await fetch('/api/notes/list');
+                if (resp.ok) cmState.allNotes = await resp.json();
+            }} catch (e) {{
+                console.error('Failed to load notes list:', e);
+            }}
+        }}
+
+        // --- Render scan results section ---
+
+        function renderScanResults(unmatchedCount) {{
+            const scanSection = document.getElementById('cm-scan-section');
+            if (cmState.scanResults.length === 0) {{
+                scanSection.innerHTML = '<div class="cm-section-header">Auto-Scan Results</div>' +
+                    '<div class="cm-empty-msg">No matches found' +
+                    (unmatchedCount ? ' among ' + unmatchedCount + ' references' : '') + '.</div>';
+                return;
+            }}
+
+            let html = '<div class="cm-section-header">Auto-Scan Results (' + cmState.scanResults.length + ' matches, ' + unmatchedCount + ' unmatched)</div>';
+            cmState.scanResults.forEach((m, i) => {{
+                const cls = m.accepted ? 'accepted' : 'rejected';
+                const acceptCls = m.accepted ? 'active-accept' : 'accept';
+                const rejectCls = m.accepted ? 'reject' : 'active-reject';
+                const title = getNoteTitle(m.target_key);
+                html += '<div class="cm-item ' + cls + '" id="cm-scan-' + i + '">' +
+                    '<div class="cm-item-row">' +
+                    '<button class="cm-toggle-btn ' + acceptCls + '" onclick="cmToggle(' + i + ',true)" title="Accept">&#10003;</button>' +
+                    '<button class="cm-toggle-btn ' + rejectCls + '" onclick="cmToggle(' + i + ',false)" title="Reject">&#10007;</button>' +
+                    ' <a href="/note/' + escHtml(m.target_key) + '" class="cm-key" target="_blank">[@' + escHtml(m.target_key) + ']</a>' +
+                    ' <span class="cm-badge cm-badge-' + escHtml(m.match_type) + '">' + escHtml(m.match_type) + '</span>' +
+                    ' <span class="cm-confidence">' + Math.round(m.confidence * 100) + '%</span>' +
+                    '</div>';
+                if (title) {{
+                    html += '<div style="font-size:0.78rem;margin-top:0.15rem;color:var(--fg);">' + escHtml(title) + '</div>';
+                }}
+                if (m.raw_text) {{
+                    html += '<div class="cm-raw-text" onclick="this.classList.toggle(\'expanded\')">' + escHtml(m.raw_text) + '</div>';
+                }}
+                html += '</div>';
+            }});
+            scanSection.innerHTML = html;
+        }}
+
+        function getNoteTitle(key) {{
+            if (!cmState.allNotes) return '';
+            const n = cmState.allNotes.find(n => n.key === key);
+            return n ? n.title : '';
+        }}
+
+        // --- Toggle accept/reject ---
+
+        function cmToggle(index, accept) {{
+            cmState.scanResults[index].accepted = accept;
+            renderScanResults(0);  // re-render (unmatched count not critical for re-render)
+            renderAcceptedList();
+        }}
+
+        // --- Render accepted list ---
+
+        function renderAcceptedList() {{
+            const container = document.getElementById('cm-accepted-list');
+            const countSpan = document.getElementById('cm-accepted-count');
+            const accepted = getAcceptedKeys();
+            countSpan.textContent = accepted.length;
+
+            if (accepted.length === 0) {{
+                container.innerHTML = '<div class="cm-empty-msg">No citations accepted yet.</div>';
+            }} else {{
+                let html = '';
+                accepted.forEach(item => {{
+                    const badgeCls = 'cm-badge cm-badge-' + (item.matchType || 'manual');
+                    html += '<div class="cm-accepted-item">' +
+                        '<button class="cm-remove-btn" onclick="cmRemoveAccepted(\'' + escHtml(item.key) + '\')" title="Remove">&#10007;</button>' +
+                        '<div class="cm-accepted-info">' +
+                        '<span class="cm-key">[@' + escHtml(item.key) + ']</span>' +
+                        ' <span class="' + badgeCls + '">' + escHtml(item.matchType || 'manual') + '</span>' +
+                        '<div class="cm-accepted-title">' + escHtml(item.title || '') + '</div>' +
+                        '</div></div>';
+                }});
+                container.innerHTML = html;
+            }}
+
+            // Update footer
+            const btn = document.getElementById('write-citations-btn');
+            const stats = document.getElementById('citation-stats');
+            btn.textContent = 'Write ' + accepted.length + ' citation' + (accepted.length !== 1 ? 's' : '');
+            btn.disabled = accepted.length === 0;
+            stats.textContent = accepted.length + ' accepted';
+        }}
+
+        function getAcceptedKeys() {{
+            const items = [];
+            const seen = new Set();
+            // From scan results
+            cmState.scanResults.forEach(m => {{
+                if (m.accepted && !seen.has(m.target_key)) {{
+                    seen.add(m.target_key);
+                    items.push({{ key: m.target_key, title: getNoteTitle(m.target_key), matchType: m.match_type }});
+                }}
+            }});
+            // From manual adds
+            cmState.manualAdds.forEach(m => {{
+                if (!seen.has(m.key)) {{
+                    seen.add(m.key);
+                    items.push({{ key: m.key, title: m.title, matchType: 'manual' }});
+                }}
+            }});
+            return items;
+        }}
+
+        // --- Remove from accepted ---
+
+        function cmRemoveAccepted(key) {{
+            // If it's in scanResults, toggle to rejected
+            const scanIdx = cmState.scanResults.findIndex(m => m.target_key === key);
+            if (scanIdx >= 0) {{
+                cmState.scanResults[scanIdx].accepted = false;
+                renderScanResults(0);
+            }}
+            // If it's in manualAdds, remove it
+            cmState.manualAdds = cmState.manualAdds.filter(m => m.key !== key);
+            renderAcceptedList();
+        }}
+
+        // --- Manual add: autocomplete search ---
+
+        (function() {{
+            const input = document.getElementById('cm-search-input');
+            const dropdown = document.getElementById('cm-search-dropdown');
+            if (!input || !dropdown) return;
+            let debounceTimer = null;
+
+            input.addEventListener('input', function() {{
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(() => cmSearch(input.value), 120);
+            }});
+
+            input.addEventListener('keydown', function(e) {{
+                const items = dropdown.querySelectorAll('.cm-search-item');
+                if (e.key === 'ArrowDown') {{
+                    e.preventDefault();
+                    cmState.searchFocusIdx = Math.min(cmState.searchFocusIdx + 1, items.length - 1);
+                    updateFocus(items);
+                }} else if (e.key === 'ArrowUp') {{
+                    e.preventDefault();
+                    cmState.searchFocusIdx = Math.max(cmState.searchFocusIdx - 1, 0);
+                    updateFocus(items);
+                }} else if (e.key === 'Enter') {{
+                    e.preventDefault();
+                    if (cmState.searchFocusIdx >= 0 && cmState.searchFocusIdx < items.length) {{
+                        items[cmState.searchFocusIdx].click();
+                    }}
+                }} else if (e.key === 'Escape') {{
+                    dropdown.classList.remove('visible');
+                    cmState.searchFocusIdx = -1;
+                }}
+            }});
+
+            // Close dropdown on outside click
+            document.addEventListener('click', function(e) {{
+                if (!input.contains(e.target) && !dropdown.contains(e.target)) {{
+                    dropdown.classList.remove('visible');
+                }}
+            }});
+
+            function updateFocus(items) {{
+                items.forEach((el, i) => el.classList.toggle('focused', i === cmState.searchFocusIdx));
+                if (cmState.searchFocusIdx >= 0 && items[cmState.searchFocusIdx]) {{
+                    items[cmState.searchFocusIdx].scrollIntoView({{ block: 'nearest' }});
+                }}
+            }}
+        }})();
+
+        function cmSearch(query) {{
+            const dropdown = document.getElementById('cm-search-dropdown');
+            cmState.searchFocusIdx = -1;
+            if (!query || query.length < 2 || !cmState.allNotes) {{
+                dropdown.classList.remove('visible');
+                return;
+            }}
+
+            const q = query.toLowerCase();
+            const accepted = new Set(getAcceptedKeys().map(a => a.key));
+            accepted.add(noteKey); // exclude current note
+
+            const matches = cmState.allNotes
+                .filter(n => {{
+                    if (accepted.has(n.key)) return false;
+                    return (n.title && n.title.toLowerCase().includes(q)) ||
+                           n.key.toLowerCase().includes(q) ||
+                           (n.authors && n.authors.toLowerCase().includes(q)) ||
+                           (n.venue && n.venue.toLowerCase().includes(q));
+                }})
+                .slice(0, 12);
+
+            if (matches.length === 0) {{
+                dropdown.innerHTML = '<div style="padding:0.5rem;color:var(--muted);font-size:0.8rem;">No results</div>';
+                dropdown.classList.add('visible');
+                return;
+            }}
+
+            let html = '';
+            matches.forEach(n => {{
+                const meta = [n.authors, n.year, n.venue].filter(Boolean).join(' · ');
+                html += '<div class="cm-search-item" onclick="cmAddManual(\'' + escHtml(n.key) + '\',\'' + escHtml((n.title || '').replace(/'/g, '')) + '\')">' +
+                    '<div class="cm-search-item-title">' + escHtml(n.title || n.key) + '</div>' +
+                    (meta ? '<div class="cm-search-item-meta">' + escHtml(meta) + '</div>' : '') +
+                    '<div class="cm-search-item-key">' + escHtml(n.key) + '</div>' +
+                    '</div>';
+            }});
+            dropdown.innerHTML = html;
+            dropdown.classList.add('visible');
+        }}
+
+        function cmAddManual(key, title) {{
+            // Avoid duplicates
+            if (cmState.manualAdds.find(m => m.key === key)) return;
+            if (cmState.scanResults.find(m => m.target_key === key && m.accepted)) return;
+
+            // If it was a rejected scan result, re-accept it instead
+            const scanIdx = cmState.scanResults.findIndex(m => m.target_key === key);
+            if (scanIdx >= 0) {{
+                cmState.scanResults[scanIdx].accepted = true;
+                renderScanResults(0);
+            }} else {{
+                cmState.manualAdds.push({{ key, title }});
+            }}
+
+            const input = document.getElementById('cm-search-input');
+            const dropdown = document.getElementById('cm-search-dropdown');
+            input.value = '';
+            dropdown.classList.remove('visible');
+            renderAcceptedList();
+        }}
+
+        // --- Write citations ---
+
         async function writeCitations() {{
+            const accepted = getAcceptedKeys();
+            if (accepted.length === 0) return;
+
             const btn = document.getElementById('write-citations-btn');
             btn.disabled = true;
             btn.textContent = 'Writing...';
@@ -1783,7 +2229,10 @@ pub fn render_viewer(
                 const resp = await fetch('/api/citations/write', {{
                     method: 'POST',
                     headers: {{ 'Content-Type': 'application/json' }},
-                    body: JSON.stringify({{ note_key: noteKey }})
+                    body: JSON.stringify({{
+                        note_key: noteKey,
+                        accepted_keys: accepted.map(a => a.key)
+                    }})
                 }});
 
                 if (resp.ok) {{
@@ -1792,12 +2241,12 @@ pub fn render_viewer(
                     const err = await resp.text();
                     alert('Failed to write citations: ' + err);
                     btn.disabled = false;
-                    btn.textContent = 'Write to note';
+                    btn.textContent = 'Write ' + accepted.length + ' citations';
                 }}
             }} catch (e) {{
                 alert('Error: ' + e.message);
                 btn.disabled = false;
-                btn.textContent = 'Write to note';
+                btn.textContent = 'Write ' + accepted.length + ' citations';
             }}
         }}
 
@@ -2028,7 +2477,7 @@ pub fn render_viewer(
             center_key: Some(note.key.clone()),
             is_mini: true,
             logged_in,
-            show_arrows: false,
+            show_arrows: true,
             show_edge_tooltips: true,
             auto_fit: true,
             max_nodes: 30,

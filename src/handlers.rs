@@ -1358,11 +1358,23 @@ pub async fn notes_list_api(
     State(state): State<Arc<AppState>>,
 ) -> Response {
     let notes_list: Vec<serde_json::Value> = state.notes_map().values().map(|n| {
-        let nt = match n.note_type {
-            crate::models::NoteType::Paper(_) => "paper",
-            crate::models::NoteType::Note => "note",
+        let (nt, authors, year, venue, short_label) = match &n.note_type {
+            crate::models::NoteType::Paper(meta) => {
+                let eff = meta.effective_metadata(&n.title);
+                ("paper", eff.authors, eff.year, eff.venue, crate::graph_index::compute_short_label_pub(n))
+            }
+            crate::models::NoteType::Note => ("note", None, None, None, crate::graph_index::compute_short_label_pub(n)),
         };
-        serde_json::json!({"key": n.key, "title": n.title, "node_type": nt})
+        serde_json::json!({
+            "key": n.key,
+            "title": n.title,
+            "node_type": nt,
+            "authors": authors,
+            "year": year,
+            "venue": venue,
+            "short_label": short_label,
+            "date": n.date.map(|d| d.to_string()),
+        })
     }).collect();
 
     (
@@ -1416,11 +1428,79 @@ pub async fn delete_graph_edge(
         return (StatusCode::UNAUTHORIZED, "Not logged in").into_response();
     }
 
-    if let Err(e) = crate::graph_index::remove_manual_edge(&state.db, &req.source, &req.target) {
-        return (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to remove edge: {}", e)).into_response();
+    // If this is a citation edge, also remove it from the note's auto-citations block
+    if req.edge_type.as_deref() == Some("citation") {
+        if let Err(e) = remove_citation_from_note(&state, &req.source, &req.target).await {
+            eprintln!("Warning: failed to remove citation from note: {}", e);
+        }
+        // Remove from the citations cache in sled
+        if let Ok(tree) = state.db.open_tree("citations") {
+            if let Ok(Some(data)) = tree.get(req.source.as_bytes()) {
+                if let Ok(mut result) = serde_json::from_slice::<crate::models::CitationScanResult>(&data) {
+                    result.matches.retain(|m| m.target_key != req.target);
+                    if let Ok(json) = serde_json::to_vec(&result) {
+                        let _ = tree.insert(req.source.as_bytes(), json);
+                    }
+                }
+            }
+        }
     }
 
+    // Try manual edge first, then fall back to removing from kg:edges tree
+    let _ = crate::graph_index::remove_manual_edge(&state.db, &req.source, &req.target);
+    let _ = crate::graph_index::remove_indexed_edge(&state.db, &req.source, &req.target);
+    // Also clean up any annotation
+    let _ = crate::graph_index::set_edge_annotation(&state.db, &req.source, &req.target, None);
+
     (StatusCode::OK, "Edge removed").into_response()
+}
+
+/// Remove a citation reference from a note's auto-citations block.
+async fn remove_citation_from_note(state: &AppState, source_key: &str, target_key: &str) -> Result<(), String> {
+    let notes_map = state.notes_map();
+    let note = notes_map.get(source_key).ok_or_else(|| format!("Note not found: {}", source_key))?;
+
+    let content = &note.full_file_content;
+    let begin_marker = "<!-- BEGIN AUTO-CITATIONS -->";
+    let end_marker = "<!-- END AUTO-CITATIONS -->";
+
+    // Find the auto-citations block
+    let begin_pos = match content.find(begin_marker) {
+        Some(pos) => pos,
+        None => return Ok(()), // No auto-citations block, nothing to do
+    };
+    let end_pos = match content.find(end_marker) {
+        Some(pos) => pos,
+        None => return Ok(()),
+    };
+
+    let before = &content[..begin_pos];
+    let block = &content[begin_pos..end_pos + end_marker.len()];
+    let after = &content[end_pos + end_marker.len()..];
+
+    // Remove lines containing [@target_key] from the block
+    let cite_pattern = format!("[@{}]", target_key);
+    let new_block: String = block.lines()
+        .filter(|line| !line.contains(&cite_pattern))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let new_content = format!("{}{}{}", before, new_block, after);
+
+    // Write the file
+    let path = std::path::PathBuf::from(crate::NOTES_DIR).join(format!("{}.md", source_key));
+    std::fs::write(&path, &new_content).map_err(|e| format!("Failed to write note: {}", e))?;
+
+    // Reload into cache
+    drop(notes_map);
+    let notes_dir = std::path::PathBuf::from(crate::NOTES_DIR);
+    if let Some(updated_note) = crate::notes::load_note(&path, &notes_dir) {
+        let all_keys: std::collections::HashSet<String> = state.notes_map().keys().cloned().collect();
+        let _ = crate::graph_index::reindex_note(&state.db, &updated_note, &all_keys);
+    }
+    state.invalidate_notes_cache();
+
+    Ok(())
 }
 
 pub async fn update_edge_annotation(
@@ -1432,10 +1512,15 @@ pub async fn update_edge_annotation(
         return (StatusCode::UNAUTHORIZED, "Not logged in").into_response();
     }
 
-    if let Err(e) = crate::graph_index::update_manual_edge_annotation(
+    // Try manual edge annotation first; if not a manual edge, use general annotation store
+    if crate::graph_index::update_manual_edge_annotation(
         &state.db, &req.source, &req.target, req.annotation.clone(),
-    ) {
-        return (StatusCode::BAD_REQUEST, format!("Failed to update annotation: {}", e)).into_response();
+    ).is_err() {
+        if let Err(e) = crate::graph_index::set_edge_annotation(
+            &state.db, &req.source, &req.target, req.annotation.clone(),
+        ) {
+            return (StatusCode::BAD_REQUEST, format!("Failed to update annotation: {}", e)).into_response();
+        }
     }
 
     (StatusCode::OK, axum::Json(serde_json::json!({

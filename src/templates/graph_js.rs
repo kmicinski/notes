@@ -38,13 +38,10 @@ pub struct GraphRendererConfig {
 /// Returns the unified `<style>` block with `.kg-` prefixed classes.
 pub fn graph_css() -> String {
     r#"
-        .kg-link { stroke: var(--border); stroke-opacity: 0.6; }
-        .kg-link.citation { stroke-dasharray: 5,3; stroke: #b58900; stroke-opacity: 0.5; }
-        .kg-link.manual { stroke: #859900; stroke-opacity: 0.7; }
-        .kg-link.deg1 { stroke: #073642; stroke-opacity: 0.7; stroke-width: 1.5px; }
-        .kg-link.citation.deg1 { stroke-opacity: 0.8; stroke-width: 1.5px; }
-        .kg-link.highlighted { stroke: var(--link); stroke-opacity: 1; stroke-width: 2.5px; }
-        .kg-link.kg-edge-annotated { stroke-width: 2.5px; stroke-opacity: 0.9; }
+        .kg-link { stroke: var(--base01); stroke-opacity: 0.35; }
+        .kg-link.citation { stroke-dasharray: 5,3; }
+        .kg-link.highlighted { stroke: var(--link); stroke-opacity: 1; stroke-width: 4.5px; }
+        .kg-link.kg-edge-annotated { stroke-width: 4px; }
 
         .kg-link-handle {
             fill: #859900;
@@ -73,16 +70,30 @@ pub fn graph_css() -> String {
             position: absolute;
             background: var(--bg);
             border: 1px solid var(--border);
-            border-radius: 4px;
-            padding: 0.5rem 0.75rem;
+            border-radius: 6px;
+            padding: 0.6rem 0.85rem;
             font-size: 0.85rem;
             pointer-events: none;
             z-index: 1001;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-            max-width: 300px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+            max-width: 350px;
         }
-        .kg-tooltip .title { font-weight: 600; margin-bottom: 0.25rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .kg-tooltip .meta { color: var(--muted); font-size: 0.8rem; }
+        .kg-tooltip .title {
+            font-weight: 600; margin-bottom: 0.15rem;
+            overflow: hidden; text-overflow: ellipsis;
+            display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+        }
+        .kg-tooltip .authors {
+            font-size: 0.78rem; color: var(--base01); margin-bottom: 0.2rem;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .kg-tooltip .venue-year {
+            font-size: 0.75rem; color: var(--muted); font-style: italic; margin-bottom: 0.2rem;
+        }
+        .kg-tooltip .meta {
+            color: var(--muted); font-size: 0.75rem;
+            border-top: 1px solid var(--border); padding-top: 0.25rem; margin-top: 0.15rem;
+        }
 
         .kg-legend {
             position: absolute;
@@ -91,31 +102,56 @@ pub fn graph_css() -> String {
             background: var(--bg);
             border: 1px solid var(--border);
             border-radius: 4px;
-            padding: 0.4rem 0.6rem;
-            font-size: 0.75rem;
+            padding: 0.35rem 0.6rem;
+            font-size: 0.72rem;
             display: flex;
-            gap: 0.6rem;
+            flex-wrap: wrap;
+            gap: 0.35rem 0.7rem;
             align-items: center;
+            max-width: 600px;
         }
-        .kg-legend-item { display: flex; align-items: center; gap: 0.3rem; }
+        .kg-legend-item { display: flex; align-items: center; gap: 0.25rem; white-space: nowrap; }
         .kg-legend-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
 
         .kg-autocomplete-wrap { position: relative; }
         .kg-autocomplete-dropdown {
-            position: absolute; top: 100%; left: 0; right: 0;
+            position: absolute; bottom: 100%; left: 0; right: 0;
             background: var(--bg); border: 1px solid var(--border);
-            border-radius: 0 0 4px 4px; max-height: 200px; overflow-y: auto;
-            z-index: 3001; box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+            border-radius: 6px 6px 0 0; max-height: 360px; overflow-y: auto;
+            z-index: 3001; box-shadow: 0 -4px 12px rgba(0,0,0,0.15);
         }
         .kg-autocomplete-item {
-            padding: 0.4rem 0.5rem; cursor: pointer; font-size: 0.85rem;
-            display: flex; justify-content: space-between; align-items: center;
+            padding: 0.5rem 0.65rem; cursor: pointer; font-size: 0.85rem;
+            display: flex; align-items: flex-start; gap: 0.5rem;
+            border-left: 3px solid transparent;
+            transition: background 0.1s, border-color 0.1s;
         }
-        .kg-autocomplete-item:hover, .kg-autocomplete-item.active { background: var(--accent); }
+        .kg-autocomplete-item:hover, .kg-autocomplete-item.active {
+            background: var(--accent); border-left-color: var(--link);
+        }
+        .kg-autocomplete-item + .kg-autocomplete-item {
+            border-top: 1px solid var(--border);
+        }
+        .kg-ac-info { flex: 1; min-width: 0; }
+        .kg-ac-title {
+            font-weight: 500; color: var(--fg);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .kg-ac-meta {
+            font-size: 0.75rem; color: var(--muted); margin-top: 0.1rem;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .kg-ac-key {
+            font-family: "SF Mono", "Consolas", monospace;
+            font-size: 0.65rem; color: var(--base1); margin-top: 0.1rem;
+        }
         .kg-autocomplete-badge {
-            font-size: 0.7rem; padding: 0.1rem 0.3rem; border-radius: 3px;
-            background: var(--border); color: var(--muted);
+            font-size: 0.65rem; padding: 0.15rem 0.4rem; border-radius: 3px;
+            text-transform: uppercase; letter-spacing: 0.03em;
+            flex-shrink: 0; margin-top: 0.1rem;
         }
+        .kg-autocomplete-badge.paper { background: #f5ecd5; color: #8a7440; }
+        .kg-autocomplete-badge.note { background: rgba(38, 139, 210, 0.12); color: var(--blue); }
 
         .kg-search-panel {
             position: absolute;
@@ -125,42 +161,89 @@ pub fn graph_css() -> String {
             border: 1px solid var(--border);
             border-radius: 8px;
             padding: 0.75rem 1rem;
-            box-shadow: 0 4px 16px rgba(0,0,0,0.2);
-            width: 340px;
+            box-shadow: 0 6px 24px rgba(0,0,0,0.18);
+            width: 420px;
+        }
+        .kg-search-panel .kg-search-header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 0.5rem;
         }
         .kg-search-panel .kg-search-label {
-            font-size: 0.8rem; color: var(--muted); margin-bottom: 0.4rem;
+            font-size: 0.8rem; color: var(--muted);
             white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
+        .kg-search-panel .kg-search-close {
+            background: none; border: none; cursor: pointer;
+            color: var(--muted); font-size: 1.1rem; padding: 0 0.2rem;
+            line-height: 1;
+        }
+        .kg-search-panel .kg-search-close:hover { color: var(--fg); }
         .kg-search-panel input {
             width: 100%; box-sizing: border-box;
-            padding: 0.5rem; border: 1px solid var(--border);
-            border-radius: 4px; background: var(--accent); color: var(--fg);
+            padding: 0.5rem 0.65rem; border: 1px solid var(--border);
+            border-radius: 4px; background: var(--bg); color: var(--fg);
             font-size: 0.9rem; font-family: inherit;
+            transition: border-color 0.15s, box-shadow 0.15s;
         }
-        .kg-search-panel input:focus { outline: none; border-color: var(--link); }
+        .kg-search-panel input:focus {
+            outline: none; border-color: var(--link);
+            box-shadow: 0 0 0 2px rgba(38, 139, 210, 0.15);
+        }
 
         .kg-annotation-editor {
             position: absolute; z-index: 2500;
             background: var(--bg); border: 1px solid var(--border);
             border-radius: 8px; padding: 0.75rem;
-            box-shadow: 0 4px 16px rgba(0,0,0,0.2);
-            width: 280px;
+            box-shadow: 0 6px 24px rgba(0,0,0,0.18);
+            width: 300px;
         }
         .kg-annotation-editor .kg-ann-label {
-            font-size: 0.8rem; color: var(--muted); margin-bottom: 0.4rem;
+            font-size: 0.8rem; color: var(--muted); margin-bottom: 0.5rem;
             white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
         .kg-annotation-editor textarea {
             width: 100%; box-sizing: border-box;
-            padding: 0.5rem; border: 1px solid var(--border);
-            border-radius: 4px; background: var(--accent); color: var(--fg);
+            padding: 0.5rem 0.65rem; border: 1px solid var(--border);
+            border-radius: 4px; background: var(--bg); color: var(--fg);
             font-size: 0.85rem; font-family: inherit;
             height: 60px; resize: vertical;
+            transition: border-color 0.15s, box-shadow 0.15s;
         }
-        .kg-annotation-editor textarea:focus { outline: none; border-color: var(--link); }
+        .kg-annotation-editor textarea:focus {
+            outline: none; border-color: var(--link);
+            box-shadow: 0 0 0 2px rgba(38, 139, 210, 0.15);
+        }
         .kg-annotation-editor .kg-ann-actions {
-            display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 0.5rem;
+            display: flex; gap: 0.4rem; margin-top: 0.5rem;
+        }
+        .kg-annotation-editor .kg-ann-actions button {
+            padding: 0.3rem 0.7rem;
+            border: 1px solid var(--base1);
+            border-radius: 4px;
+            background: var(--blue);
+            color: var(--base3);
+            cursor: pointer;
+            font-size: 0.8rem;
+            font-family: inherit;
+            transition: background 0.15s, border-color 0.15s;
+        }
+        .kg-annotation-editor .kg-ann-actions button:hover {
+            background: var(--cyan); border-color: var(--cyan);
+        }
+        .kg-annotation-editor .kg-ann-actions button:disabled {
+            opacity: 0.5; cursor: default;
+        }
+        .kg-annotation-editor .kg-ann-actions .kg-btn-secondary {
+            background: var(--base2); color: var(--base00); border-color: var(--base1);
+        }
+        .kg-annotation-editor .kg-ann-actions .kg-btn-secondary:hover {
+            background: var(--base3);
+        }
+        .kg-annotation-editor .kg-ann-actions .kg-btn-danger {
+            background: var(--red); color: white; border-color: var(--red);
+        }
+        .kg-annotation-editor .kg-ann-actions .kg-btn-danger:hover {
+            background: #b02020; border-color: #b02020;
         }
 
         .kg-annotation-dot {
@@ -169,6 +252,56 @@ pub fn graph_css() -> String {
             stroke-width: 1;
             pointer-events: none;
         }
+
+        .kg-node-popup {
+            position: absolute; z-index: 2500;
+            background: var(--bg); border: 1px solid var(--border);
+            border-radius: 6px; padding: 0.4rem 0;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+            min-width: 180px;
+        }
+        .kg-node-popup-title {
+            padding: 0.3rem 0.75rem;
+            font-size: 0.78rem; color: var(--muted);
+            border-bottom: 1px solid var(--border);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+            max-width: 260px;
+        }
+        .kg-node-popup-item {
+            padding: 0.45rem 0.75rem;
+            font-size: 0.85rem; cursor: pointer;
+            color: var(--fg);
+            transition: background 0.1s;
+        }
+        .kg-node-popup-item:hover { background: var(--accent); }
+        .kg-node-popup-item .popup-shortcut {
+            float: right; font-size: 0.7rem; color: var(--muted);
+            margin-left: 1rem;
+        }
+
+        .kg-link.kg-edge-selected {
+            stroke: var(--red) !important;
+            stroke-opacity: 1 !important;
+            stroke-width: 5px !important;
+            filter: drop-shadow(0 0 3px var(--red));
+        }
+
+        .kg-toast {
+            position: fixed;
+            bottom: 60px; left: 50%; transform: translateX(-50%);
+            z-index: 4000;
+            background: var(--base02);
+            color: var(--base1);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.5rem 1rem;
+            font-size: 0.82rem;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .kg-toast.visible { opacity: 1; }
     "#.to_string()
 }
 
@@ -347,25 +480,36 @@ pub fn render_graph_js(config: &GraphRendererConfig) -> String {
             const linkGroup = g.append('g').attr('class', 'kg-links');
             const nodeGroup = g.append('g').attr('class', 'kg-nodes');
 
-            // --- Arrowhead markers ---
-            if (showArrows) {{
-                const defs = svg.append('defs');
-                function addMarker(id, color) {{
-                    defs.append('marker')
-                        .attr('id', id)
-                        .attr('viewBox', '0 -7 14 14')
-                        .attr('refX', 14).attr('refY', 0)
-                        .attr('markerWidth', 10).attr('markerHeight', 10)
-                        .attr('markerUnits', 'userSpaceOnUse')
-                        .attr('orient', 'auto')
-                        .append('path')
-                        .attr('d', 'M0,-5L12,0L0,5')
-                        .attr('fill', color);
-                }}
-                addMarker('kg-arrow-default', '#93a1a1');
-                addMarker('kg-arrow-citation', '#b58900');
-                addMarker('kg-arrow-manual', '#859900');
+            // --- Edge color palette (must be before markers) ---
+            const edgeColors = {{
+                annotated: '#859900',    // solarized green — vivid, always solid
+                deg1: '#268bd2',         // solarized blue — bold, 1st degree
+                deg2: '#cb4b16',         // solarized orange — warm, 2nd degree
+                deg3: '#6c71c4',         // solarized violet — cool, 3rd+
+                base: '#586e75',         // solarized base01 — full graph default
+            }};
+            const edgeOpacity = {{ annotated: 1.0, deg1: 1.0, deg2: 0.8, deg3: 0.65, base: 0.5 }};
+
+            // --- Arrowhead markers (one per color) ---
+            const defs = svg.append('defs');
+            function addMarker(id, color, opacity) {{
+                defs.append('marker')
+                    .attr('id', id)
+                    .attr('viewBox', '0 -7 14 14')
+                    .attr('refX', 14).attr('refY', 0)
+                    .attr('markerWidth', 10).attr('markerHeight', 10)
+                    .attr('markerUnits', 'userSpaceOnUse')
+                    .attr('orient', 'auto')
+                    .append('path')
+                    .attr('d', 'M0,-5L12,0L0,5')
+                    .attr('fill', color)
+                    .attr('fill-opacity', opacity || 1);
             }}
+            addMarker('kg-arrow-deg1', edgeColors.deg1, edgeOpacity.deg1);
+            addMarker('kg-arrow-deg2', edgeColors.deg2, edgeOpacity.deg2);
+            addMarker('kg-arrow-deg3', edgeColors.deg3, edgeOpacity.deg3);
+            addMarker('kg-arrow-base', edgeColors.base, edgeOpacity.base);
+            addMarker('kg-arrow-annotated', edgeColors.annotated, edgeOpacity.annotated);
 
             // --- Tooltip ---
             const tooltip = d3.select(_kgContainer).append('div')
@@ -380,28 +524,60 @@ pub fn render_graph_js(config: &GraphRendererConfig) -> String {
             }}
 
             // --- Helper: apply link attributes ---
+
+            function edgeDist(d) {{
+                const s = typeof d.source === 'object' ? d.source : nodeMap[d.source];
+                const t = typeof d.target === 'object' ? d.target : nodeMap[d.target];
+                const sd = s && s._dist !== undefined ? s._dist : 99;
+                const td = t && t._dist !== undefined ? t._dist : 99;
+                return Math.min(sd, td);
+            }}
+
+            function edgeStroke(d) {{
+                if (d.annotation) return edgeColors.annotated;
+                if (!centerKey) return edgeColors.base;
+                const dist = edgeDist(d);
+                if (dist <= 0) return edgeColors.deg1;
+                if (dist <= 1) return edgeColors.deg2;
+                return edgeColors.deg3;
+            }}
+
+            function edgeOpacityFn(d) {{
+                if (d.annotation) return edgeOpacity.annotated;
+                if (!centerKey) return edgeOpacity.base;
+                const dist = edgeDist(d);
+                if (dist <= 0) return edgeOpacity.deg1;
+                if (dist <= 1) return edgeOpacity.deg2;
+                return edgeOpacity.deg3;
+            }}
+
             function applyLinkAttrs(sel) {{
                 return sel
                     .attr('class', d => {{
-                        const sid = typeof d.source === 'object' ? d.source.id : d.source;
-                        const tid = typeof d.target === 'object' ? d.target.id : d.target;
                         let cls = 'kg-link';
                         if (d.edge_type === 'citation') cls += ' citation';
-                        if (d.edge_type === 'manual') cls += ' manual';
-                        if (centerKey && (sid === centerKey || tid === centerKey)) cls += ' deg1';
-                        if (d.edge_type === 'manual' && d.annotation) cls += ' kg-edge-annotated';
+                        if (d.annotation) cls += ' kg-edge-annotated';
                         return cls;
                     }})
+                    .attr('stroke', d => edgeStroke(d))
+                    .attr('stroke-opacity', d => edgeOpacityFn(d))
                     .attr('stroke-width', d => {{
-                        if (d.edge_type === 'manual' && d.annotation) return 2.5;
-                        if (centerKey) return 1;
-                        return Math.sqrt(d.weight || 1) * 1.5;
+                        if (d.annotation) return 4;
+                        if (centerKey) {{
+                            const dist = edgeDist(d);
+                            if (dist <= 0) return 3.5;
+                            if (dist <= 1) return 2.5;
+                            return 1.8;
+                        }}
+                        return Math.max(2, Math.sqrt(d.weight || 1) * 2);
                     }})
                     .attr('marker-end', d => {{
-                        if (!showArrows) return null;
-                        if (d.edge_type === 'citation') return 'url(#kg-arrow-citation)';
-                        if (d.edge_type === 'manual') return 'url(#kg-arrow-manual)';
-                        return 'url(#kg-arrow-default)';
+                        if (d.annotation) return 'url(#kg-arrow-annotated)';
+                        if (!centerKey) return 'url(#kg-arrow-base)';
+                        const dist = edgeDist(d);
+                        if (dist <= 0) return 'url(#kg-arrow-deg1)';
+                        if (dist <= 1) return 'url(#kg-arrow-deg2)';
+                        return 'url(#kg-arrow-deg3)';
                     }});
             }}
 
@@ -440,11 +616,21 @@ pub fn render_graph_js(config: &GraphRendererConfig) -> String {
                 g.append('text')
                     .text(d => {{
                         if (centerKey && d._dist >= 3) return '';
+                        if (d.node_type === 'paper' && d.short_label) {{
+                            const lbl = d.year ? d.short_label + ' (' + d.year + ')' : d.short_label;
+                            return lbl.length > 22 ? lbl.substring(0, 22) + '\u2026' : lbl;
+                        }}
                         const label = d.short_label || d.title;
-                        return label.length > 15 ? label.substring(0, 15) + '...' : label;
+                        return label.length > 18 ? label.substring(0, 18) + '\u2026' : label;
                     }})
                     .attr('dy', d => -(nodeRadius(d) + 3))
-                    .style('opacity', () => centerKey ? 0.7 : 1);
+                    .style('opacity', () => centerKey ? 0.7 : 1)
+                    .style('font-size', d => {{
+                        if (!centerKey) return null;
+                        if (d._dist === 0) return '11px';
+                        if (d._dist === 1) return '10px';
+                        return '9px';
+                    }});
 
                 if (isLoggedIn) {{
                     g.append('circle')
@@ -473,8 +659,10 @@ pub fn render_graph_js(config: &GraphRendererConfig) -> String {
                         d3.select(this).select('circle')
                             .attr('stroke', 'var(--fg)').attr('stroke-width', 2.5);
                         if (d._dist >= 3) {{
-                            d3.select(this).select('text')
-                                .text(d.short_label || d.title.substring(0, 20));
+                            const lbl = d.node_type === 'paper' && d.short_label
+                                ? (d.year ? d.short_label + ' (' + d.year + ')' : d.short_label)
+                                : (d.short_label || d.title.substring(0, 20));
+                            d3.select(this).select('text').text(lbl);
                         }}
                     }}
                     link.classed('highlighted', l => l.source.id === d.id || l.target.id === d.id);
@@ -482,12 +670,24 @@ pub fn render_graph_js(config: &GraphRendererConfig) -> String {
                     const distLabel = centerKey
                         ? (d._dist === 0 ? 'center' : d._dist + (d._dist === 1 ? 'st' : d._dist === 2 ? 'nd' : d._dist === 3 ? 'rd' : 'th') + ' degree')
                         : null;
-                    let tipHtml = '<div class="title">' + d.title + '</div><div class="meta">';
-                    tipHtml += 'Type: ' + d.node_type;
+                    let tipHtml = '<div class="title">' + d.title + '</div>';
+                    if (d.authors) {{
+                        tipHtml += '<div class="authors">' + d.authors + '</div>';
+                    }}
+                    if (d.venue || d.year) {{
+                        let vy = '';
+                        if (d.venue) vy += d.venue;
+                        if (d.venue && d.year) vy += ', ';
+                        if (d.year) vy += d.year;
+                        tipHtml += '<div class="venue-year">' + vy + '</div>';
+                    }}
+                    tipHtml += '<div class="meta">';
+                    tipHtml += d.node_type;
                     if (distLabel) tipHtml += ' \u00b7 ' + distLabel;
-                    tipHtml += '<br>Links: ' + (d.in_degree || 0) + ' in, ' + (d.out_degree || 0) + ' out';
-                    if (d.time_total > 0) tipHtml += '<br>Time: ' + Math.floor(d.time_total/60) + 'h ' + (d.time_total%60) + 'm';
-                    if (d.primary_category) tipHtml += '<br>Category: ' + d.primary_category;
+                    tipHtml += ' \u00b7 ' + (d.in_degree || 0) + ' in, ' + (d.out_degree || 0) + ' out';
+                    if (d.time_total > 0) tipHtml += ' \u00b7 ' + Math.floor(d.time_total/60) + 'h ' + (d.time_total%60) + 'm';
+                    if (d.primary_category) tipHtml += ' \u00b7 ' + d.primary_category;
+                    if (d.date) tipHtml += ' \u00b7 ' + d.date;
                     tipHtml += '</div>';
 
                     tooltip.style('display', 'block').html(tipHtml)
@@ -507,11 +707,9 @@ pub fn render_graph_js(config: &GraphRendererConfig) -> String {
                     tooltip.style('display', 'none');
                 }})
                 .on('click', function(event, d) {{
-                    if (centerKey && d.id === centerKey) return;
-                    window.location.href = '/note/' + d.id;
-                }})
-                .on('dblclick', function(event, d) {{
-                    window.location.href = '/graph?q=from:' + d.id + ' depth:2';
+                    event.stopPropagation();
+                    clearEdgeSelection();
+                    openNodePopup(d, event);
                 }});
             }}
 
@@ -540,17 +738,22 @@ pub fn render_graph_js(config: &GraphRendererConfig) -> String {
                             .style('top', (event.offsetY - 10) + 'px');
                     }})
                     .on('mouseout', function(event, d) {{
-                        const w = (d.edge_type === 'manual' && d.annotation) ? 2.5
-                            : centerKey ? 1 : Math.sqrt(d.weight || 1) * 1.5;
-                        d3.select(this).attr('stroke-width', w).attr('stroke-opacity', null);
+                        const w = d.annotation ? 4
+                            : centerKey ? (edgeDist(d) <= 0 ? 3.5 : edgeDist(d) <= 1 ? 2.5 : 1.8)
+                            : Math.max(2, Math.sqrt(d.weight || 1) * 2);
+                        d3.select(this).attr('stroke-width', w).attr('stroke-opacity', edgeOpacityFn(d));
                         tooltip.style('display', 'none');
                     }});
                 }}
 
                 if (isLoggedIn) {{
-                    sel.style('cursor', d => d.edge_type === 'manual' ? 'pointer' : null)
+                    sel.style('cursor', 'pointer')
                         .on('click', function(event, d) {{
-                            if (d.edge_type !== 'manual') return;
+                            event.stopPropagation();
+                            closeNodePopup();
+                            selectEdge(d);
+                        }})
+                        .on('dblclick', function(event, d) {{
                             event.stopPropagation();
                             openAnnotationEditor(d, event);
                         }});
@@ -572,12 +775,19 @@ pub fn render_graph_js(config: &GraphRendererConfig) -> String {
             let annotationDots;
 
             function updateAnnotationVisuals() {{
-                link.classed('kg-edge-annotated', d => d.edge_type === 'manual' && d.annotation);
-                link.attr('stroke-width', d => {{
-                    if (d.edge_type === 'manual' && d.annotation) return 2.5;
-                    if (centerKey) return 1;
-                    return Math.sqrt(d.weight || 1) * 1.5;
-                }});
+                link.classed('kg-edge-annotated', d => !!d.annotation);
+                link.attr('stroke', d => edgeStroke(d))
+                    .attr('stroke-opacity', d => edgeOpacityFn(d))
+                    .attr('stroke-width', d => {{
+                        if (d.annotation) return 4;
+                        if (centerKey) {{
+                            const dist = edgeDist(d);
+                            if (dist <= 0) return 3.5;
+                            if (dist <= 1) return 2.5;
+                            return 1.8;
+                        }}
+                        return Math.max(2, Math.sqrt(d.weight || 1) * 2);
+                    }});
                 annotationDots = linkGroup.selectAll('.kg-annotation-dot')
                     .data(activeEdges.filter(d => d.annotation), edgeKey)
                     .join('circle')
@@ -722,23 +932,25 @@ pub fn render_graph_js(config: &GraphRendererConfig) -> String {
                 const idx = activeEdges.findIndex(e => {{
                     const sid = typeof e.source === 'object' ? e.source.id : e.source;
                     const tid = typeof e.target === 'object' ? e.target.id : e.target;
-                    return sid === sourceKey && tid === targetKey && e.edge_type === 'manual';
+                    return sid === sourceKey && tid === targetKey;
                 }});
                 if (idx >= 0) activeEdges.splice(idx, 1);
                 rebindGraph();
             }}
 
             // --- deleteEdge: DELETE from API then update in-place ---
-            async function deleteEdge(sourceKey, targetKey) {{
+            async function deleteEdge(sourceKey, targetKey, edgeType) {{
                 const r = await fetch('/api/graph/edge', {{
                     method: 'DELETE',
                     headers: {{ 'Content-Type': 'application/json' }},
-                    body: JSON.stringify({{ source: sourceKey, target: targetKey }})
+                    body: JSON.stringify({{ source: sourceKey, target: targetKey, edge_type: edgeType || null }})
                 }});
                 if (r.ok) {{
                     removeEdgeInPlace(sourceKey, targetKey);
+                    showToast('Edge removed', 1500);
                 }} else {{
                     const t = await r.text();
+                    showToast('Failed to delete edge: ' + t, 3000);
                     console.error('Failed to delete edge:', t);
                 }}
             }}
@@ -767,7 +979,9 @@ pub fn render_graph_js(config: &GraphRendererConfig) -> String {
                         const dx = d.target.x - d.source.x;
                         const dy = d.target.y - d.source.y;
                         const dist = Math.sqrt(dx*dx + dy*dy) || 1;
-                        const r = nodeRadius(d.target);
+                        // Offset by node radius + marker length to prevent dangling arrows
+                        const r = nodeRadius(d.target) + 2;
+                        if (dist <= r) return d.target.x; // nodes overlapping, skip offset
                         return d.target.x - dx * (r / dist);
                     }})
                     .attr('y2', d => {{
@@ -775,8 +989,16 @@ pub fn render_graph_js(config: &GraphRendererConfig) -> String {
                         const dx = d.target.x - d.source.x;
                         const dy = d.target.y - d.source.y;
                         const dist = Math.sqrt(dx*dx + dy*dy) || 1;
-                        const r = nodeRadius(d.target);
+                        const r = nodeRadius(d.target) + 2;
+                        if (dist <= r) return d.target.y;
                         return d.target.y - dy * (r / dist);
+                    }})
+                    // Hide zero-length edges to prevent dangling arrowheads
+                    .attr('visibility', d => {{
+                        const dx = d.target.x - d.source.x;
+                        const dy = d.target.y - d.source.y;
+                        const dist = Math.sqrt(dx*dx + dy*dy);
+                        return dist < 1 ? 'hidden' : 'visible';
                     }});
                 node.attr('transform', d => 'translate(' + d.x + ',' + d.y + ')');
 
@@ -838,24 +1060,25 @@ pub fn render_graph_js(config: &GraphRendererConfig) -> String {
 
             // --- Legend ---
             const legend = d3.select(_kgContainer).append('div').attr('class', 'kg-legend');
+            function legendLine(color, opacity, width, dashed, label, arrowColor) {{
+                const item = legend.append('span').attr('class', 'kg-legend-item');
+                const dash = dashed ? ' stroke-dasharray="5,3"' : '';
+                const arrow = arrowColor ? '<polygon points="22,-4 30,0 22,4" fill="' + (arrowColor || color) + '" fill-opacity="' + opacity + '"/>' : '';
+                item.append('span').html('<svg width="32" height="10" viewBox="0 -5 32 10"><line x1="0" y1="0" x2="24" y2="0" stroke="' + color + '" stroke-opacity="' + opacity + '" stroke-width="' + width + '"' + dash + '/>' + arrow + '</svg>');
+                item.append('span').text(label);
+            }}
             if (centerKey) {{
-                [['Center', distColors[0]], ['1st', distColors[1]], ['2nd', distColors[2]], ['3rd+', distColors[3]]].forEach(([label, color]) => {{
-                    const item = legend.append('span').attr('class', 'kg-legend-item');
-                    item.append('span').attr('class', 'kg-legend-dot').style('background', color);
-                    item.append('span').text(label);
-                }});
+                legendLine(edgeColors.deg1, edgeOpacity.deg1, 3.5, false, '1st\u00b0', edgeColors.deg1);
+                legendLine(edgeColors.deg1, edgeOpacity.deg1, 3.5, true, '1st\u00b0 cite', edgeColors.deg1);
+                legendLine(edgeColors.deg2, edgeOpacity.deg2, 2.5, false, '2nd\u00b0', edgeColors.deg2);
+                legendLine(edgeColors.deg2, edgeOpacity.deg2, 2.5, true, '2nd\u00b0 cite', edgeColors.deg2);
+                legendLine(edgeColors.deg3, edgeOpacity.deg3, 1.8, false, '3rd+', edgeColors.deg3);
+                legendLine(edgeColors.deg3, edgeOpacity.deg3, 1.8, true, '3rd+ cite', edgeColors.deg3);
+                legendLine(edgeColors.annotated, edgeOpacity.annotated, 4, false, 'Annotated', edgeColors.annotated);
             }} else {{
-                [['Note', 'var(--link)'], ['Paper', '#f4a460']].forEach(([label, color]) => {{
-                    const item = legend.append('span').attr('class', 'kg-legend-item');
-                    item.append('span').attr('class', 'kg-legend-dot').style('background', color);
-                    item.append('span').text(label);
-                }});
-                const citItem = legend.append('span').attr('class', 'kg-legend-item');
-                citItem.append('span').html('<svg width="24" height="10"><line x1="0" y1="5" x2="24" y2="5" stroke="#b58900" stroke-dasharray="4,3" stroke-width="1.5"/></svg>');
-                citItem.append('span').text('Citation');
-                const manItem = legend.append('span').attr('class', 'kg-legend-item');
-                manItem.append('span').html('<svg width="24" height="10"><line x1="0" y1="5" x2="24" y2="5" stroke="#859900" stroke-width="1.5"/></svg>');
-                manItem.append('span').text('Manual');
+                legendLine(edgeColors.base, edgeOpacity.base, 2, false, 'Cross-ref', edgeColors.base);
+                legendLine(edgeColors.base, edgeOpacity.base, 2, true, 'Citation', edgeColors.base);
+                legendLine(edgeColors.annotated, edgeOpacity.annotated, 4, false, 'Annotated', edgeColors.annotated);
             }}
 
             // --- Drag-to-link with type-to-search ---
@@ -952,8 +1175,11 @@ pub fn render_graph_js(config: &GraphRendererConfig) -> String {
 
                     searchPanel = d3.select(_kgContainer).append('div')
                         .attr('class', 'kg-search-panel');
-                    searchPanel.append('div').attr('class', 'kg-search-label')
+                    const searchHeader = searchPanel.append('div').attr('class', 'kg-search-header');
+                    searchHeader.append('div').attr('class', 'kg-search-label')
                         .text('Link from \u201c' + (sourceNode.short_label || sourceNode.title) + '\u201d to\u2026');
+                    searchHeader.append('button').attr('class', 'kg-search-close')
+                        .html('&times;').on('click', () => cleanup());
 
                     const acWrap = searchPanel.append('div').attr('class', 'kg-autocomplete-wrap');
                     const input = acWrap.append('input')
@@ -977,8 +1203,19 @@ pub fn render_graph_js(config: &GraphRendererConfig) -> String {
                         matches.forEach(m => {{
                             const item = dropdown.append('div').attr('class', 'kg-autocomplete-item')
                                 .on('click', () => selectAndCreate(m));
-                            item.append('span').text(m.title);
-                            item.append('span').attr('class', 'kg-autocomplete-badge').text(m.node_type);
+                            const info = item.append('div').attr('class', 'kg-ac-info');
+                            info.append('div').attr('class', 'kg-ac-title').text(m.title);
+                            let metaParts = [];
+                            if (m.authors) metaParts.push(m.authors);
+                            if (m.year) metaParts.push(String(m.year));
+                            if (m.venue) metaParts.push(m.venue);
+                            if (metaParts.length > 0) {{
+                                info.append('div').attr('class', 'kg-ac-meta').text(metaParts.join(' \u00b7 '));
+                            }} else if (m.date) {{
+                                info.append('div').attr('class', 'kg-ac-meta').text(m.date);
+                            }}
+                            info.append('div').attr('class', 'kg-ac-key').text(m.key);
+                            item.append('span').attr('class', 'kg-autocomplete-badge ' + m.node_type).text(m.node_type);
                         }});
                     }}
 
@@ -992,8 +1229,11 @@ pub fn render_graph_js(config: &GraphRendererConfig) -> String {
                         if (q.length === 0) {{ dropdown.style('display', 'none'); return; }}
                         const matches = _kgAllNotes
                             .filter(n => n.key !== sourceNode.id &&
-                                (n.title.toLowerCase().includes(q) || n.key.toLowerCase().includes(q)))
-                            .slice(0, 10);
+                                (n.title.toLowerCase().includes(q) ||
+                                 n.key.toLowerCase().includes(q) ||
+                                 (n.authors && n.authors.toLowerCase().includes(q)) ||
+                                 (n.venue && n.venue.toLowerCase().includes(q))))
+                            .slice(0, 15);
                         renderDropdown(matches);
                     }}
 
@@ -1033,10 +1273,118 @@ pub fn render_graph_js(config: &GraphRendererConfig) -> String {
                 window.addEventListener('keydown', onKeyDown);
             }}
 
+            // --- Toast notification (unobtrusive) ---
+            let _toastEl = null;
+            let _toastTimer = null;
+            function showToast(msg, duration) {{
+                if (!_toastEl) {{
+                    _toastEl = document.createElement('div');
+                    _toastEl.className = 'kg-toast';
+                    document.body.appendChild(_toastEl);
+                }}
+                _toastEl.textContent = msg;
+                _toastEl.classList.add('visible');
+                clearTimeout(_toastTimer);
+                _toastTimer = setTimeout(() => _toastEl.classList.remove('visible'), duration || 2500);
+            }}
+
+            // --- Edge selection state ---
+            let selectedEdge = null;
+            let deleteConfirmTimer = null;
+
+            function clearEdgeSelection() {{
+                if (selectedEdge) {{
+                    link.classed('kg-edge-selected', false);
+                    selectedEdge = null;
+                    clearTimeout(deleteConfirmTimer);
+                    deleteConfirmTimer = null;
+                }}
+            }}
+
+            function selectEdge(d) {{
+                clearEdgeSelection();
+                closeNodePopup();
+                selectedEdge = d;
+                const sid = typeof d.source === 'object' ? d.source.id : d.source;
+                const tid = typeof d.target === 'object' ? d.target.id : d.target;
+                link.classed('kg-edge-selected', l => {{
+                    const ls = typeof l.source === 'object' ? l.source.id : l.source;
+                    const lt = typeof l.target === 'object' ? l.target.id : l.target;
+                    return ls === sid && lt === tid;
+                }});
+                const srcTitle = nodeMap[sid] ? nodeMap[sid].title : sid;
+                const tgtTitle = nodeMap[tid] ? nodeMap[tid].title : tid;
+                showToast('Selected: ' + srcTitle + ' \u2192 ' + tgtTitle + '  \u2014  Press Delete to remove', 3000);
+            }}
+
+            // --- Node popup ---
+            let _nodePopup = null;
+            function closeNodePopup() {{
+                if (_nodePopup) {{ _nodePopup.remove(); _nodePopup = null; }}
+            }}
+
+            function openNodePopup(d, event) {{
+                closeNodePopup();
+                d3.selectAll('.kg-annotation-editor').remove();
+
+                const popup = d3.select(_kgContainer).append('div')
+                    .attr('class', 'kg-node-popup')
+                    .style('left', (event.offsetX + 10) + 'px')
+                    .style('top', (event.offsetY - 10) + 'px');
+                _nodePopup = popup;
+
+                popup.append('div').attr('class', 'kg-node-popup-title')
+                    .text(d.title);
+
+                const goItem = popup.append('div').attr('class', 'kg-node-popup-item')
+                    .on('click', () => {{
+                        closeNodePopup();
+                        window.location.href = '/note/' + d.id;
+                    }});
+                goItem.append('span').text('Open note');
+                goItem.append('span').attr('class', 'popup-shortcut').text('Enter');
+
+                const focusItem = popup.append('div').attr('class', 'kg-node-popup-item')
+                    .on('click', () => {{
+                        closeNodePopup();
+                        window.location.href = '/graph?q=from:' + d.id + ' depth:2';
+                    }});
+                focusItem.append('span').text('Focus graph');
+                focusItem.append('span').attr('class', 'popup-shortcut').text('F');
+
+                // Keyboard handler for popup
+                function popupKeyHandler(evt) {{
+                    if (evt.key === 'Escape') {{
+                        closeNodePopup();
+                        document.removeEventListener('keydown', popupKeyHandler);
+                    }} else if (evt.key === 'Enter') {{
+                        closeNodePopup();
+                        document.removeEventListener('keydown', popupKeyHandler);
+                        window.location.href = '/note/' + d.id;
+                    }} else if (evt.key === 'f' || evt.key === 'F') {{
+                        closeNodePopup();
+                        document.removeEventListener('keydown', popupKeyHandler);
+                        window.location.href = '/graph?q=from:' + d.id + ' depth:2';
+                    }}
+                }}
+                document.addEventListener('keydown', popupKeyHandler);
+
+                // Close on click outside
+                function outsideClick(evt) {{
+                    if (_nodePopup && !_nodePopup.node().contains(evt.target)) {{
+                        closeNodePopup();
+                        document.removeEventListener('click', outsideClick, true);
+                        document.removeEventListener('keydown', popupKeyHandler);
+                    }}
+                }}
+                setTimeout(() => document.addEventListener('click', outsideClick, true), 0);
+            }}
+
             // --- Annotation editor ---
             function openAnnotationEditor(d, event) {{
                 // Close any existing editor
                 d3.selectAll('.kg-annotation-editor').remove();
+                closeNodePopup();
 
                 const srcId = typeof d.source === 'object' ? d.source.id : d.source;
                 const tgtId = typeof d.target === 'object' ? d.target.id : d.target;
@@ -1048,28 +1396,34 @@ pub fn render_graph_js(config: &GraphRendererConfig) -> String {
                     .style('left', (event.offsetX + 10) + 'px')
                     .style('top', (event.offsetY - 10) + 'px');
 
+                const typeLabels = {{ crosslink: '[@ref]', parent: 'parent', citation: 'PDF citation', manual: 'manual link' }};
                 editor.append('div').attr('class', 'kg-ann-label')
                     .text(srcTitle + ' \u2192 ' + tgtTitle);
+                editor.append('div').style('font-size', '0.7rem').style('color', 'var(--muted)').style('margin-bottom', '0.4rem')
+                    .text(typeLabels[d.edge_type] || d.edge_type);
 
                 const textarea = editor.append('textarea')
-                    .attr('placeholder', 'Describe this link...')
+                    .attr('placeholder', 'Annotate this link...')
                     .property('value', d.annotation || '');
 
                 const actions = editor.append('div').attr('class', 'kg-ann-actions');
-                actions.append('button').attr('class', 'btn secondary').text('Cancel')
+                actions.append('button').attr('class', 'kg-btn-secondary').text('Cancel')
                     .on('click', () => editor.remove());
-                actions.append('button').attr('class', 'btn danger').text('Delete')
-                    .style('background', '#dc322f').style('margin-right', 'auto')
+                actions.append('button').attr('class', 'kg-btn-danger').text('Delete')
                     .on('click', function() {{
-                        if (!confirm('Remove this manual link?')) return;
-                        const btn = d3.select(this);
-                        btn.attr('disabled', true).text('Deleting...');
                         editor.remove();
-                        deleteEdge(srcId, tgtId);
+                        selectEdge(d);
                     }});
-                const saveBtn = actions.append('button').attr('class', 'btn').text('Save')
+                const spacer = actions.append('div').style('flex', '1');
+                const saveBtn = actions.append('button').text('Save')
                     .on('click', () => {{
                         const ann = textarea.property('value').trim() || null;
+                        if (!ann) {{
+                            textarea.node().focus();
+                            textarea.style('border-color', 'var(--red)');
+                            setTimeout(() => textarea.style('border-color', null), 1500);
+                            return;
+                        }}
                         saveBtn.attr('disabled', true).text('Saving...');
                         fetch('/api/graph/edge/annotation', {{
                             method: 'POST',
@@ -1081,11 +1435,11 @@ pub fn render_graph_js(config: &GraphRendererConfig) -> String {
                                 updateAnnotationVisuals();
                                 editor.remove();
                             }} else {{
-                                r.text().then(t => alert('Error: ' + t));
+                                r.text().then(t => showToast('Error saving: ' + t, 3000));
                                 saveBtn.attr('disabled', null).text('Save');
                             }}
                         }}).catch(e => {{
-                            alert('Network error: ' + e);
+                            showToast('Network error: ' + e, 3000);
                             saveBtn.attr('disabled', null).text('Save');
                         }});
                     }});
@@ -1100,6 +1454,53 @@ pub fn render_graph_js(config: &GraphRendererConfig) -> String {
                 document.addEventListener('keydown', escHandler);
                 setTimeout(() => textarea.node().focus(), 10);
             }}
+
+            // --- Global keyboard handler for Delete key edge removal ---
+            document.addEventListener('keydown', function(evt) {{
+                if (evt.key === 'Delete' || evt.key === 'Backspace') {{
+                    // Don't intercept when typing in an input/textarea
+                    const tag = evt.target.tagName;
+                    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+                    if (!selectedEdge) return;
+                    evt.preventDefault();
+
+                    const srcId = typeof selectedEdge.source === 'object' ? selectedEdge.source.id : selectedEdge.source;
+                    const tgtId = typeof selectedEdge.target === 'object' ? selectedEdge.target.id : selectedEdge.target;
+
+                    if (deleteConfirmTimer) {{
+                        // Second press — confirmed
+                        clearTimeout(deleteConfirmTimer);
+                        deleteConfirmTimer = null;
+                        const edgeToDelete = selectedEdge;
+                        const edgeType = edgeToDelete.edge_type;
+                        clearEdgeSelection();
+                        showToast('Removing edge...', 1500);
+                        deleteEdge(srcId, tgtId, edgeType);
+                    }} else {{
+                        // First press — show confirmation toast
+                        const srcTitle = nodeMap[srcId] ? nodeMap[srcId].title : srcId;
+                        const tgtTitle = nodeMap[tgtId] ? nodeMap[tgtId].title : tgtId;
+                        const typeHint = selectedEdge.edge_type === 'citation' ? ' (will also update note)' : '';
+                        showToast('Press Delete again to remove: ' + srcTitle + ' \u2192 ' + tgtTitle + typeHint, 3000);
+                        deleteConfirmTimer = setTimeout(() => {{
+                            deleteConfirmTimer = null;
+                        }}, 3000);
+                    }}
+                }}
+                if (evt.key === 'Escape') {{
+                    clearEdgeSelection();
+                    closeNodePopup();
+                }}
+            }});
+
+            // --- Click on SVG background clears selection/popup ---
+            svg.on('click', function(event) {{
+                if (event.target === svg.node()) {{
+                    clearEdgeSelection();
+                    closeNodePopup();
+                }}
+            }});
         {fn_close}
         </script>"##,
         d3_tag = d3_tag,

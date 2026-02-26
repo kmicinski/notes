@@ -241,6 +241,43 @@ pub fn query_graph(query: &GraphQuery, db: &sled::Db) -> KnowledgeGraph {
             }
         }
 
+        if let Some(ref af) = query.author_filter {
+            let af_lower = af.to_lowercase();
+            match &node.authors {
+                Some(a) if a.to_lowercase().contains(&af_lower) => {}
+                _ => continue,
+            }
+        }
+
+        if let Some(ref vf) = query.venue_filter {
+            let vf_lower = vf.to_lowercase();
+            match &node.venue {
+                Some(v) if v.to_lowercase().contains(&vf_lower) => {}
+                _ => continue,
+            }
+        }
+
+        if query.year_min.is_some() || query.year_max.is_some() {
+            match node.year {
+                Some(y) => {
+                    if let Some(min) = query.year_min {
+                        if y < min { continue; }
+                    }
+                    if let Some(max) = query.year_max {
+                        if y > max { continue; }
+                    }
+                }
+                None => continue,
+            }
+        }
+
+        if let Some(ref tf) = query.title_filter {
+            let tf_lower = tf.to_lowercase();
+            if !node.title.to_lowercase().contains(&tf_lower) {
+                continue;
+            }
+        }
+
         graph_nodes.push(GraphNode {
             id: key.clone(),
             title: node.title.clone(),
@@ -252,12 +289,15 @@ pub fn query_graph(query: &GraphQuery, db: &sled::Db) -> KnowledgeGraph {
             in_degree: indeg,
             out_degree: outdeg,
             parent: node.parent_key.clone(),
+            authors: node.authors.clone(),
+            year: node.year,
+            venue: node.venue.clone(),
         });
     }
 
     // Build edges (only between included nodes)
     let included: HashSet<String> = graph_nodes.iter().map(|n| n.id.clone()).collect();
-    let annotations = graph_index::load_manual_edge_annotations(db).unwrap_or_default();
+    let annotations = graph_index::load_all_edge_annotations(db).unwrap_or_default();
     let mut graph_edges = Vec::new();
 
     for ((src, tgt), weight) in &edge_counts {

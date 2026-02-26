@@ -127,12 +127,15 @@ pub fn build_knowledge_graph(query: &GraphQuery, db: &sled::Db) -> KnowledgeGrap
             in_degree: indeg,
             out_degree: outdeg,
             parent: node.parent_key.clone(),
+            authors: node.authors.clone(),
+            year: node.year,
+            venue: node.venue.clone(),
         });
     }
 
     // Build edges (only between included nodes)
     let included: HashSet<String> = graph_nodes.iter().map(|n| n.id.clone()).collect();
-    let annotations = graph_index::load_manual_edge_annotations(db).unwrap_or_default();
+    let annotations = graph_index::load_all_edge_annotations(db).unwrap_or_default();
     let mut graph_edges = Vec::new();
 
     for ((src, tgt), weight) in &edge_counts {
@@ -297,13 +300,25 @@ pub async fn graph_page(
     let graph = crate::graph_query::query_graph(&query, &state.db);
     let has_center = query.center.is_some();
 
-    // Build notes list for autocomplete
+    // Build notes list for autocomplete (enriched with scholarly metadata)
     let notes_list: Vec<serde_json::Value> = state.notes_map().values().map(|n| {
-        let nt = match n.note_type {
-            crate::models::NoteType::Paper(_) => "paper",
-            crate::models::NoteType::Note => "note",
+        let (nt, authors, year, venue, short_label) = match &n.note_type {
+            crate::models::NoteType::Paper(meta) => {
+                let eff = meta.effective_metadata(&n.title);
+                ("paper", eff.authors, eff.year, eff.venue, crate::graph_index::compute_short_label_pub(n))
+            }
+            crate::models::NoteType::Note => ("note", None, None, None, crate::graph_index::compute_short_label_pub(n)),
         };
-        serde_json::json!({"key": n.key, "title": n.title, "node_type": nt})
+        serde_json::json!({
+            "key": n.key,
+            "title": n.title,
+            "node_type": nt,
+            "authors": authors,
+            "year": year,
+            "venue": venue,
+            "short_label": short_label,
+            "date": n.date.map(|d| d.to_string()),
+        })
     }).collect();
     let notes_json = serde_json::to_string(&notes_list).unwrap_or("[]".to_string());
 
@@ -314,7 +329,7 @@ pub async fn graph_page(
         center_key: query.center.clone(),
         is_mini: false,
         logged_in,
-        show_arrows: has_center,
+        show_arrows: true,
         show_edge_tooltips: true,
         auto_fit: has_center,
         max_nodes: 0,
@@ -326,111 +341,195 @@ pub async fn graph_page(
     let graph_styles = graph_css();
 
     let page_styles = r#"
-        .graph-container {
-            position: relative;
-            border: 1px solid var(--border);
-            border-radius: 4px;
+        /* Full-screen immersive graph */
+        .container { max-width: none; padding: 0; margin: 0; }
+        .nav-bar { position: fixed; top: 0; left: 0; right: 0; z-index: 200; opacity: 0.92; }
+        .graph-fullscreen {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
             background: var(--accent);
-            height: calc(100vh - 280px);
-            min-height: 400px;
         }
-        .graph-container svg { width: 100%; height: 100%; }
-        .graph-controls {
+        .graph-fullscreen svg { width: 100%; height: 100%; }
+
+        /* Floating query bar */
+        .graph-query-bar {
+            position: fixed;
+            top: 52px; left: 50%; transform: translateX(-50%);
+            z-index: 150;
             display: flex;
-            gap: 1rem;
+            gap: 0.4rem;
             align-items: center;
-            flex-wrap: wrap;
-            margin-bottom: 1rem;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.35rem 0.5rem;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+            width: min(700px, calc(100vw - 2rem));
         }
         .graph-query-input {
             flex: 1;
-            min-width: 300px;
-            padding: 0.5rem 0.75rem;
+            min-width: 0;
+            padding: 0.4rem 0.6rem;
             border: 1px solid var(--border);
             border-radius: 4px;
             background: var(--bg);
             color: var(--fg);
-            font-family: monospace;
-            font-size: 0.9rem;
-        }
-        .graph-stats {
-            display: flex;
-            gap: 1.5rem;
+            font-family: "SF Mono", "Consolas", monospace;
             font-size: 0.85rem;
-            color: var(--muted);
-            margin-bottom: 0.5rem;
         }
-        .graph-stats span { display: flex; align-items: center; gap: 0.3rem; }
-        .query-description {
-            font-size: 0.9rem;
-            color: var(--muted);
-            margin-bottom: 1rem;
-            font-style: italic;
+        .graph-query-input:focus {
+            outline: none;
+            border-color: var(--link);
+            box-shadow: 0 0 0 2px rgba(38, 139, 210, 0.15);
         }
-        .graph-help {
+        .graph-query-bar .qb-btn {
+            padding: 0.35rem 0.65rem;
+            border: 1px solid var(--base1);
+            border-radius: 4px;
+            background: var(--blue);
+            color: var(--base3);
+            cursor: pointer;
             font-size: 0.8rem;
-            color: var(--muted);
-            margin-top: 1rem;
-            padding: 0.75rem;
-            background: var(--accent);
+            font-family: inherit;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .graph-query-bar .qb-btn:hover { background: var(--cyan); border-color: var(--cyan); }
+        .graph-query-bar .qb-btn.secondary { background: var(--base2); color: var(--base00); border-color: var(--base1); }
+        .graph-query-bar .qb-btn.secondary:hover { background: var(--base3); }
+        .graph-query-bar .qb-help-toggle {
+            background: none; border: none; cursor: pointer;
+            color: var(--muted); font-size: 1rem; padding: 0.2rem 0.4rem;
             border-radius: 4px;
         }
-        .graph-help code {
+        .graph-query-bar .qb-help-toggle:hover { color: var(--fg); background: var(--accent); }
+
+        /* Floating stats pill */
+        .graph-stats-pill {
+            position: fixed;
+            top: 52px; right: 12px;
+            z-index: 150;
             background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.3rem 0.6rem;
+            font-size: 0.75rem;
+            color: var(--muted);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            display: flex; gap: 0.6rem; align-items: center;
+        }
+        .graph-stats-pill strong { color: var(--fg); }
+
+        /* Floating query description */
+        .graph-query-desc {
+            position: fixed;
+            bottom: 40px; left: 50%; transform: translateX(-50%);
+            z-index: 150;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.25rem 0.75rem;
+            font-size: 0.78rem;
+            color: var(--muted);
+            font-style: italic;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            white-space: nowrap;
+        }
+
+        /* Floating help panel */
+        .graph-help-overlay {
+            display: none;
+            position: fixed;
+            top: 100px; left: 50%; transform: translateX(-50%);
+            z-index: 300;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem 1.25rem;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+            width: min(560px, calc(100vw - 2rem));
+            max-height: calc(100vh - 160px);
+            overflow-y: auto;
+        }
+        .graph-help-overlay.visible { display: block; }
+        .graph-help-overlay .help-header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 0.6rem;
+        }
+        .graph-help-overlay .help-header h3 { margin: 0; font-size: 0.95rem; }
+        .graph-help-overlay .help-close {
+            background: none; border: none; cursor: pointer;
+            color: var(--muted); font-size: 1.2rem; padding: 0; line-height: 1;
+        }
+        .graph-help-overlay .help-close:hover { color: var(--fg); }
+        .graph-help-overlay code {
+            background: var(--accent);
             padding: 0.1rem 0.3rem;
             border-radius: 2px;
-            font-size: 0.85em;
+            font-size: 0.82em;
         }
         .graph-help-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            gap: 0.5rem;
-            margin-top: 0.5rem;
+            gap: 0.4rem;
+            font-size: 0.82rem;
+            color: var(--muted);
         }
     "#;
 
     let html = format!(
         r##"
         <style>{page_styles}{graph_styles}</style>
-        <h1>Knowledge Graph</h1>
 
-        <div class="graph-controls">
-            <form action="/graph" method="get" style="display: flex; gap: 0.5rem; flex: 1;">
+        <div class="graph-fullscreen" id="graph-container"></div>
+
+        <div class="graph-query-bar">
+            <form action="/graph" method="get" style="display: contents;">
                 <input type="text" name="q" class="graph-query-input"
                        value="{query_escaped}"
-                       placeholder="Query: from:KEY depth:2 type:paper has:time orphans hubs">
-                <button class="btn" type="submit">Apply</button>
-                <a href="/graph" class="btn secondary">Reset</a>
+                       placeholder="from:KEY depth:2 type:paper author:NAME year:2024 hubs orphans">
+                <button class="qb-btn" type="submit">Apply</button>
+                <a href="/graph" class="qb-btn secondary">Reset</a>
             </form>
+            <button class="qb-help-toggle" onclick="document.querySelector('.graph-help-overlay').classList.toggle('visible')" title="Query help">?</button>
         </div>
 
-        <div class="query-description">Showing: {query_desc}</div>
-
-        <div class="graph-stats">
+        <div class="graph-stats-pill">
             <span><strong>{nodes}</strong> nodes</span>
             <span><strong>{edges}</strong> edges</span>
             <span><strong>{orphans}</strong> orphans</span>
-            <span><strong>{hubs}</strong> hubs (≥{hub_threshold} links)</span>
-            <span>avg degree: <strong>{avg_deg:.1}</strong></span>
+            <span><strong>{hubs}</strong> hubs</span>
+            <span>avg\u00a0<strong>{avg_deg:.1}</strong></span>
         </div>
 
-        <div class="graph-container" id="graph-container"></div>
+        <div class="graph-query-desc">Showing: {query_desc}</div>
 
-        <div class="graph-help">
-            <strong>Query Language</strong> &nbsp; <em style="font-weight:normal">(drag from green handle to link nodes)</em>
+        <div class="graph-help-overlay">
+            <div class="help-header">
+                <h3>Query Language</h3>
+                <button class="help-close" onclick="this.closest('.graph-help-overlay').classList.remove('visible')">&times;</button>
+            </div>
             <div class="graph-help-grid">
-                <span><code>from:KEY</code> — Center on node</span>
-                <span><code>depth:N</code> — Expand N hops</span>
-                <span><code>type:paper</code> — Filter by type</span>
-                <span><code>type:note</code> — Only notes</span>
-                <span><code>has:time</code> — With time tracking</span>
-                <span><code>links:>N</code> — Min connections</span>
-                <span><code>links:&lt;N</code> — Max connections</span>
-                <span><code>orphans</code> — Disconnected only</span>
-                <span><code>hubs</code> — Highly connected</span>
-                <span><code>path:A->B</code> — Shortest path</span>
-                <span><code>category:X</code> — By time category</span>
-                <span><code>recent:N</code> — Last N days</span>
+                <span><code>from:KEY</code> Center on node</span>
+                <span><code>depth:N</code> Expand N hops</span>
+                <span><code>type:paper</code> Filter by type</span>
+                <span><code>type:note</code> Only notes</span>
+                <span><code>has:time</code> With time tracking</span>
+                <span><code>links:&gt;N</code> Min connections</span>
+                <span><code>links:&lt;N</code> Max connections</span>
+                <span><code>orphans</code> Disconnected only</span>
+                <span><code>hubs</code> Highly connected</span>
+                <span><code>path:A-&gt;B</code> Shortest path</span>
+                <span><code>category:X</code> By time category</span>
+                <span><code>recent:N</code> Last N days</span>
+                <span><code>author:NAME</code> By author name</span>
+                <span><code>venue:NAME</code> By venue/journal</span>
+                <span><code>year:YYYY</code> By year</span>
+                <span><code>year:YYYY-YYYY</code> Year range</span>
+                <span><code>title:TEXT</code> Search titles</span>
+            </div>
+            <div style="margin-top: 0.6rem; font-size: 0.78rem; color: var(--muted);">
+                Drag from green handle to link nodes. Click any edge to annotate.
             </div>
         </div>
 
@@ -444,7 +543,6 @@ pub async fn graph_page(
         edges = graph.stats.total_edges,
         orphans = graph.stats.orphan_count,
         hubs = graph.stats.hub_count,
-        hub_threshold = graph.stats.hub_threshold,
         avg_deg = graph.stats.avg_degree,
         graph_script = graph_script,
     );

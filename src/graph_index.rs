@@ -17,6 +17,7 @@ const EDGES_TREE: &str = "kg:edges";
 const NODES_TREE: &str = "kg:nodes";
 const CITATIONS_TREE: &str = "citations";
 const MANUAL_EDGES_TREE: &str = "kg:manual_edges";
+const EDGE_ANNOTATIONS_TREE: &str = "kg:edge_annotations";
 
 // ============================================================================
 // Types
@@ -34,6 +35,12 @@ pub struct IndexedNode {
     pub hidden: bool,
     pub modified: String,
     pub content_hash: String,
+    #[serde(default)]
+    pub authors: Option<String>,
+    #[serde(default)]
+    pub year: Option<i32>,
+    #[serde(default)]
+    pub venue: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -84,6 +91,11 @@ fn content_hash(content: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(content.as_bytes());
     format!("{:x}", hasher.finalize())
+}
+
+/// Public wrapper for short label computation.
+pub fn compute_short_label_pub(note: &Note) -> String {
+    compute_short_label(note)
 }
 
 fn compute_short_label(note: &Note) -> String {
@@ -157,6 +169,13 @@ fn build_indexed_node(note: &Note) -> IndexedNode {
         .max_by_key(|e| e.minutes)
         .map(|e| e.category.to_string());
 
+    let (authors, year, venue) = if let NoteType::Paper(ref meta) = note.note_type {
+        let eff = meta.effective_metadata(&note.title);
+        (eff.authors, eff.year, eff.venue)
+    } else {
+        (None, None, None)
+    };
+
     IndexedNode {
         title: note.title.clone(),
         node_type: node_type.to_string(),
@@ -168,6 +187,9 @@ fn build_indexed_node(note: &Note) -> IndexedNode {
         hidden: note.hidden,
         modified: note.modified.to_rfc3339(),
         content_hash: content_hash(&note.full_file_content),
+        authors,
+        year,
+        venue,
     }
 }
 
@@ -204,6 +226,21 @@ fn delete_edges_by_target(edges_tree: &sled::Tree, target: &str) -> sled::Result
         .collect();
     for k in to_remove {
         edges_tree.remove(&k)?;
+    }
+    Ok(())
+}
+
+/// Remove all edges between source and target from the kg:edges tree (all types).
+pub fn remove_indexed_edge(db: &sled::Db, source: &str, target: &str) -> Result<(), String> {
+    let edges_tree = db.open_tree(EDGES_TREE).map_err(|e| e.to_string())?;
+    let prefix = format!("{}\0{}\0", source, target);
+    let to_remove: Vec<sled::IVec> = edges_tree
+        .scan_prefix(prefix.as_bytes())
+        .filter_map(|r| r.ok())
+        .map(|(k, _)| k)
+        .collect();
+    for k in to_remove {
+        edges_tree.remove(&k).map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -510,6 +547,43 @@ pub fn load_manual_edge_annotations(db: &sled::Db) -> Result<HashMap<(String, St
                     annotations.insert((source.to_string(), target.to_string()), ann);
                 }
             }
+        }
+    }
+
+    Ok(annotations)
+}
+
+// ============================================================================
+// Edge Annotations (any edge type)
+// ============================================================================
+
+/// Set or clear an annotation on any edge (crosslink, citation, parent, or manual).
+pub fn set_edge_annotation(db: &sled::Db, source: &str, target: &str, annotation: Option<String>) -> Result<(), String> {
+    let tree = db.open_tree(EDGE_ANNOTATIONS_TREE).map_err(|e| e.to_string())?;
+    let key = format!("{}\0{}", source, target);
+    match annotation {
+        Some(ann) if !ann.is_empty() => {
+            tree.insert(key.as_bytes(), ann.as_bytes()).map_err(|e| e.to_string())?;
+        }
+        _ => {
+            tree.remove(key.as_bytes()).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+/// Load all edge annotations (from both manual edges and the general annotations tree).
+pub fn load_all_edge_annotations(db: &sled::Db) -> Result<HashMap<(String, String), String>, String> {
+    let mut annotations = load_manual_edge_annotations(db)?;
+
+    let tree = db.open_tree(EDGE_ANNOTATIONS_TREE).map_err(|e| e.to_string())?;
+    for entry in tree.iter() {
+        let (k, v) = entry.map_err(|e| e.to_string())?;
+        let key_str = String::from_utf8_lossy(&k);
+        if let Some((source, target)) = key_str.split_once('\0') {
+            let ann = String::from_utf8_lossy(&v).to_string();
+            // General annotations take precedence (they're set more recently)
+            annotations.insert((source.to_string(), target.to_string()), ann);
         }
     }
 

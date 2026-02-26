@@ -1,0 +1,1575 @@
+Abstracting Abstract Machines
+David Van Horn ∗
+
+Matthew Might
+
+Northeastern University
+dvanhorn@ccs.neu.edu
+
+University of Utah
+might@cs.utah.edu
+
+Abstract
+We describe a derivational approach to abstract interpretation that
+yields novel and transparently sound static analyses when applied
+to well-established abstract machines. To demonstrate the technique and support our claim, we transform the CEK machine
+of Felleisen and Friedman, a lazy variant of Krivine’s machine,
+and the stack-inspecting CM machine of Clements and Felleisen
+into abstract interpretations of themselves. The resulting analyses
+bound temporal ordering of program events; predict return-flow
+and stack-inspection behavior; and approximate the flow and evaluation of by-need parameters. For all of these machines, we find
+that a series of well-known concrete machine refactorings, plus a
+technique we call store-allocated continuations, leads to machines
+that abstract into static analyses simply by bounding their stores.
+We demonstrate that the technique scales up uniformly to allow
+static analysis of realistic language features, including tail calls,
+conditionals, side effects, exceptions, first-class continuations, and
+even garbage collection.
+Categories and Subject Descriptors F.3.2 [Logics and Meanings
+of Programs]: Semantics of Programming Languages—Program
+analysis, Operational semantics; F.4.1 [Mathematical Logic and
+Formal Languages]: Mathematical Logic—Lambda calculus and
+related systems
+General Terms Languages, Theory
+Keywords abstract machines, abstract interpretation
+
+1.
+
+Introduction
+
+Abstract machines such as the CEK machine and Krivine’s machine are first-order state transition systems that represent the core
+of a real language implementation. Semantics-based program analysis, on the other hand, is concerned with safely approximating
+intensional properties of such a machine as it runs a program. It
+seems natural then to want to systematically derive analyses from
+machines to approximate the core of realistic run-time systems.
+Our goal is to develop a technique that enables direct abstract
+interpretations of abstract machines by methods for transforming
+a given machine description into another that computes its finite
+approximation.
+∗ Supported by the National Science Foundation under grant 0937060 to the
+
+Computing Research Association for the CIFellow Project.
+
+Permission to make digital or hard copies of all or part of this work for personal or
+classroom use is granted without fee provided that copies are not made or distributed
+for profit or commercial advantage and that copies bear this notice and the full citation
+on the first page. To copy otherwise, to republish, to post on servers or to redistribute
+to lists, requires prior specific permission and/or a fee.
+ICFP’10, September 27–29, 2010, Baltimore, Maryland, USA.
+Copyright c 2010 ACM 978-1-60558-794-3/10/09. . . $10.00
+
+We demonstrate that the technique of refactoring a machine
+with store-allocated continuations allows a direct structural abstraction1 by bounding the machine’s store. Thus, we are able to
+convert semantic techniques used to model language features into
+static analysis techniques for reasoning about the behavior of those
+very same features. By abstracting well-known machines, our technique delivers static analyzers that can reason about by-need evaluation, higher-order functions, tail calls, side effects, stack structure,
+exceptions and first-class continuations.
+The basic idea behind store-allocated continuations is not new.
+SML/NJ has allocated continuations in the heap for well over a
+decade [28]. At first glance, modeling the program stack in an abstract machine with store-allocated continuations would not seem
+to provide any real benefit. Indeed, for the purpose of defining the
+meaning of a program, there is no benefit, because the meaning
+of the program does not depend on the stack-implementation strategy. Yet, a closer inspection finds that store-allocating continuations eliminate recursion from the definition of the state-space of
+the machine. With no recursive structure in the state-space, an abstract machine becomes eligible for conversion into an abstract interpreter through a simple structural abstraction.
+To demonstrate the applicability of the approach, we derive
+abstract interpreters of:
+• a call-by-value λ-calculus with state and control based on the
+
+CESK machine of Felleisen and Friedman [13],
+• a call-by-need λ-calculus based on a tail-recursive, lazy vari-
+
+ant of Krivine’s machine derived by Ager, Danvy and Midtgaard [1], and
+• a call-by-value λ-calculus with stack inspection based on the
+
+CM machine of Clements and Felleisen [3];
+and use abstract garbage collection to improve precision [25].
+Overview
+In Section 2, we begin with the CEK machine and attempt a structural abstract interpretation, but find ourselves blocked by two recursive structures in the machine: environments and continuations.
+We make three refactorings to:
+1. store-allocate bindings,
+2. store-allocate continuations, and
+3. time-stamp machine states;
+resulting in the CESK, CESK? , and time-stamped CESK? machines, respectively. The time-stamps encode the history (context)
+of the machine’s execution and facilitate context-sensitive abstractions. We then demonstrate that the time-stamped machine abstracts directly into a parameterized, sound and computable static
+analysis.
+1 A structural abstraction distributes component-, point-, and member-wise.
+
+In Section 3, we replay this process (slightly abbreviated) with
+a lazy variant of Krivine’s machine to arrive at a static analysis of
+by-need programs.
+In Section 4, we incorporate conditionals, side effects, exceptions, first-class continuations, and garbage collection.
+In Section 6, we abstract the CM (continuation-marks) machine
+to produce an abstract interpretation of stack inspection.
+In Section 7, we widen the abstract interpretations with a singlethreaded “global” store to accelerate convergence. For some of our
+analyzers, this widening results in polynomial-time algorithms and
+connects them back to known analyses.
+
+2.
+
+From CEK to the abstract CESK?
+
+In this section, we start with a traditional machine for a programming language based on the call-by-value λ-calculus, and gradually derive an abstract interpretation of this machine. The outline
+followed in this section covers the basic steps for systematically
+deriving abstract interpreters that we follow throughout the rest of
+the paper.
+To begin, consider the following language of expressions:2
+e ∈ Exp ::= x | (ee) | (λx.e)
+x ∈ Var
+a set of identifiers.
+A standard machine for evaluating this language is the CEK machine of Felleisen and Friedman [12], and it is from this machine
+we derive the abstract semantics—a computable approximation of
+the machine’s behavior. Most of the steps in this derivation correspond to well-known machine transformations and real-world implementation techniques—and most of these steps are concerned
+only with the concrete machine; a very simple abstraction is employed only at the very end.
+The remainder of this section is outlined as follows: we present
+the CEK machine, to which we add a store, and use it to allocate variable bindings. This machine is just the CESK machine of
+Felleisen and Friedman [13]. From here, we further exploit the store
+to allocate continuations, which corresponds to a well-known implementation technique used in functional language compilers [28].
+We then abstract only the store to obtain a framework for the sound,
+computable analysis of programs.
+
+ς 7−→CEK ς 0
+hx, ρ, κi
+h(e0 e1 ), ρ, κi
+hv, ρ, ar(e, ρ0 , κ)i
+hv, ρ, fn((λx.e), ρ0 , κ)i
+
+hv, ρ0 , κi where ρ(x) = (v, ρ0 )
+he0 , ρ, ar(e1 , ρ, κ)i
+he, ρ0 , fn(v, ρ, κ)i
+he, ρ0 [x 7→ (v, ρ)], κi
+
+Figure 1. The CEK machine.
+An expression is either a value or uniquely decomposable into an
+evaluation context and redex. The standard reduction machine is:
+E[e] 7−→βv E[e0 ], if e βv e0 .
+However, this machine does not shed much light on a realistic
+implementation. At each step, the machine traverses the entire
+source of the program looking for a redex. When found, the redex
+is reduced and the contractum is plugged back in the hole, then the
+process is repeated.
+Abstract machines such as the CEK machine, which are derivable from standard reduction machines, offer an extensionally
+equivalent but more realistic model of evaluation that is amenable
+to efficient implementation. The CEK is environment-based; it uses
+environments and closures to model substitution. It represents evaluation contexts as continuations, an inductive data structure that
+models contexts in an inside-out manner. The key idea of machines
+such as the CEK is that the whole program need not be traversed
+to find the next redex, consequently the machine integrates the process of plugging a contractum into a context and finding the next
+redex.
+States of the CEK machine [12] consist of a control string (an
+expression), an environment that closes the control string, and a
+continuation:
+ς∈Σ
+= Exp × Env × Kont
+v ∈ Val ::= (λx.e)
+ρ ∈ Env = Var →fin Val × Env
+κ ∈ Kont ::= mt | ar(e, ρ, κ) | fn(v, ρ, κ).
+
+A standard approach to evaluating programs is to rely on a CurryFeys-style Standardization Theorem, which says roughly: if an
+expression e reduces to e0 in, e.g., the call-by-value λ-calculus,
+then e reduces to e0 in a canonical manner. This canonical manner
+thus determines a state machine for evaluating programs: a standard
+reduction machine.
+To define such a machine for our language, we define a grammar
+of evaluation contexts and notions of reduction (e.g., βv ). An evaluation context is an expression with a “hole” in it. For left-to-right
+evaluation order, we define evaluation contexts E as:
+
+States are identified up to consistent renaming of bound variables.
+Environments are finite maps from variables to closures. Environment extension is written ρ[x 7→ (v, ρ0 )].
+Evaluation contexts E are represented (inside-out) by continuations as follows: [ ] is represented by mt; E[([ ]e)] is represented
+by ar(e0 , ρ, κ) where ρ closes e0 to represent e and κ represents
+E; E[(v[ ])] is represented by fn(v 0 , ρ, κ) where ρ closes v 0 to
+represent v and κ represents E.
+The transition function for the CEK machine is defined in Figure 1 (we follow the textbook treatment of the CEK machine [11,
+page 102]). The initial machine state for a closed expression e is
+given by the inj function:
+
+E ::= [ ] | (Ee) | (vE).
+
+inj CEK (e) = he, ∅, mti.
+
+2 Fine print on syntax: As is often the case in program analysis where se-
+
+Typically, an evaluation function is defined as a partial function
+from closed expressions to answers:
+
+2.1
+
+The CEK machine
+
+mantic values are approximated using syntactic phrases of the program under analysis, we would like to be able to distinguish different syntactic occurrences of otherwise identical expressions within a program. Informally,
+this means we want to track the source location of expressions. Formally,
+this is achieved by labeling expressions and assuming all labels within a
+program are distinct:
+e ∈ Exp ::= x` | (ee)` | (λx.e)`
+` ∈ Lab
+an infinite set of labels.
+However, we judiciously omit labels whenever they are irrelevant and doing
+so improves the clarity of the presentation. Consequently, they appear only
+in Sections 2.7 and 7, which are concerned with k-CFA.
+
+eval 0CEK (e) = (v, ρ) if inj (e) 7−→
+→CEK hv, ρ, mti.
+This gives an extensional view of the machine, which is useful, e.g.,
+to prove correctness with respect to a canonical evaluation function
+such as one defined by standard reduction or compositional valuation. However for the purposes of program analysis, we are concerned more with the intensional aspects of the machine. As such,
+we define the meaning of a program as the (possibly infinite) set of
+reachable machine states:
+eval CEK (e) = {ς | inj (e) 7−→
+→CEK ς}.
+
+Deciding membership in the set of reachable machine states
+is not possible due to the halting problem. The goal of abstract
+interpretation, then, is to construct a function, aval CEK
+[ , that is a
+sound and computable approximation to the eval CEK function.
+We can do this by constructing a machine that is similar in structure to the CEK machine: it is defined by an abstract state transition
+relation (7−→CEK
+[ ) ⊆ Σ̂ × Σ̂, which operates over abstract states,
+Σ̂, which approximate the states of the CEK machine, and an abstraction map α : Σ → Σ̂ that maps concrete machine states into
+abstract machine states.
+The abstract evaluation function is then defined as:
+
+ς 7−→CESK ς 0
+hx, ρ, σ, κi
+hv, ρ0 , σ, κi where σ(ρ(x)) = (v, ρ0 )
+h(e0 e1 ), ρ, σ, κi
+he0 , ρ, σ, ar(e1 , ρ, κ)i
+hv, ρ, σ, ar(e, ρ0 , κ)i
+he, ρ0 , σ, fn(v, ρ, κ)i
+0
+0
+he, ρ [x 7→ a], σ[a 7→ (v, ρ)], κi
+hv, ρ, σ, fn((λx.e), ρ , κ)i
+where a ∈
+/ dom(σ)
+Figure 2. The CESK machine.
+
+aval CEK
+ς | α(inj (e)) 7−→
+→CEK
+[ (e) = {ˆ
+[ ςˆ}.
+
+The state space for the CESK machine is defined as follows:
+ς∈Σ
+= Exp × Env × Store × Kont
+ρ ∈ Env
+= Var →fin Addr
+σ ∈ Store
+= Addr →fin Storable
+s ∈ Storable = Val × Env
+a, b, c ∈ Addr
+an infinite set.
+
+1. We achieve decidability by constructing the approximation in
+such a way that the state-space of the abstracted machine is
+finite, which guarantees that for any closed expression e, the
+set aval (e) is finite.
+2. We achieve soundness by demonstrating the abstracted machine transitions preserve the abstraction map, so that if ς 7−→
+ς 0 and α(ς) v ςˆ, then there exists an abstract state ςˆ0 such that
+ςˆ 7−→ ςˆ0 and α(ς 0 ) v ςˆ0 .
+A first attempt at abstract interpretation: A simple approach
+to abstracting the machine’s state space is to apply a structural
+abstract interpretation, which lifts abstraction point-wise, elementwise, component-wise and member-wise across the structure of a
+machine state (i.e., expressions, environments, and continuations).
+The problem with the structural abstraction approach for the
+CEK machine is that both environments and continuations are
+recursive structures. As a result, the map α yields objects in an
+abstract state-space with recursive structure, implying the space
+is infinite. It is possible to perform abstract interpretation over an
+infinite state-space, but it requires a widening operator. A widening
+operator accelerates the ascent up the lattice of approximation and
+must guarantee convergence. It is difficult to imagine a widening
+operator, other than the one that jumps immediately to the top of
+the lattice, for these semantics.
+Focusing on recursive structure as the source of the problem, a
+reasonable course of action is to add a level of indirection to the
+recursion—to force recursive structure to pass through explicitly
+allocated addresses. In doing so, we will unhinge recursion in
+a program’s data structures and its control-flow from recursive
+structure in the state-space.
+We turn our attention next to the CESK machine [10, 13], since
+the CESK machine eliminates recursion from one of the structures
+in the CEK machine: environments. In the subsequent section (Section 2.3), we will develop a CESK machine with a pointer refinement (CESK? ) that eliminates the other source of recursive structure: continuations. At that point, the machine structurally abstracts
+via a single point of approximation: the store.
+2.2
+
+The CESK machine
+
+The states of the CESK machine extend those of the CEK machine
+to include a store, which provides a level of indirection for variable
+bindings to pass through. The store is a finite map from addresses
+to storable values and environments are changed to map variables
+to addresses. When a variable’s value is looked-up by the machine,
+it is now accomplished by using the environment to look up the
+variable’s address, which is then used to look up the value. To
+bind a variable to a value, a fresh location in the store is allocated
+and mapped to the value; the environment is extended to map the
+variable to that address.
+
+States are identified up to consistent renaming of bound variables
+and addresses. The transition function for the CESK machine is
+defined in Figure 2 (we follow the textbook treatment of the CESK
+machine [11, page 166]).
+The initial state for a closed expression is given by the inj function, which combines the expression with the empty environment,
+store, and continuation:
+inj CESK (e) = he, ∅, ∅, mti.
+The eval CESK evaluation function is defined following the template of the CEK evaluation given in Section 2.1:
+eval CESK (e) = {ς | inj (e) 7−→
+→CESK ς}.
+Observe that for any closed expression, the CEK and CESK machines operate in lock-step: each machine transitions, by the corresponding rule, if and only if the other machine transitions.
+Lemma 1 (Felleisen, [10]). eval CESK (e) ≃ eval CEK (e).
+A second attempt at abstract interpretation: With the CESK machine, half the problem with the attempted naı̈ve abstract interpretation is solved: environments and closures are no longer mutually
+recursive. Unfortunately, continuations still have recursive structure. We could crudely abstract a continuation into a set of frames,
+losing all sense of order, but this would lead to a static analysis lacking faculties to reason about return-flow: every call would appear
+to return to every other call. A better solution is to refactor continuations as we did environments, redirecting the recursive structure
+through the store. In the next section, we explore a CESK machine
+with a pointer refinement for continuations.
+2.3
+
+The CESK? machine
+
+To untie the recursive structure associated with continuations, we
+shift to store-allocated continuations. The Kont component of the
+machine is replaced by a pointer to a continuation allocated in
+the store. We term the resulting machine the CESK? (control,
+environment, store, continuation pointer) machine. Notice the store
+now maps to denotable values and continuations:
+ς∈Σ
+= Exp × Env × Store × Addr
+s ∈ Storable = Val × Env + Kont
+κ ∈ Kont
+::= mt | ar(e, ρ, a) | fn(v, ρ, a).
+The revised machine is defined in Figure 3 and the initial machine state is defined as:
+inj CESK ? (e) = he, ∅, [a0 7→ mt], a0 i.
+
+ς 7−→CESK ? ς 0 , where κ = σ(a), b ∈
+/ dom(σ)
+hx, ρ, σ, ai
+h(e0 e1 ), ρ, σ, ai
+hv, ρ, σ, ai
+if κ = ar(e, ρ0 , c)
+if κ = fn((λx.e), ρ0 , c)
+
+hv, ρ0 , σ, ai where (v, ρ0 ) = σ(ρ(x))
+he0 , ρ, σ[b 7→ ar(e1 , ρ, a)], bi
+he, ρ0 , σ[b 7→ fn(v, ρ, c)], bi
+he, ρ0 [x 7→ b], σ[b 7→ (v, ρ)], ci
+
+ς 7−→CESK ?t ς 0 , where κ = σ(a), b = alloc(ς), u = tick(t)
+hx, ρ, σ, a, ti
+hv, ρ0 , σ, a, ui where (v, ρ0 ) = σ(ρ(x))
+h(e0 e1 ), ρ, σ, a, ti
+he0 , ρ, σ[b 7→ ar(e1 , ρ, a)], b, ui
+hv, ρ, σ, a, ti
+if κ = ar(e, ρ, c)
+he, ρ, σ[b 7→ fn(v, ρ, c)], b, ui
+if κ = fn((λx.e), ρ0 , c)
+he, ρ0 [x 7→ b], σ[b 7→ (v, ρ)], c, ui
+
+Figure 3. The CESK? machine.
+
+Figure 4. The time-stamped CESK? machine.
+
+The evaluation function (not shown) is defined along the same
+lines as those for the CEK (Section 2.1) and CESK (Section 2.2)
+machines. Like the CESK machine, it is easy to relate the CESK?
+machine to its predecessor; from corresponding initial configurations, these machines operate in lock-step:
+
+The tick function returns the next time; the alloc function allocates
+a fresh address for a binding or continuation. We require of tick
+and alloc that for all t and ς, t < tick(t) and alloc(ς) ∈
+/ σ where
+ς = h , , σ, , i.
+The time-stamped CESK? machine is defined in Figure 4. Note
+that occurrences of ς on the right-hand side of this definition are
+implicitly bound to the state occurring on the left-hand side. The
+initial machine state is defined as:
+
+Lemma 2. eval CESK ? (e) ≃ eval CESK (e).
+Addresses, abstraction and allocation: The CESK? machine, as
+defined in Figure 3, nondeterministically chooses addresses when
+it allocates a location in the store, but because machines are identified up to consistent renaming of addresses, the transition system
+remains deterministic.
+Looking ahead, an easy way to bound the state-space of this
+machine is to bound the set of addresses.3 But once the store is
+finite, locations may need to be reused and when multiple values
+are to reside in the same location; the store will have to soundly
+approximate this by joining the values.
+In our concrete machine, all that matters about an allocation
+strategy is that it picks an unused address. In the abstracted machine however, the strategy may have to re-use previously allocated addresses. The abstract allocation strategy is therefore crucial to the design of the analysis—it indicates when finite resources
+should be doled out and decides when information should deliberately be lost in the service of computing within bounded resources.
+In essence, the allocation strategy is the heart of an analysis (allocation strategies corresponding to well-known analyses are given
+in Section 2.7.)
+For this reason, concrete allocation deserves a bit more attention in the machine. An old idea in program analysis is that dynamically allocated storage can be represented by the state of the
+computation at allocation time [18, 22, Section 1.2.2]. That is, allocation strategies can be based on a (representation) of the machine
+history. These representations are often called time-stamps.
+A common choice for a time-stamp, popularized by Shivers [29], is to represent the history of the computation as contours,
+finite strings encoding the calling context. We present a concrete
+machine that uses general time-stamp approach and is parameterized by a choice of tick and alloc functions. We then instantiate
+tick and alloc to obtain an abstract machine for computing a kCFA-style analysis using the contour approach.
+2.4
+
+The time-stamped CESK? machine
+
+inj CESKt? (e) = he, ∅, [a0 7→ mt], a0 , t0 i.
+Satisfying definitions for the parameters are:
+a 0 = t0 = 0
+
+Time = Addr = Z
+tickh , , , , ti = t + 1 alloch , , , , ti = t.
+
+Under these definitions, the time-stamped CESK? machine operates in lock-step with the CESK? machine, and therefore with the
+CESK and CEK machines as well.
+Lemma 3. eval CESKt? (e) ≃ eval CESK ? (e).
+The time-stamped CESK? machine forms the basis of our abstracted machine in the following section.
+2.5
+
+The abstract time-stamped CESK? machine
+
+As alluded to earlier, with the time-stamped CESK? machine, we
+now have a machine ready for direct abstract interpretation via a
+single point of approximation: the store. Our goal is a machine
+that resembles the time-stamped CESK? machine, but operates
+over a finite state-space and it is allowed to be nondeterministic.
+Once the state-space is finite, the transitive closure of the transition
+relation becomes computable, and this transitive closure constitutes
+a static analysis. Buried in a path through the transitive closure
+is a (possibly infinite) traversal that corresponds to the concrete
+execution of the program.
+The abstracted variant of the time-stamped CESK? machine
+comes from bounding the address space of the store and the number
+of times available. By bounding these sets, the state-space becomes
+finite,4 but for the purposes of soundness, an entry in the store may
+be forced to hold several values simultaneously:
+[ = Addr →fin P (Storable).
+σ̂ ∈ Store
+
+3 A finite number of addresses leads to a finite number of environments,
+
+Hence, stores now map an address to a set of storable values rather
+than a single value. These collections of values model approximation in the analysis. If a location in the store is re-used, the new
+value is joined with the current set of values. When a location is
+dereferenced, the analysis must consider any of the values in the
+set as a result of the dereference.
+The abstract time-stamped CESK? machine is defined in Figure 5. The (non-deterministic) abstract transition relation changes
+little compared with the concrete machine. We only have to modify
+it to account for the possibility that multiple storable values (which
+
+which leads to a finite number of closures and continuations, which in turn,
+leads to a finite number of stores, and finally, a finite number of states.
+
+4 Syntactic sets like Exp are infinite, but finite for any given program.
+
+The machine states of the time-stamped CESK? machine include a
+time component, which is intentionally left unspecified:
+t, u ∈ Time
+ς ∈ Σ = Exp × Env × Store × Addr × Time.
+The machine is parameterized by the functions:
+tick : Σ → Time
+
+alloc : Σ → Addr .
+
+0
+d κ)
+[ ς , κ), u = tick(t,
+ςˆ 7−→CESK
+\? ςˆ , where κ ∈ σ̂(a), b = alloc(ˆ
+
+α(e, ρ, σ, a, t) = (e, α(ρ), α(σ), α(a), α(t))
+
+[states]
+
+t
+
+hx, ρ, σ̂, a, ti
+hv, ρ0 , σ̂, a, ui where (v, ρ0 ) ∈ σ̂(ρ(x))
+h(e0 e1 ), ρ, σ̂, a, ti
+he0 , ρ, σ̂ t [b 7→ ar(e1 , ρ, a)], b, ui
+hv, ρ, σ̂, a, ti
+if κ = ar(e, ρ0 , c)
+he, ρ0 , σ̂ t [b 7→ fn(v, ρ, c)], b, ui
+if κ = fn((λx.e), ρ0 , c)
+he, ρ0 [x 7→ b], σ̂ t [b 7→ (v, ρ)], c, ui
+
+α(ρ) = λx.α(ρ(x))
+G
+α(σ) = λâ.
+{α(σ(a))}
+
+[environments]
+[stores]
+
+α(a)=â
+
+α((λx.e), ρ) = ((λx.e), α(ρ))
+α(mt) = mt
+
+[closures]
+[continuations]
+
+α(ar(e, ρ, a)) = ar(e, α(ρ), α(a))
+Figure 5. The abstract time-stamped CESK? machine.
+includes continuations) may reside together in the store, which we
+handle by letting the machine non-deterministically choose a particular value from the set at a given store location.
+The analysis is parameterized by abstract variants of the functions that parameterized the concrete version:
+d : Σ̂ × Kont → Time,
+tick
+
+[ : Σ̂ × Kont → Addr .
+alloc
+
+In the concrete, these parameters determine allocation and stack
+behavior. In the abstract, they are the arbiters of precision: they
+determine when an address gets re-allocated, how many addresses
+get allocated, and which values have to share addresses.
+Recall that in the concrete semantics, these functions consume
+states—not states and continuations as they do here. This is because
+in the concrete, a state alone suffices since the state determines the
+continuation. But in the abstract, a continuation pointer within a
+state may denote a multitude of continuations; however the transition relation is defined with respect to the choice of a particular
+one. We thus pair states with continuations to encode the choice.
+The abstract semantics computes the set of reachable states:
+ς | he, ∅, [a0 7→ mt], a0 , t0 i 7−→
+→CESK
+aval CESK
+\? ςˆ}.
+\? (e) = {ˆ
+t
+
+t
+
+2.6
+
+Soundness and computability
+
+The finiteness of the abstract state-space ensures decidability.
+Theorem 1 (Decidability of the Abstract CESK? Machine).
+ςˆ ∈ aval CESK
+\? (e) is decidable.
+t
+
+Proof. The state-space of the machine is non-recursive with finite
+sets at the leaves on the assumption that addresses are finite. Hence
+reachability is decidable since the abstract state-space is finite.
+We have endeavored to evolve the abstract machine gradually so
+that its fidelity in soundly simulating the original CEK machine is
+both intuitive and obvious. But to formally establish soundness of
+the abstract time-stamped CESK? machine, we use an abstraction
+function, defined in Figure 6, from the state-space of the concrete
+time-stamped machine into the abstracted state-space.
+The abstraction map over times and addresses is defined so
+d are sound simulations of the
+[ and tick
+that the parameters alloc
+parameters alloc and tick, respectively. We also define the partial
+order (v) on the abstract state-space as the natural point-wise,
+element-wise, component-wise and member-wise lifting, wherein
+the partial orders on the sets Exp and Addr are flat. Then, we
+can prove that abstract machine’s transition relation simulates the
+concrete machine’s transition relation.
+Theorem 2 (Soundness of the Abstract CESK? Machine).
+If ς 7−→CEK ς 0 and α(ς) v ςˆ, then there exists an abstract state
+0
+0
+0
+ςˆ0 , such that ςˆ 7−→CESK
+\ ? ςˆ and α(ς ) v ςˆ .
+t
+
+Proof. By Lemmas 1, 2, and 3, it suffices to prove soundness with
+respect to 7−→CESK ?t . Assume ς 7−→CESK ?t ς 0 and α(ς) v ςˆ.
+
+α(fn(v, ρ, a)) = fn(v, α(ρ), α(a)),
+Figure 6. The abstraction map, α : ΣCESK ?t → Σ̂CESK
+\? .
+t
+
+Because ς transitioned, exactly one of the rules from the definition
+of (7−→CESK ?t ) applies. We split by cases on these rules. The rule
+for the second case is deterministic and follows by calculation.
+For the the remaining (nondeterministic) cases, we must show
+an abstract state exists such that the simulation is preserved. By
+examining the rules for these cases, we see that all three hinge on
+the abstract store in ςˆ soundly approximating the concrete store in
+ς, which follows from the assumption that α(ς) v ςˆ.
+2.7
+
+A k-CFA-like abstract CESK? machine
+
+In this section, we instantiate the time-stamped CESK? machine
+to obtain a contour-based machine; this instantiation forms the
+basis of a context-sensitive abstract interpreter with polyvariance
+like that found in k-CFA [29]. In preparation for abstraction, we
+instantiate the time-stamped machine using labeled call strings.
+Inside times, we use contours (Contour ), which are finite
+strings of call site labels that describe the current context:
+δ ∈ Contour ::=  | `δ.
+The labeled CESK machine transition relation must appropriately instantiate the parameters tick and alloc to augment the timestamp on function call.
+Next, we switch to abstract stores and bound the address space
+by truncating call string contours to length at most k (for k-CFA):
+\ k iff δ ∈ Contour and |δ| ≤ k.
+δ ∈ Contour
+Combining these changes, we arrive at the instantiations for the
+concrete and abstract machines given in Figure 7, where the value
+bδck is the leftmost k labels of contour δ.
+Comparison to k-CFA: We say “k-CFA-like” rather than “kCFA” because there are distinctions between the machine just described and k-CFA:
+1. k-CFA focuses on “what flows where”; the ordering between
+states in the abstract transition graph produced by our machine
+produces “what flows where and when.”
+2. Standard presentations of k-CFA implicitly inline a global approximation of the store into the algorithm [29]; ours uses one
+store per state to increase precision at the cost of complexity. In
+terms of our framework, the lattice through which classical k[
+CFA ascends is P (Exp × Env
+“ × Addr ) × Store, whereas our
+”
+[ × Addr .
+analysis ascends the lattice P Exp × Env × Store
+We can explicitly inline the store to achieve the same complexity, as shown in Section 7.
+3. On function call, k-CFA merges argument values together with
+previous instances of those arguments from the same context;
+our “minimalist” evolution of the abstract machine takes a
+
+ς 7−→LK ς 0
+
+Time = (Lab + •) × Contour
+Addr = (Lab + Var ) × Contour
+hx, ρ, σ, κi
+if σ(ρ(x)) = d(e, ρ0 )
+if σ(ρ(x)) = c(v, ρ0 )
+h(e0 e1 ), ρ, σ, κi
+
+t0 = (•, )
+tickhx, , , , ti = t
+tickh(e0 e1 )` , , , , ( , δ)i = (`, δ)
+(
+(`, δ),
+tickhv, , σ, a, (`, δ)i =
+(•, `δ),
+
+if σ(a) = ar( , , )
+if σ(a) = fn( , , )
+
+hv, ρ, σ, c1 (a, κ)i
+h(λx.e), ρ, σ, c2 (a, κ)i
+
+alloc(h(e`0 e1 ), , , , ( , δ)i) = (`, δ)
+
+he, ρ0 , σ, c1 (ρ(x), κ)i
+hv, ρ0 , σ, κi
+he0 , ρ, σ[a 7→ d(e1 , ρ)], c2 (a, κ)i
+where a ∈
+/ dom(σ)
+hv, ρ, σ[a 7→ c(v, ρ)], κi
+he, ρ[x 7→ a], σ, κi
+
+Figure 8. The LK machine.
+
+alloc(hv, , σ, a, ( , δ)i) = (`, δ) if σ(a) = ar(e` , , )
+alloc(hv, , σ, a, ( , δ)i) = (x, δ) if σ(a) = fn((λx.e), , )
+
+d ς , κ)
+[ ς , κ), u = tick(ˆ
+ˆ0 , where κ ∈ σ̂(a), b = alloc(ˆ
+ςˆ 7−→LK
+? ς
+[
+t
+
+d
+, , , ti, κ) = t
+tick(hx,
+`
+d
+tick(h(e
+0 e1 ) , , , , ( , δ)i, κ) = (`, δ)
+(
+(`, δ),
+d
+, σ̂, a, (`, δ)i, κ) =
+tick(hv,
+(•, b`δck ),
+
+if κ = ar( , , )
+if κ = fn( , , )
+
+`
+[
+alloc(h(e
+0 e1 ), , , , ( , δ)i, κ) = (`, δ)
+
+hx, ρ, σ̂, a, ti
+if σ̂(ρ(x)) 3 d(e, ρ0 )
+hx, ρ, σ̂, a, ti
+if σ̂(ρ(x)) 3 c(v, ρ0 )
+h(e0 e1 ), ρ, σ̂, a, ti
+
+[
+alloc(hv,
+, σ̂, a, ( , δ)i, κ) = (`, δ) if κ = ar(e` , , )
+[
+alloc(hv,
+, σ̂, a, ( , δ)i, κ) = (x, δ) if κ = fn((λx.e), , )
+Figure 7. Instantiation for k-CFA machine.
+higher-precision approach: it forks the machine for each argument value, rather than merging them immediately.
+4. k-CFA does not recover explicit information about stack structure; our machine contains an explicit model of the stack for
+every machine state.
+
+3.
+
+Analyzing by-need with Krivine’s machine
+
+Even though the abstract machines of the prior section have advantages over traditional CFAs, the approach we took (store-allocated
+continuations) yields more novel results when applied in a different
+context: a lazy variant of Krivine’s machine. That is, we can construct an abstract interpreter that both analyzes and exploits laziness. Specifically, we present an abstract analog to a lazy and properly tail-recursive variant of Krivine’s machine [19, 20] derived by
+Ager, Danvy, and Midtgaard [1]. The derivation from Ager et al.’s
+machine to the abstract interpreter follows the same outline as that
+of Section 2: we apply a pointer refinement by store-allocating continuations and carry out approximation by bounding the store.
+The by-need variant of Krivine’s machine considered here uses
+the common implementation technique of store-allocating thunks
+and forced values. When an application is evaluated, a thunk is
+created that will compute the value of the argument when forced.
+When a variable occurrence is evaluated, if it is bound to a thunk,
+the thunk is forced (evaluated) and the store is updated to the result.
+Otherwise if a variable occurrence is evaluated and bound to a
+forced value, that value is returned.
+Storable values include delayed computations (thunks) d(e, ρ),
+and computed values c(v, ρ), which are just tagged closures. There
+are two continuation constructors: c1 (a, κ) is induced by a variable
+occurrence whose binding has not yet been forced to a value.
+The address a is where we want to write the given value when
+this continuation is invoked. The other: c2 (a, κ) is induced by an
+
+hv, ρ, σ̂, a, ti
+if κ = c1 (a0 , c)
+h(λx.e), ρ, σ̂, a, ti
+if κ = c2 (a0 , c)
+
+he, ρ0 , σ̂ t [b 7→ c1 (ρ(x), a)], b, ui
+hv, ρ0 , σ̂, a, ui
+he0 , ρ, σ̂ 0 , b, ui
+[ ς , κ),
+where c = alloc(ˆ
+σ̂ 0 = σ̂ t [c 7→ d(e1 , ρ), b 7→ c2 (c, a)]
+hv, ρ0 , σ̂ t [a0 7→ c(v, ρ)], c, ui
+he, ρ0 [x 7→ a0 ], σ̂, c, ui
+
+Figure 9. The abstract LK? machine.
+application expression, which forces the operator expression to a
+value. The address a is the address of the argument.
+The concrete state-space is defined as follows and the transition
+relation is defined in Figure 8:
+ς∈Σ
+= Exp × Env × Store × Kont
+s ∈ Storable ::= d(e, ρ) | c(v, ρ)
+κ ∈ Kont
+::= mt | c1 (a, κ) | c2 (a, κ)
+When the control component is a variable, the machine looks up
+its stored value, which is either computed or delayed. If delayed,
+a c1 continuation is pushed and the frozen expression is put in
+control. If computed, the value is simply returned. When a value
+is returned to a c1 continuation, the store is updated to reflect the
+computed value. When a value is returned to a c2 continuation, its
+body is put in control and the formal parameter is bound to the
+address of the argument.
+We now refactor the machine to use store-allocated continuations; storable values are extended to include continuations:
+ς∈Σ
+= Exp × Env × Store × Addr
+s ∈ Storable ::= d(e, ρ) | c(v, ρ) | κ
+κ ∈ Kont
+::= mt | c1 (a, a) | c2 (a, a).
+It is straightforward to perform a pointer-refinement of the LK machine to store-allocate continuations as done for the CESK machine
+in Section 2.3 and observe the lazy variant of Krivine’s machine and
+its pointer-refined counterpart (not shown) operate in lock-step:
+Lemma 4. eval LK (e) ≃ eval LK ? (e).
+After threading time-stamps through the machine as done in
+d and alloc
+[ analogously to the defiSection 2.4 and defining tick
+
+nitions given in Section 2.5, the pointer-refined machine abstracts
+directly to yield the abstract LK? machine in Figure 9.
+The abstraction map for this machine is a straightforward structural abstraction similar to that given in Section 2.6 (and hence
+omitted). The abstracted machine is sound with respect to the LK?
+machine, and therefore the original LK machine.
+Theorem 3 (Soundness of the Abstract LK? Machine).
+If ς 7−→LK ς 0 and α(ς) v ςˆ, then there exists an abstract state ςˆ0 ,
+such that ςˆ 7−→LK
+ˆ0 and α(ς 0 ) v ςˆ0 .
+? ς
+[
+
+d
+[ ς , κ), u = tick(t)
+ςˆ 7−→LK
+ˆ0 , where κ ∈ σ̂(a), b = alloc(ˆ
+\
+0? ς
+h(e0 e1 ), ρ, σ̂, ai
+h(λx.e), ρ, σ̂, ai
+if κ = c2 (e0 , ρ0 , c)
+
+he0 , ρ, σ̂ t [b 7→ c2 (e1 , ρ, a)], bi
+he, ρ[x 7→ b], σ̂ t [b 7→ d(e0 , ρ0 )], ci
+
+Figure 11. The abstract thunk postponing LK? machine.
+
+t
+
+Optimizing the machine through specialization: Ager et al. optimize the LK machine by specializing application transitions. When
+the operand of an application is a variable, no delayed computation needs to be constructed, thus “avoiding the construction of
+space-leaky chains of thunks.” Likewise, when the operand is a
+λ-abstraction, “we can store the corresponding closure as a computed value rather than as a delayed computation.” Both of these
+optimizations, which conserve valuable abstract resources, can be
+added with no trouble, as shown in Figure 10.
+d
+[ ς , κ), u = tick(t)
+ςˆ 7−→LK
+ˆ0 , where κ ∈ σ̂(a), b = alloc(ˆ
+? ς
+[
+h(ex), ρ, σ̂, a, ti
+h(ev), ρ, σ̂, a, ti
+
+he, ρ, σ̂ t [b 7→ c2 (ρ(x), a)], b, ui
+he0 , ρ, σ̂ t [b 7→ c(v, ρ), c 7→ c2 (b, a)], c, ui
+[ ς , κ)
+where c = alloc(ˆ
+
+Figure 10. The abstract optimized LK? machine.
+Varying the machine through postponed thunk creation: Ager
+et al. also vary the LK machine by postponing the construction of a
+delayed computation from the point at which an application is the
+control string to the point at which the operator has been evaluated
+and is being applied. The c2 continuation is modified to hold, rather
+than the address of a delayed computation, the constituents of the
+computation itself:
+κ ∈ Kont ::= mt | c1 (a, a) | c2 (e, ρ, a).
+The transitions for applications and functions are replaced with
+those in Figure 11. This allocates thunks when a function is applied,
+rather than when the control string is an application.
+As Ager et al. remark, each of these variants gives rise to an
+abstract machine. From each of these machines, we are able to
+systematically derive their abstractions.
+
+4.
+
+State and control
+
+We have shown that store-allocated continuations make abstract
+interpretation of the CESK machine and a lazy variant of Krivine’s
+machine straightforward. In this section, we want to show that
+the tight correspondence between concrete and abstract persists
+after the addition of language features such as conditionals, side
+effects, exceptions and continuations. We tackle each feature, and
+present the additional machinery required to handle each one. In
+most cases, the path from a canonical concrete machine to pointerrefined abstraction of the machine is so simple we only show the
+abstracted system. In doing so, we are arguing that this abstract
+machine-oriented approach to abstract interpretation represents a
+flexible and viable framework for building abstract interpreters.
+4.1
+
+Conditionals, mutation, and control
+
+To handle conditionals, we extend the language with a new syntactic form, (if e e e), and introduce a base value #f, representing false. Conditional expressions induce a new continuation form: if (e00 , e01 , ρ, a), which represents the evaluation context
+
+0
+d
+[ ς , κ), u = tick(t)
+ςˆ 7−→CESK
+\? ςˆ , where κ ∈ σ̂(a), b = alloc(ˆ
+t
+
+h(if e0 e1 e2 ), ρ, σ̂, a, ti he0 , ρ, σ̂ t [b 7→ if (e1 , e2 , ρ, a)], b, ui
+h#f, ρ, σ̂, a, ti
+he1 , ρ0 , σ̂, c, ui
+0
+if κ = if (e0 , e1 , ρ , c)
+hv, ρ, σ̂, a, ti
+he0 , ρ0 , σ̂, c, ui
+if κ = if (e0 , e1 , ρ0 , c),
+and v 6= #f
+h(set! x e), ρ, σ̂, a, ti
+he, ρ, σ̂ t [b 7→ set(ρ(x), a)], b, ui
+hv, ρ, σ̂, a, ti
+hv 0 , ρ, σ̂ t [a0 7→ v], c, ui
+0
+if κ = set(a , c)
+where v 0 ∈ σ̂(a0 )
+h(λx.e), ρ, σ̂, a, ti
+he, ρ[x 7→ b], σ̂ t [b 7→ c], c, ui
+[ ς , κ)
+if κ = fn(callcc, ρ0 , c)
+where c = alloc(ˆ
+hc, ρ, σ̂, a, ti
+ha, ρ, σ̂, c, ui
+if κ = fn(callcc, ρ0 , a0 )
+hv, ρ, σ̂, a, ti
+hv, ρ, σ̂, c, ui
+if κ = fn(c, ρ0 , a0 )
+Figure 12. The abstract extended CESK? machine.
+E[(if [ ] e0 e1 )] where ρ closes e00 to represent e0 , ρ closes e01 to
+represent e1 , and a is the address of the representation of E.
+Side effects are fully amenable to our approach; we introduce
+Scheme’s set! for mutating variables using the (set! x e) syntax.
+The set! form evaluates its subexpression e and assigns the value
+to the variable x. Although set! expressions are evaluated for
+effect, we follow Felleisen et al. and specify set! expressions
+evaluate to the value of x before it was mutated [11, page 166]. The
+evaluation context E[(set! x [ ])] is represented by set(a0 , a1 ),
+where a0 is the address of x’s value and a1 is the address of the
+representation of E.
+First-class control is introduced by adding a new base value
+callcc which reifies the continuation as a new kind of applicable
+value. Denoted values are extended to include representations of
+continuations. Since continuations are store-allocated, we choose to
+represent them by address. When an address is applied, it represents
+the application of a continuation (reified via callcc) to a value.
+The continuation at that point is discarded and the applied address
+is installed as the continuation.
+The resulting grammar is:
+e ∈ Exp ::= . . . | (if e e e) | (set! x e)
+κ ∈ Kont ::= . . . | if (e, e, ρ, a) | set(a, a)
+v ∈ Val ::= . . . | #f | callcc | a.
+We show only the abstract transitions, which result from storeallocating continuations, time-stamping, and abstracting the concrete transitions for conditionals, mutation, and control. The first
+three machine transitions deal with conditionals; here we follow
+the Scheme tradition of considering all non-false values as true.
+The fourth and fifth transitions deal with mutation.
+
+ς 7−→CESHK ς 0
+
+ς 7−→CESHK ? ς 0 , where η = σ(h), κ = σ(a), b ∈
+/ dom(σ)
+
+hv, ρ, σ, hn(v 0 , ρ0 , κ, η), mti
+hv, ρ, σ, η, κi
+h(throw v), ρ, σ, hn((λx.e), ρ0 , κ0 , η), κi
+he, ρ0 [x 7→ a], σ[a 7→ (v, ρ)], η, κ0 i
+where a ∈
+/ dom(σ)
+h(catch e v), ρ, σ, η, κi
+he, ρ, σ, hn(v, ρ, κ, η), mti
+
+hv, ρ, σ, h, ai
+hv, ρ, σ, h0 , a0 i
+if η = hn(v 0 , ρ0 , a0 , h0 ),
+and κ = mt
+h(throw v), ρ, σ, h, ai
+he, ρ0 [x 7→ b], σ[b 7→ (v, ρ)], h0 , a0 i
+if η = hn((λx.e), ρ0 , a0 , h0 )
+h(catch e v), ρ, σ, h, ai
+he, ρ, σ[b 7→ hn(v, ρ, a, h)], b, amt i
+
+Figure 13. The CESHK machine.
+Figure 14. The CESHK? machine.
+The remaining three transitions deal with first-class control. In
+the first of these, callcc is being applied to a closure value v.
+The value v is then “called with the current continuation”, i.e., v
+is applied to a value that represents the continuation at this point.
+In the second, callcc is being applied to a continuation (address).
+When this value is applied to the reified continuation, it aborts the
+current computation, installs itself as the current continuation, and
+puts the reified continuation “in the hole”. Finally, in the third,
+a continuation is being applied; c gets thrown away, and v gets
+plugged into the continuation b.
+In all cases, these transitions result from pointer-refinement,
+time-stamping, and abstraction of the usual machine transitions.
+4.2
+
+Exceptions and handlers
+
+To analyze exceptional control flow, we extend the CESK machine
+with a register to hold a stack of exception handlers. This models
+a reduction semantics in which we have two additional kinds of
+evaluation contexts:
+E ::= [ ] | (Ee) | (vE) | (catch E v)
+F ::= [ ] | (F e) | (vF )
+H ::= [ ] | H[F [(catch H v)]],
+0
+
+(catch E[(throw v)] v ) → (v v),
+
+hv, ρ, σ̂, h, a, ti
+hv, ρ, σ̂, h0 , a0 , ui
+0
+0
+0
+0
+if η = hn(v , ρ , a , h ),
+and κ = mt
+h(throw v), ρ, σ̂, h, a, ti
+if η = hn((λx.e), ρ0 , a0 , h0 )
+he, ρ0 [x 7→ b], σ̂ t [b 7→ (v, ρ)], h0 , a0 , ui
+h(catch e v), ρ, σ̂, h, a, ti
+he, ρ, σ̂ t [b 7→ hn(v, ρ, a, h)], b, amt , ui
+Figure 15. The abstract CESHK? machine.
+In the pointer-refined machine, the grammar of handler continuations changes to the following:
+η ∈ Handl ::= mt | hn(v, ρ, a, h),
+
+and the additional, context-sensitive, notions of reduction:
+0
+
+0
+[ ς , η, κ),
+ςˆ 7−→CESHK
+\ ? ςˆ , where η ∈ σ̂(h), κ ∈ σ̂(a), b = alloc(ˆ
+t
+d
+u = tick(t)
+
+0
+
+(catch v v ) → v.
+
+H contexts represent a stack of exception handlers, while F contexts represent a “local” continuation, i.e., the rest of the computation (with respect to the hole) up to an enclosing handler, if any.
+E contexts represent the entire rest of the computation, including
+handlers.
+The language is extended with expressions for raising and
+catching exceptions. A new kind of continuation is introduced to
+represent a stack of handlers. In each frame of the stack, there is a
+procedure for handling an exception and a (handler-free) continuation:
+e ∈ Exp ::= . . . | (throw v) | (catch e (λx.e))
+η ∈ Handl ::= mt | hn(v, ρ, κ, η)
+An η continuation represents a stack of exception handler contexts,
+i.e., hn(v 0 , ρ, κ, η) represents H[F [(catch [ ] v)]], where η
+represents H, κ represents F , and ρ closes v 0 to represent v.
+The machine includes all of the transitions of the CESK machine extended with a η component; these transitions are omitted
+for brevity. The additional transitions are given in Figure 13. This
+presentation is based on a textbook treatment of exceptions and
+handlers [11, page 135].5 The initial configuration is given by:
+inj CESHK (e) = he, ∅, ∅, mt, mti.
+5 To be precise, Felleisen et al. present the CHC machine, a substitution
+
+based machine that uses evaluation contexts in place of continuations.
+Deriving the CESHK machine from it is an easy exercise.
+
+where h is used to range over addresses pointing to handler continuations. The notation amt means a such that σ(a) = mt in
+concrete case and mt ∈ σ̂(a) in the abstract, where the intended
+store should be clear from context. The pointer-refined machine is
+given in Figure 14.
+After threading time-stamps through the machine as done in
+Section 2.4, the machine abstracts as usual to obtain the machine
+in Figure 15. The only unusual step in the derivation is to observe
+that some machine transitions rely on a choice of two continuations
+from the store; a handler and a local continuation. Analogously
+d and alloc
+[ to take two continuation
+to Section 2.5, we extend tick
+arguments to encode the choice:
+d : Σ̂ × Handl × Kont → Time,
+tick
+[ : Σ̂ × Handl × Kont → Addr .
+alloc
+
+5. Abstract garbage collection
+Garbage collection determines when a store location has become
+unreachable and can be re-allocated. This is significant in the abstract semantics because an address may be allocated to multiple
+values due to finiteness of the address space. Without garbage collection, the values allocated to this common address must be joined,
+introducing imprecision in the analysis (and inducing further, perhaps spurious, computation). By incorporating garbage collection
+in the abstract semantics, the location may be proved to be unreachable and safely overwritten rather than joined, in which case
+no imprecision is introduced.
+Like the rest of the features addressed in this paper, we can
+incorporate abstract garbage collection into our static analyzers
+
+ς 7−→CESK ? ς 0
+he, ρ, σ, ai
+he, ρ, {hb, σ(b)i | b ∈ L}, ai
+if hLLσ (e, ρ) ∪ LLσ (σ(a)), {a}, σi 7−→
+→GC h∅, L, σi
+Figure 16. The GC transition for the CESK? machine.
+by a straightforward pointer-refinement of textbook accounts of
+concrete garbage collection, followed by a finite store abstraction.
+Concrete garbage collection is defined in terms of a GC machine
+that computes the reachable addresses in a store [11, page 172]:
+hG, B, σi 7−→GC h(G ∪ LLσ (σ(a)) \ (B ∪ {a})), B ∪ {a}, σi
+if a ∈ G.
+This machine iterates over a set of reachable but unvisited “grey”
+locations G. On each iteration, an element is removed and added
+to the set of reachable and visited “black” locations B. Any newly
+reachable and unvisited locations, as determined by the “live locations” function LLσ , are added to the grey set. When there are no
+grey locations, the black set contains all reachable locations. Everything else is garbage.
+The live locations function computes a set of locations which
+may be used in the store. Its definition will vary based on the particular machine being garbage collected, but the definition appropriate
+for the CESK? machine of Section 2.3 is
+LLσ (e) = ∅
+LLσ (e, ρ) = LLσ (ρ|fv(e))
+LLσ (ρ) = rng(ρ)
+LLσ (mt) = ∅
+LLσ (fn(v, ρ, a)) = {a} ∪ LLσ (v, ρ) ∪ LLσ (σ(a))
+LLσ (ar(e, ρ, a)) = {a} ∪ LLσ (e, ρ) ∪ LLσ (σ(a)).
+We write ρ|fv(e) to mean ρ restricted to the domain of free variables in e. We assume the least-fixed-point solution in the calculation of the function LL in cases where it recurs on itself.
+The pointer-refinement of the machine requires parameterizing
+the LL function with a store used to resolve pointers to continuations. A nice consequence of this parameterization is that we can
+re-use LL for abstract garbage collection by supplying it an abstract store for the parameter. Doing so only necessitates extending
+LL to the case of sets of storable values:
+[
+LLσ (S) =
+LLσ (s)
+s∈S
+?
+
+The CESK machine incorporates garbage collection by a transition rule that invokes the GC machine as a subroutine to remove
+garbage from the store (Figure 16). The garbage collection transition introduces non-determinism to the CESK? machine because
+it applies to any machine state and thus overlaps with the existing
+transition rules. The non-determinism is interpreted as leaving the
+choice of when to collect garbage up to the machine.
+The abstract CESK? incorporates garbage collection by the
+concrete garbage collection transition, i.e., we re-use the definition
+in Figure 16 with an abstract store, σ̂, in place of the concrete
+one. Consequently, it is easy to verify abstract garbage collection
+approximates its concrete counterpart.
+The CESK? machine may collect garbage at any point in the
+computation, thus an abstract interpretation must soundly approximate all possible choices of when to trigger a collection, which
+the abstract CESK? machine does correctly. This may be a useful
+analysis of garbage collection, however it fails to be a useful analysis with garbage collection: for soundness, the abstracted machine
+
+must consider the case in which garbage is never collected, implying no storage is reclaimed to improve precision.
+However, we can leverage abstract garbage collection to reduce
+the state-space explored during analysis and to improve precision
+and analysis time. This is achieved (again) by considering properties of the concrete machine, which abstract directly; in this case,
+we want the concrete machine to deterministically collect garbage.
+Determinism of the CESK? machine is restored by defining the
+transition relation as a non-GC transition (Figure 3) followed by the
+GC transition (Figure 16). This state-space of this concrete machine
+is “garbage free” and consequently the state-space of the abstracted
+machine is “abstract garbage free.”
+In the concrete semantics, a nice consequence of this property is
+that although continuations are allocated in the store, they are deallocated as soon as they become unreachable, which corresponds to
+when they would be popped from the stack in a non-pointer-refined
+machine. Thus the concrete machine really manages continuations
+like a stack.
+Similarly, in the abstract semantics, continuations are deallocated as soon as they become unreachable, which often corresponds
+to when they would be popped. We say often, because due to the
+finiteness of the store, this correspondence cannot always hold.
+However, this approach gives a good finite approximation to infinitary stack analyses that can always match calls and returns.
+
+6.
+
+Abstract stack inspection
+
+In this section, we derive an abstract interpreter for the static analysis of a higher-order language with stack inspection. Following the
+outline of Section 2 and 3, we start from the tail-recursive CM machine of Clements and Felleisen [3], perform a pointer refinement
+on continuations, then abstract the semantics by a parameterized
+bounding of the store.
+6.1
+
+The λsec -calculus and stack-inspection
+
+The λsec -calculus of Pottier, Skalka, and Smith is a call-by-value
+λ-calculus model of higher-order stack inspection [26]. We present
+the language as given by Clements and Felleisen [3].
+All code is statically annotated with a given set of permissions
+R, chosen from a fixed set P. A computation whose source code
+was statically annotated with a permission may enable that permission for the dynamic extent of a subcomputation. The subcomputation is privileged so long as it is annotated with the same permission, and every intervening procedure call has likewise been
+annotated with the privilege.
+e ∈ Exp ::= . . . | fail | (grant R e) |
+(test R e e) | (frame R e)
+A fail expression signals an exception if evaluated; by convention
+it is used to signal a stack-inspection failure. A (frame R e) evaluates e as the principal R, representing the permissions conferred
+on e given its origin. A (grant R e) expression evaluates as e but
+with the permissions extended with R enabled. A (test R e0 e1 )
+expression evaluates to e0 if R is enabled and e1 otherwise.
+A trusted annotator consumes a program and the set of permissions it will operate under and inserts frame expressions around
+each λ-body and intersects all grant expressions with this set of permissions. We assume all programs have been properly annotated.
+Stack inspection can be understood in terms of an OK predicate on an evaluation contexts and permissions. The predicate determines whether the given permissions are enabled for a subexpression in the hole of the context. The OK predicate holds whenever the context can be traversed from the hole outwards and, for
+each permission, find an enabling grant context without first finding
+a denying frame context.
+
+0
+ςˆ 7−→CM
+[? ςˆ
+
+ς 7−→CM ς 0
+hfail, ρ, σ, mt∅ i
+
+hfail, ρ, σ, κi
+h(frame R e), ρ, σ, κi
+h(grant R e), ρ, σ, κi
+h(test R e0 e1 ), ρ, σ, κi
+
+he, ρ, σ, κ[R 7→ deny]i
+he, ρ, σ, κ[R 7→ grant]i
+(
+he0 , ρ, σ, κi
+he1 , ρ, σ, κi
+
+if OK(R, κ),
+otherwise
+
+hfail, ρ, σ̂, ai
+h(frame R e), ρ, σ̂, ai
+h(grant R e), ρ, σ̂, ai
+h(test R e0 e1 ), ρ, σ̂, ai
+
+OK(∅, κ)
+m
+
+OK(R, mt )
+ff
+
+OK(R, fnm (v, ρ, κ))
+OK(R, arm (e, ρ, κ))
+
+−1
+
+⇐⇒
+
+(R ∩ m
+
+⇐⇒
+
+(R ∩ m−1 (deny) = ∅) ∧
+OK(R \ m−1 (grant), κ)
+
+(deny) = ∅)
+
+The CM machine
+
+The CM (continuation-marks) machine of Clements and Felleisen
+is a properly tail-recursive extended CESK machine for interpreting
+higher-order languages with stack-inspection [3].
+In the CM machine, continuations are annotated with marks [4],
+which, for the purposes of stack-inspection, are finite maps from
+permissions to {deny, grant}:
+κ
+
+mtm | arm (e, ρ, κ) | fnm (v, ρ, κ).
+
+::=
+
+We write κ[R 7→ c] to mean update the marks on κ to m[R 7→ c].
+The CM machine is defined in Figure 17 (transitions that are
+straightforward adaptations of the corresponding CESK? transitions to incorporate continuation marks are omitted). It relies on
+the OK predicate to determine whether the permissions in R are
+enabled. The OK predicate performs the traversal of the context
+(represented as a continuation) using marks to determine which
+permissions have been granted or denied.
+The semantics of a program is given by the set of reachable
+states from an initial machine configuration:
+inj CM (e) = he, ∅, [a0 7→ mt∅ ], a0 i.
+6.3
+
+The abstract CM? machine
+
+Store-allocating continuations, time-stamping, and bounding the
+store yields the transition system given in Figure 18. The notation
+σ̂(a)[R 7→ c] is used to mean [R 7→ c] should update some
+continuation in σ̂(a), i.e.,
+σ̂(a)[R 7→ c] = σ̂[a 7→ σ̂(a) \ {κ} ∪ {κ[R 7→ c]}],
+for some κ ∈ σ̂(a). It is worth noting that continuation marks are
+updated, not joined, in the abstract transition system.
+[? predicate (Figure 18) approximates the pointer refineThe OK
+ment of its concrete counterpart OK, which can be understood as
+tracing a path through the store corresponding to traversing the continuation. The abstract predicate holds whenever there exists such a
+path in the abstract store that would satisfy the concrete predicate:
+Consequently, in analyzing (test R e0 e1 ), e0 is reachable only
+when the analysis can prove the OK? predicate holds on some path
+through the abstract store.
+It is straightforward to define a structural abstraction map and
+verify the abstract CM? machine is a sound approximation of its
+concrete counterpart:
+Theorem 4 (Soundness of the Abstract CM? Machine).
+If ς 7−→CM ς 0 and α(ς) v ςˆ, then there exists an abstract state ςˆ0 ,
+0
+0
+0
+such that ςˆ 7−→CM
+[? ςˆ and α(ς ) v ςˆ .
+t
+
+he, ρ, σ̂(a)[R 7→ deny], ai
+he, ρ, σ̂(a)[R 7→ grant], ai
+(
+he0 , ρ, σ̂, ai
+he1 , ρ, σ̂, ai
+
+[? (R, σ̂, a),
+if OK
+otherwise.
+
+[? (∅, σ̂, a)
+OK
+[? (R, σ̂, a) ⇐⇒ (R ∩ m−1 (deny) = ∅)
+OK
+if σ̂(a) 3 mtm
+[? (R, σ̂, a) ⇐⇒ (R ∩ m−1 (deny) = ∅) ∧
+OK
+[? (R \ m−1 (grant), σ̂, b)
+if σ̂(a) 3 fnm (v, ρ, b)
+OK
+or σ̂(a) 3 arm (e, ρ, b)
+
+Figure 17. The CM machine and OK predicate.
+6.2
+
+hfail, ρ, σ̂, amt i
+
+Figure 18. The abstract CM? machine.
+
+7.
+
+Widening to improve complexity
+
+If implemented naı̈vely, it takes time exponential in the size of the
+input program to compute the reachable states of the abstracted
+machines. Consider the size of the state-space for the abstract timestamped CESK? machine:
+[ × Addr × Time|
+|Exp × Env × Store
+= |Exp| × |Addr ||Var | × |Storable||Addr | × |Addr | × |Time|.
+Without simplifying any further, we clearly have an exponential
+number of abstract states.
+To reduce complexity, we can employ widening in the form of
+Shivers’s single-threaded store [29]. To use a single threaded store,
+we have to reconsider the abstract evaluation function itself. Instead
+of seeing it as a function that returns the set of reachable states, it
+is a function that returns a set of partial states plus a single globally
+approximating store, i.e., aval : Exp → System, where:
+[
+System = P (Exp × Env × Addr × Time) × Store.
+We compute this as a fixed point of a monotonic function, f :
+f : System → System
+f (C, σ̂) = (C 0 , σ̂ 00 ) where
+˘
+¯
+Q0 = (c0 , σ̂ 0 ) : c ∈ C and (c, σ̂) 7−→ (c0 , σ̂ 0 )
+(c0 , σ̂0 ) ∼
+= inj (e)
+¯
+˘
+C 0 = C ∪ c0 : (c0 , ) ∈ Q0 ∪ {c0 }
+G
+σ̂ 00 = σ̂ t
+σ̂ 0 ,
+( ,σ̂ 0 )∈Q0
+
+so that aval (e) = lfp(f ). The maximum number of iterations of
+the function f times the cost of each iteration bounds the complexity of the analysis.
+Polynomial complexity for monovariance: It is straightforward
+to compute the cost of a monovariant (in our framework, a “0CFAlike”) analysis with this widening. In a monovariant analysis, environments disappear; a monovariant system-space simplifies to:
+System 0
+= P (Exp × Lab × Lab ⊥ )
+addresses
+
+fn conts
+
+ar conts
+
+z
+}|
+{
+z
+}|
+{ z
+}|
+{
+× ((Var + Lab) → (Exp × Lab) + (Exp × Lab) +Lam).
+
+If ascended monotonically, one could add one new partial state
+each time or introduce a new entry into the global store. Thus, the
+maximum number of monovariant iterations is:
+|Exp| × |Lab|2 + 1
++ |Var + Lab| × (2|Exp × Lab| + |Lam|),
+which is cubic in the size of the program.
+
+8.
+
+Related work
+
+The study of abstract machines for the λ-calculus began with
+Landin’s SECD machine [21], the theory of abstract interpretation with the POPL papers of the Cousots’ [6, 7], and static analysis of the λ-calculus with Jones’s coupling of abstract machines
+and abstract interpretation [17]. All three have been active areas of research since their inception, but only recently have well
+known abstract machines been connected with abstract interpretation by Midtgaard and Jensen [23, 24]. We strengthen the connection by demonstrating a general technique for abstracting abstract
+machines.
+Abstract interpretation of abstract machines: The approximation of abstract machine states for the analysis of higher-order languages goes back to Jones [17], who argued abstractions of regular
+tree automata could solve the problem of recursive structure in environments. We re-invoked that wisdom to eliminate the recursive
+structure of continuations by allocating them in the store.
+Midtgaard and Jensen present a 0CFA for a CPS λ-calculus language [23]. The approach is based on Cousot-style calculational abstract interpretation [5], applied to a functional language. Like the
+present work, Midtgaard and Jensen start with an “off-the-shelf”
+abstract machine for the concrete semantics (in this case, the CE
+machine of Flanagan, et al. [14]) and employ a reachable-states
+model. They then compose well-known Galois connections to reveal a 0CFA with reachability in the style of Ayers [2].6 The CE
+machine is not sufficient to interpret direct-style programs, so the
+analysis is specialized to programs in continuation-passing style.
+Later work by Midtgaard and Jensen went on to present a similar
+calculational abstract interpretation treatment of a monomorphic
+CFA for an ANF λ-calculus [24]. The concrete semantics are based
+on reachable states of the Ca EK machine [14]. The abstract semantics approximate the control stack component of the machine by its
+top element, which is similar to the labeled machine abstraction
+given in Section 2.7 when k = 0.
+Although our approach is not calculational like Midtgaard and
+Jensen’s, it continues in their tradition by applying abstract interpretation to off-the-shelf tail-recursive machines. We extend the
+application to direct-style machines for a k-CFA-like abstraction
+that handles tail calls, laziness, state, exceptions, first-class continuations, and stack inspection. We have extended return flow analysis to a completely direct style (no ANF or CPS needed) within a
+framework that accounts for polyvariance.
+Harrison gives an abstract interpretation for a higher-order language with control and state for the purposes of automatic parallelization [15]. Harrison maps Scheme programs into an imperative intermediate language, which is interpreted on a novel abstract
+machine. The machine uses a procedure string approach similar to
+that given in Section 2.7 in that the store is addressed by procedure strings. Harrison’s first machine employs higher-order values
+to represent functions and continuations and he notes, “the straightforward abstraction of this semantics leads to abstract domains
+6 Ayers derived an abstract interpreter by transforming (the representation
+
+of) a denotational continuation semantics of Scheme into a state transition
+system (an abstract machine), which he then approximated using Galois
+connections [2].
+
+containing higher-order objects (functions) over reflexive domains,
+whereas our purpose requires a more concrete compile-time representation of the values assumed by variables. We therefore modify
+the semantics such that its abstraction results in domains which are
+both finite and non-reflexive.” Because of the reflexivity of denotable values, a direct abstraction is not possible, so he performs
+closure conversion on the (representation of) the semantic function. Harrison then abstracts the machine by bounding the procedure string space (and hence the store) via an abstraction he calls
+stack configurations, which is represented by a finite set of members, each of which describes an infinite set of procedure strings.
+To prove that Harrison’s abstract interpreter is correct he argues
+that the machine interpreting the translation of a program in the
+intermediate language corresponds to interpreting the program as
+written in the standard semantics—in this case, the denotational
+semantics of R3 RS. On the other hand, our approach relies on well
+known machines with well known relations to calculi, reduction
+semantics, and other machines [10, 8]. These connections, coupled
+with the strong similarities between our concrete and abstract machines, result in minimal proof obligations in comparison. Moreover, programs are analyzed in direct-style under our approach.
+Abstract interpretation of lazy languages: Jones has analyzed
+non-strict functional languages [17, 16], but that work has only focused on the by-name aspect of laziness and does not address memoization as done here. Sestoft examines flow analysis for lazy languages and uses abstract machines to prove soundness [27]. In particular, Sestoft presents a lazy variant of Krivine’s machine similar
+to that given in Section 3 and proves analysis is sound with respect
+to the machine. Likewise, Sestoft uses Landin’s SECD machine as
+the operational basis for proving globalization optimizations correct. Sestoft’s work differs from ours in that analysis is developed
+separately from the abstract machines, whereas we derive abstract
+interpreters directly from machine definitions. Faxén uses a typebased flow analysis approach to analyzing a functional language
+with explicit thunks and evals, which is intended as the intermediate language for a compiler of a lazy language [9]. In contrast, our
+approach makes no assumptions about the typing discipline and analyzes source code directly.
+Realistic language features and garbage collection: Static analyzers typically hemorrhage precision in the presence of exceptions and first-class continuations: they jump to the top of the lattice
+of approximation when these features are encountered. Conversion
+to continuation- and exception-passing style can handle these features without forcing a dramatic ascent of the lattice of approximation [29]. The cost of this conversion, however, is lost knowledge—
+both approaches obscure static knowledge of stack structure, by
+desugaring it into syntax.
+Might and Shivers introduced the idea of using abstract garbage
+collection to improve precision and efficiency in flow analysis [25].
+They develop a garbage collecting abstract machine for a CPS language and prove it correct. We extend abstract garbage collection
+to direct-style languages interpreted on the CESK machine.
+Static stack inspection: Most work on the static verification of
+stack inspection has focused on type-based approaches. Skalka
+and Smith present a type system for static enforcement of stackinspection [30]. Pottier et al. present type systems for enforcing
+stack-inspection developed via a static correspondence to the dynamic notion of security-passing style [26]. Skalka et al. present
+type and effect systems that use linear temporal logic to express
+regular properties of program traces and show how to statically enforce both stack- and history-based security mechanisms [31]. Our
+approach, in contrast, is not typed-based and focuses only on stackinspection, although it seems plausible the approach of Section 6
+extends to the more general history-based mechanisms.
+
+9.
+
+Conclusions and perspective
+
+We have demonstrated the utility of store-allocated continuations
+by deriving novel abstract interpretations of the CEK, a lazy variant of Krivine’s, and the stack-inspecting CM machines. These
+abstract interpreters are obtained by a straightforward pointer refinement and structural abstraction that bounds the address space,
+making the abstract semantics safe and computable. Our technique
+allows concrete implementation technology to be mapped straightforwardly into that of static analysis, which we demonstrated by incorporating abstract garbage collection and optimizations to avoid
+abstract space leaks, both of which are based on existing accounts
+of concrete GC and space efficiency. Moreover, the abstract interpreters properly model tail-calls by virtue of their concrete counterparts being properly tail-call optimizing. Finally, our technique
+uniformly scales up to richer language features. We have supported
+this by extending the abstract CESK machine to analyze conditionals, first-class control, exception handling, and state. We speculate
+that store-allocating bindings and continuations is sufficient for a
+straightforward abstraction of most existing machines.
+Acknowledgments: We thank Matthias Felleisen, Jan Midtgaard,
+and Sam Tobin-Hochstadt for discussions and suggestions. We also
+thank the anonymous reviewers for their close reading and helpful
+critiques; their comments have improved this paper.
+
+References
+[1] Mads S. Ager, Olivier Danvy, and Jan Midtgaard. A functional
+correspondence between call-by-need evaluators and lazy abstract
+machines. Information Processing Letters, 90(5):223–232, June
+2004.
+[2] Andrew E. Ayers. Abstract analysis and optimization of Scheme. PhD
+thesis, Massachusetts Institute of Technology, 1993.
+[3] John Clements and Matthias Felleisen. A tail-recursive machine with
+stack inspection. ACM Trans. Program. Lang. Syst., 26(6):1029–
+1052, November 2004.
+[4] John Clements, Matthew Flatt, and Matthias Felleisen. Modeling an
+algebraic stepper. In ESOP ’01: Proceedings of the 10th European
+Symposium on Programming Languages and Systems, pages 320–
+334, 2001.
+[5] Patrick Cousot. The calculational design of a generic abstract
+interpreter. In M. Broy and R. Steinbrüggen, editors, Calculational
+System Design. 1999.
+[6] Patrick Cousot and Radhia Cousot. Abstract interpretation: A unified
+lattice model for static analysis of programs by construction or
+approximation of fixpoints. In Conference Record of the Fourth
+ACM Symposium on Principles of Programming Languages, pages
+238–252, 1977.
+[7] Patrick Cousot and Radhia Cousot. Systematic design of program
+analysis frameworks. In POPL ’79: Proceedings of the 6th ACM
+SIGACT-SIGPLAN Symposium on Principles of Programming
+Languages, pages 269–282, 1979.
+[8] Olivier Danvy. An Analytical Approach to Program as Data Objects.
+DSc thesis, Department of Computer Science, Aarhus University,
+October 2006.
+[9] Karl Faxén. Optimizing lazy functional programs using flow
+inference. In Static Analysis, pages 136–153. 1995.
+[10] Matthias Felleisen. The Calculi of Lambda-v-CS Conversion: A
+Syntactic Theory of Control and State in Imperative Higher-Order
+Programming Languages. PhD thesis, Indiana University, 1987.
+[11] Matthias Felleisen, Robert B. Findler, and Matthew Flatt. Semantics
+Engineering with PLT Redex. August 2009.
+[12] Matthias Felleisen and Daniel P. Friedman. Control operators, the
+SECD-machine, and the lambda-calculus. In 3rd Working Conference
+on the Formal Description of Programming Concepts, August 1986.
+
+[13] Mattias Felleisen and D. P. Friedman. A calculus for assignments
+in higher-order languages. In POPL ’87: Proceedings of the 14th
+ACM SIGACT-SIGPLAN Symposium on Principles of Programming
+Languages, pages 314+, 1987.
+[14] Cormac Flanagan, Amr Sabry, Bruce F. Duba, and Matthias Felleisen.
+The essence of compiling with continuations. In PLDI ’93:
+Proceedings of the ACM SIGPLAN 1993 Conference on Programming
+Language Design and Implementation, pages 237–247, June 1993.
+[15] Williams L. Harrison. The interprocedural analysis and automatic
+parallelization of scheme programs. LISP and Symbolic Computation,
+2(3):179–396, October 1989.
+[16] N. Jones and N. Andersen. Flow analysis of lazy higher-order
+functional programs. Theoretical Computer Science, 375(1-3):120–
+136, May 2007.
+[17] Neil D. Jones. Flow analysis of lambda expressions (preliminary
+version). In Proceedings of the 8th Colloquium on Automata,
+Languages and Programming, pages 114–128, 1981.
+[18] Neil D. Jones and Steven S. Muchnick. A flexible approach to
+interprocedural data flow analysis and programs with recursive data
+structures. In POPL ’82: Proceedings of the 9th ACM SIGPLANSIGACT Symposium on Principles of Programming Languages, pages
+66–74, 1982.
+[19] Jean-Louis Krivine. Un interpréteur du lambda-calcul. 1985.
+[20] Jean-Louis Krivine. A call-by-name lambda-calculus machine.
+Higher-Order and Symbolic Computation, 20(3):199–207, September
+2007.
+[21] Peter J. Landin. The mechanical evaluation of expressions. The
+Computer Journal, 6(4):308–320, 1964.
+[22] Jan Midtgaard. Control-flow analysis of functional programs. Technical Report BRICS RS-07-18, DAIMI, Department of Computer
+Science, University of Aarhus, December 2007. To appear in revised
+form in ACM Computing Surveys.
+[23] Jan Midtgaard and Thomas Jensen. A calculational approach to
+control-flow analysis by abstract interpretation. In Marı́a Alpuente
+and Germán Vidal, editors, SAS, volume 5079 of Lecture Notes in
+Computer Science, pages 347–362, 2008.
+[24] Jan Midtgaard and Thomas P. Jensen. Control-flow analysis of
+function calls and returns by abstract interpretation. In ICFP ’09:
+Proceedings of the 14th ACM SIGPLAN International Conference on
+Functional Programming, pages 287–298, 2009.
+[25] Matthew Might and Olin Shivers. Improving flow analyses via ΓCFA:
+Abstract garbage collection and counting. In ICFP ’06: Proceedings
+of the Eleventh ACM SIGPLAN International Conference on
+Functional Programming, pages 13–25, 2006.
+[26] François Pottier, Christian Skalka, and Scott Smith. A systematic
+approach to static access control. ACM Trans. Program. Lang. Syst.,
+27(2):344–382, March 2005.
+[27] Peter Sestoft. Analysis and efficient implementation of functional
+programs. PhD thesis, University of Copenhagen, October 1991.
+[28] Zhong Shao and Andrew W. Appel. Space-efficient closure
+representations. In LFP ’94: Proceedings of the 1994 ACM
+Conference on LISP and Functional Programming, pages 150–161,
+1994.
+[29] Olin G. Shivers. Control-Flow Analysis of Higher-Order Languages.
+PhD thesis, Carnegie Mellon University, 1991.
+[30] Christian Skalka and Scott Smith. Static enforcement of security
+with types. In ICFP ’00: Proceedings of the fifth ACM SIGPLAN
+International Conference on Functional Programming, pages 34–45,
+September 2000.
+[31] Christian Skalka, Scott Smith, and David Van Horn. Types and
+trace effects of higher order programs. Journal of Functional
+Programming, 18(02):179–249, 2008.
+
+

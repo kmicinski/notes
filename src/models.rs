@@ -216,6 +216,12 @@ pub struct GraphNode {
     pub in_degree: usize,            // Incoming links
     pub out_degree: usize,           // Outgoing links
     pub parent: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub authors: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub year: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub venue: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -232,6 +238,7 @@ pub struct AddEdgeRequest {
     pub source: String,
     pub target: String,
     pub annotation: Option<String>,
+    pub edge_type: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -287,6 +294,11 @@ pub struct GraphQuery {
     pub cluster_by: Option<String>,
     pub category_filter: Option<String>,
     pub recent_days: Option<i64>,
+    pub author_filter: Option<String>,
+    pub venue_filter: Option<String>,
+    pub year_min: Option<i32>,
+    pub year_max: Option<i32>,
+    pub title_filter: Option<String>,
 }
 
 impl GraphQuery {
@@ -327,6 +339,20 @@ impl GraphQuery {
                 gq.category_filter = Some(cat.to_string());
             } else if let Some(days) = part.strip_prefix("recent:") {
                 gq.recent_days = days.parse().ok();
+            } else if let Some(a) = part.strip_prefix("author:") {
+                gq.author_filter = Some(a.to_string());
+            } else if let Some(v) = part.strip_prefix("venue:") {
+                gq.venue_filter = Some(v.to_string());
+            } else if let Some(y) = part.strip_prefix("year:") {
+                if let Some((a, b)) = y.split_once('-') {
+                    gq.year_min = a.parse().ok();
+                    gq.year_max = b.parse().ok();
+                } else if let Ok(yr) = y.parse::<i32>() {
+                    gq.year_min = Some(yr);
+                    gq.year_max = Some(yr);
+                }
+            } else if let Some(t) = part.strip_prefix("title:") {
+                gq.title_filter = Some(t.to_string());
             }
         }
 
@@ -363,6 +389,23 @@ impl GraphQuery {
                 self.path_start.as_ref().unwrap(),
                 self.path_end.as_ref().unwrap()
             ));
+        }
+
+        if let Some(ref a) = self.author_filter {
+            parts.push(format!("author contains \"{}\"", a));
+        }
+        if let Some(ref v) = self.venue_filter {
+            parts.push(format!("venue contains \"{}\"", v));
+        }
+        if let (Some(min), Some(max)) = (self.year_min, self.year_max) {
+            if min == max {
+                parts.push(format!("year={}", min));
+            } else {
+                parts.push(format!("year {}-{}", min, max));
+            }
+        }
+        if let Some(ref t) = self.title_filter {
+            parts.push(format!("title contains \"{}\"", t));
         }
 
         if parts.is_empty() {
@@ -562,6 +605,9 @@ pub struct CitationScanRequest {
 #[derive(Debug, Clone, Deserialize)]
 pub struct CitationWriteRequest {
     pub note_key: String,
+    /// When present, only write these keys (from scan + manual additions).
+    /// When absent, write all cached scan matches (legacy behavior).
+    pub accepted_keys: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
