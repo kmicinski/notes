@@ -15,9 +15,11 @@ mod components;
 mod editor;
 pub mod shared_editor;
 mod viewer;
+pub mod graph_js;
 
 // Re-export public items for backward compatibility
 pub use styles::STYLE;
 pub use components::{nav_bar, smart_add_html, base_html};
 pub use editor::render_editor;
 pub use viewer::render_viewer;
+pub use graph_js::{render_graph_js, graph_css, GraphRendererConfig, GraphDataSource};

@@ -1,0 +1,2581 @@
+tifact
+
+Matthew Might
+
+st
+
+eu
+
+OPL *
+* P se * Consi
+
+at e d
+
+Michael D. Adams
+
+* Easy to
+ed
+R
+nt
+
+Steven Lyde
+
+alu
+
+Thomas Gilray
+
+e
+
+Pushdown Control-Flow Analysis for Free
+
+* Complete
+
+*
+
+t
+en
+
+A EC * E
+* Well Docum v
+
+Ar
+
+David Van Horn
+
+arXiv:1507.03137v2 [cs.PL] 21 Mar 2016
+
+University of Utah, USA
+University of Maryland, USA
+{tgilray,lyde,adamsmd,might}@cs.utah.edu, dvanhorn@cs.umd.edu
+
+Abstract
+
+To avoid this imprecision, Vardoulakis and Shivers [16] introduces a context-free approach (as in context-free languages, not
+context sensitivity) to program analysis with CFA2. This technique provides a computable, although exponential-time, method
+for obtaining perfect stack precision for monovariant analyses of
+continuation-passing-style programs. Two other approaches, PDCFA and AAC, build on this work by enabling polyvariant (e.g.,
+context sensitive) analysis of direct-style programs and do so at
+only a polynomial-factor increase to the run-time complexity of the
+underlying analysis.
+Earl et al. [4] presents a pushdown control-flow analysis (PDCFA), which improves on traditional control-flow analysis by annotating edges in the state graph with stack actions (i.e., push and
+pop) that implicitly represent precise call stacks. But, this method
+obtains its precision at a substantial increase in worst-case complexity. For example, a monovariant PDCFA is in O(n6 ) where its
+finite-state equivalent is in O(n3 ). Unfortunately, PDCFA also requires significant machinery and presents challenges to engineers
+responsible for constructing and maintaining such analyses.
+Johnson and Van Horn [8] presents abstracting abstract control
+(AAC), a refinement of store-allocated continuations with the established finite-state method of merging stack frames into the store,
+and defines an allocator that is precise enough to avoid all spurious
+merging. The key advantage of this method is that it is trivial to
+implement in existing analysis frameworks that use store-allocated
+continuations and comes at the cost of changing roughly one line of
+code. Unfortunately, AAC is more computationally complex than
+PDCFA as even in the monovariant case it is in O(n8 ).
+We draw on the lessons learned from all three approaches and
+present a technique for obtaining perfect call-stack precision at only
+a constant-factor increase to run-time complexity over traditional
+finite-state analysis (i.e., for free in terms of complexity) and requiring no refactoring of analyses already using store-allocated continuations (i.e., for free in terms of labor).
+
+Traditional control-flow analysis (CFA) for higher-order languages
+introduces spurious connections between callers and callees, and
+different invocations of a function may pollute each other’s return flows. Recently, three distinct approaches have been published
+that provide perfect call-stack precision in a computable manner:
+CFA2, PDCFA, and AAC. Unfortunately, implementing CFA2 and
+PDCFA requires significant engineering effort. Furthermore, all
+three are computationally expensive. For a monovariant analysis,
+CFA2 is in O(2n ), PDCFA is in O(n6 ), and AAC is in O(n8 ).
+In this paper, we describe a new technique that builds on these
+but is both straightforward to implement and computationally inexpensive. The crucial insight is an unusual state-dependent allocation strategy for the addresses of continuations. Our technique
+imposes only a constant-factor overhead on the underlying analysis and costs only O(n3 ) in the monovariant case. We present the
+intuitions behind this development, benchmarks demonstrating its
+efficacy, and a proof of the precision of this analysis.
+Categories and Subject Descriptors D.3.4 [Programming Languages]: Processors and Optimization
+Keywords Static analysis; Control-flow analysis; Abstract interpretation; Pushdown analysis; Store-allocated continuations
+
+1.
+
+Introduction
+
+Recent developments in the static analysis of higher-order languages make it possible to obtain perfect precision in modeling the
+call stack. This allows calls and returns to be matched up precisely
+and avoids spurious return flows. Consider the following Racket
+code, which binds an identity function and applies it on two distinct values:
+(let* ([id (lambda (x) x)]
+[y (id #t)]
+[z (id #f)])
+...)
+
+1.1
+
+Contributions
+
+We contribute an efficient method for obtaining a perfectly precise
+modeling of the call stack in static analyses. Specifically:
+
+Without a precise modeling of the call stack, the value #f can
+spuriously flow to the variable y, even when a technique like call
+sensitivity initially keeps them separate.
+
+• We present a novel technique for obtaining perfect call-stack
+
+precision at no asymptotic cost to run-time complexity and
+requiring only a trivial change to analyses already using storeallocated continuations. In the monovariant case, our analysis
+is in O(n3 ), the same complexity class as a traditional 0-CFA.
+• We illustrate the intuition behind our approach and explain why
+
+previous PTIME methods (PDCFA and AAC) fail to exploit it.
+
+Copyright © ACM, 2016. This is the author’s version of the work. It is posted here
+by permission of ACM for your personal use. Not for redistribution. The definitive version was published in POPL ’16: Proceedings of the 43rd annual ACM
+SIGPLAN Symposium on Principles of Programming Languages, January 2016,
+http://dx.doi.org/10.1145/2837614.2837631.
+PoPL ’16, January 20–22, 2016, St. Petersburg, FL, USA.
+Copyright © 2016 ACM . . . $15.00.
+http://dx.doi.org/10.1145/2837614.2837631
+
+• We describe our implementation and provide benchmarks that
+
+demonstrate its efficacy.
+• We define a relationship between our technique and a static
+
+analysis that uses unbounded stacks and use it to prove the
+precision of our method.
+
+1
+
+1.2
+
+Our concrete interpreter operates over machine states ς.
+
+Outline
+
+Section 2 defines a simple direct-style language and its operational
+semantics. It presents the relevant background on abstract interpretation using abstract machines, soundness, store widening, and
+concepts necessary to understanding our technique. We close this
+section by giving a walkthrough of the above example, illustrating
+precisely how values become merged in a traditional analysis.
+In section 3, we formalize an incomputable static analysis that
+defines what is meant by perfect stack precision. This analysis
+loses no precision in its modeling of the call stack but requires
+an infinite number of unbounded stacks to be explored. We then
+review PDCFA and AAC, the existing polynomial-time approaches
+to obtaining an equivalent stack precision.
+In section 4, we formalize our technique, give the intuitions
+that led us to it, and explain how it relates to each of the analyses
+described in section 3. We describe our implementation and present
+both monovariant and call-sensitive allocation benchmark results
+that compare the complexity and precision of our technique to that
+of ACC.
+Section 5 provides a formal relationship between the unboundedstack machine of section 3 and our improved finite-state analysis. We use this relationship to prove the perfect precision of our
+method.
+
+2.
+
+ς ∈ Σ , Exp × Env × Store × Kont
+ρ ∈ Env , Var * Addr
+
+Static analysis by abstract interpretation proves properties of a program by running its code through an interpreter powered by an
+abstract semantics that approximates the behavior of a concrete
+semantics. This process is a general method for analyzing programs and serves applications such as program verification, malware/vulnerability detection, and compiler optimization, among
+others [1–3, 10] The abstracting abstract machines (AAM) approach uses abstract interpretation of abstract machines for controlflow analysis (CFA) of functional (higher-order) programming languages [9, 12, 15]. The AAM methodology allows a high degree
+of control over how program states are represented and is easy to
+instrument.
+In this section, we review operational semantics and abstract
+interpretation using AAM along with other concepts we will require as we progress. We present a concrete interpretation of a
+simple direct-style language, a traditional finite-state abstraction,
+and a store-widened polynomial-time analysis. We then explore the
+return-flow merging problem in greater detail.
+
+x, y ∈ Var is a set of identifiers
+
+[stores]
+
+clo ∈ Clo , Lam × Env
+
+[closures]
+
+κ ∈ Kont , Frame ∗
+
+[stacks]
+
+φ ∈ Frame , Var × Exp × Env
+
+[stack frames]
+
+a ∈ Addr is an infinite set
+
+[addresses]
+
+A(x, ρ, σ) , σ(ρ(x))
+
+[variable lookup]
+
+A(lam, ρ, σ) , (lam, ρ)
+
+[closure creation]
+
+((let ([y (f æ)]) e), ρ, σ, κ)
+
+Σ
+
+(e0 , ρ0 , σ 0 , φ : κ), where
+
+φ = (y, e, ρ)
+0
+
+((λ (x) e ), ρλ ) = A(f, ρ, σ)
+ρ0 = ρλ [x 7→ a]
+σ 0 = σ[a 7→ A(æ, ρ, σ)]
+a is a fresh address
+A new frame φ is pushed onto the stack for eventually returning
+to the body of this let-form. The atomic expression f is either a
+lambda-form or a variable-reference and is evaluated to a closure
+by our helper A. In our notation, ticks are used to uniquely name
+identifiers that may be different. These do not have any bearing
+on the variable’s domain, but where possible will hint at usage
+(e.g., a single tick for a successor’s components). A subscript may
+be more significant, but we will be careful to point it out. This is
+not the case for ρλ , which is used to name whatever environment
+was drawn from the closure for f . This is simply an environment
+distinct from ρ and ρ0 . We generate a fresh address a (any address
+such that a ∈
+/ dom(σ)) and update ρλ with a mapping x 7→ a to
+produce the successor environment ρ0 . Likewise, the prior store σ
+is extended at this address with the value for æ to produce σ 0 .
+Return points transition according to a second rule:
+
+Concrete Semantics
+
+f, æ ∈ AExp ::= x | lam
+lam ∈ Lam ::= (λ (x) e)
+
+σ ∈ Store , Addr * Clo
+
+A concrete transition relation ( Σ ) : Σ * Σ defines the
+operation of this machine by determining at most one successor
+for any given predecessor state. The machine stops when the end
+of a program’s execution is reached or when given an invalid state.
+Call sites transition according to the following transition rule:
+
+We will be using the direct-style (call-by-value, untyped) λcalculus in administrative-normal-form (ANF) [6].
+e ∈ Exp ::= (let ([x (f æ)]) e)
+| æ
+
+[environments]
+
+Binding environments (ρ) map variables in scope to a representative address (a). Value stores (σ) map these addresses to a program
+value. (For pure λ-calculus, all values are closures.) Both are partial functions that are incrementally extended with new points. A
+closure (clo) pairs a syntactic lambda with an environment over
+which it is closed. Continuations (κ) are unbounded sequences of
+stack frames. Each stack frame (φ) contains a variable to bind, an
+expression control returns to, and an environment to reinstate. Addresses (a) may be drawn from any set which permits us to generate
+an arbitrary number of fresh values (e.g., N).
+We define a helper A : AExp×Env ×Store * Clo for atomicexpression evaluation:
+
+Background
+
+2.1
+
+[states]
+
+[call]
+[return]
+[atomic expressions]
+[lambda abstractions]
+[variables]
+
+(æ, ρ, σ, φ : κ)
+
+All intermediate expressions are administratively let-bound, and
+the order of operations is made explicit as a stack of such lets. This
+not only simplifies our semantics, but is convenient for analysis as
+every intermediate expression can naturally be given a unique identifier. Additional core forms permitting mutation, recursive binding,
+conditional branching, tail calls, and primitive operations add complexity, but do not complicate the technique we aim to discuss and
+so are left out.
+
+Σ
+
+(e, ρ0 , σ 0 , κ), where
+
+φ = (x, e, ρκ )
+ρ0 = ρκ [x 7→ a]
+σ 0 = σ[a 7→ A(æ, ρ, σ)]
+a is a fresh address
+The top stack frame φ is decomposed and its environment ρκ
+extended with a fresh address a to produce ρ0 . Likewise, the store
+
+2
+
+is extended at this address with the value for æ to produce σ 0 . The
+expression e in the top stack frame is reinstated at ρ0 , and σ 0 is put
+atop the predecessor’s stack tail κ.
+To fully evaluate a program e0 using these transition rules, we
+inject it into our state-space using a helper I : Exp → Σ:
+
+threading it through the store as a linked list. A continuation is thus
+represented by an address. This address points to a set of topmost
+frames, each paired with the address of its continuation in turn (i.e.,
+that stack’s tail). We separate the continuation store (σ̃κ ) from the
+value store (σ̃) to maintain simplicity as we progress.
+Abstract environments (ρ̃) change only because our address set
+f are approximate only by virtue
+is now finite. Abstract closures (clo)
+of their environments using these abstract addresses. For each such
+˜ of closures. At
+ã, the finite value store (σ̃) denotes a flow set (d)
+each point, a continuation store (σ̃κ ) has a set of continuations (k̃).
+Like closures, each abstract frame (φ̃) is approximate only by virtue
+of its abstracted environment. An abstract continuation (κ̃) pairs a
+frame with an address (ãκ ) for the stack underneath.
+As before, we define a helper for abstract atomic evaluation, Ã:
+
+I(e) , (e, ∅, ∅, )
+We perform the standard lifting of (
+semantics defined over sets of states:
+
+Σ
+
+) to obtain a collecting
+
+s ∈ S , P(Σ)
+Our collecting relation ( S ) is a monotonic, total function that
+gives a set including the trivially reachable state I(e0 ) plus the set
+of all states immediately succeeding those in its input.
+s
+
+S
+
+s0 , s0 = {ς 0 | ς ∈ s ∧ ς
+
+Σ
+
+ς 0 } ∪ {I(e0 )}
+g × Store
+^ * D̃
+Ã : AExp × Env
+
+If the program e0 terminates, iteration of ( S ) from ⊥ (i.e., the
+empty set ∅) does as well. That is, ( S )n (⊥) is a fixed point containing e0 ’s full program trace for some n ∈ N whenever e0 is a
+terminating program. No such n is guaranteed to exist in the general case (when e0 is a non-terminating program) as our language
+(the untyped λ-calculus) is Turing-complete, our semantics is fully
+precise, and the state-space we defined is infinite.
+2.2
+
+Abstract Semantics
+
+[environments]
+[stores]
+[flow-sets]
+
+f ∈ Clo
+g , Lam × Env
+g
+clo
+
+[closures]
+
+] → K̃
+^ , Addr
+σ̃κ ∈ KStore
+]
+k̃ ∈ K̃ , P(Kont)
+
+One such behavior is to simply return the variable itself (as a 0-CFA
+would):
+] 0 (x, ς˜) , x
+alloc
+] 0 would tune our finite-state semantics to the monovariUsing alloc
+ant analysis style (also called zeroth-order CFA), a form of contextinsensitive analysis. In a monovariant analysis, every closure that is
+bound to a variable x at any point during a concrete execution ends
+up being represented in a single flow set when the analysis is complete.
+Because we are also now store-allocating continuations and distinguishing a top-level continuation store, we likewise distinguish
+an abstract allocator specifically for addresses in this store:
+
+A standard choice is to allocate based on the target expression:
+] κ 0 ((e, ρ̃, σ̃, σ̃κ , ãκ ), e0 , ρ̃0 , σ̃ 0 ) , e0
+alloc
+
+[kont-sets]
+[continuations]
+
+g
+^ , Var × Exp × Env
+φ̃ ∈ Frame
+
+[stack frame]
+
+] is a finite set
+ã, ãκ ∈ Addr
+
+g × Store
+] κ : Σ̃ × Exp × Env
+]
+^ → Addr
+alloc
+
+[continuation stores]
+
+]
+] , Frame
+^ × Addr
+κ̃ ∈ Kont
+
+[closure creation]
+
+] : Var × Σ̃ → Addr
+]
+alloc
+
+]
+^ × Addr
+× KStore
+
+] → D̃
+^ , Addr
+σ̃ ∈ Store
+g
+d˜ ∈ D̃ , P(Clo)
+
+[variable lookup]
+
+Note that atomic evaluation of a lambda expression new yields a
+set containing a single element for the closure of that lambda.
+Because our address domain is now finite, multiple concrete allocations need to be represented by a single abstract address. There
+are a variety of sound strategies for doing this. Each strategy corresponds to a distinct style of analysis and is amenable to easy im] helper to encapsulate
+plementation by defining an auxiliary alloc
+these differences in behavior. Given the variable for which to allocate and the finite state performing the allocation, the abstract
+allocator returns an address:
+
+We are now ready to design a computable approximation of the exact program trace using an abstract semantics. Previous work has
+explored a wide variety of approaches to systematically abstracting
+a semantics like these [9, 12, 15]. Broadly construed, the nature of
+these changes is to simultaneously finitize the domains of our machine while introducing non-determinism both into the transition
+relation (multiple successor states may immediately follow a predecessor state) and the store (multiple values may be indicated by a
+single address). We use a finite state space to ensure computability.
+However, to justify that a semantics defined over this finite machine
+is soundly approximating our concrete semantics (for a defined notion of abstraction), we must also modify our finite states so that
+a potentially infinite number of concrete states may abstract to a
+single finite state. We will use this term finite state to differentiate from other kinds of machine states. Components unique to this
+finite-state machine wear tildes:
+g × Store
+^ [states]
+ς˜ ∈ Σ̃ , Exp × Env
+
+g , Var * Addr
+]
+ρ̃ ∈ Env
+
+Ã(x, ρ̃, σ̃) , σ̃(ρ̃(x))
+Ã(lam, ρ̃, σ̃) , {(lam, ρ̃)}
+
+We provide to this function all the information known about the
+transition being made. The value-store allocator is invoked before
+a successor ρ̃0 or σ̃ 0 is constructed. However, when calling the
+continuation-store allocator, we provide information about the target state being transitioned to. The choice of e0 for allocating a
+continuation address makes sense considering the entry point of a
+function should know where it is returning. In fact, when performing an analysis of a continuation-passing-style (CPS) language, e0
+also would naturally be the choice inherited from a monovariant
+value-store allocator (assuming an alpha-renaming such that every
+x is unique to a single binding point).
+
+[addresses]
+
+There were two fundamental sources of unboundedness in the concrete machine: the value store (with an infinite domain of addresses), and the current continuation (modeled as an unbounded
+list of stack frames). We bound the value store (σ̃) by restricting
+its domain to a finite set of addresses (ã), but we permit a set of
+f at each. We finitize the stack similarly by
+abstract closures (clo)
+3
+
+Our collecting relation ( ~S ) is a monotonic, total function that
+gives a set including the trivially reachable finite-state Ĩ(e0 ) plus
+the set of all states immediately succeeding those in its input.
+Because Σ̃ is now finite, we know the approximate evaluation of
+even a non-terminating e0 will terminate. That is, for some n ∈ N,
+the value ( S~ )n (⊥) is guaranteed to be a fixed point containing an
+approximation of e0 ’s full program trace [14].
+
+We may now define a non-deterministic finite-state transition
+relation ( Σ~ ) ⊆ Σ̃ × Σ̃. Call sites transition as follows.
+ς̃
+
+z
+}|
+{
+((let ([y (f æ)]) e), ρ̃, σ̃, σ̃κ , ãκ )
+
+~
+Σ
+
+(e0 , ρ̃0 , σ̃ 0 , σ̃κ0 , ã0κ ), where
+
+((λ (x) e0 ), ρ̃λ ) ∈ Ã(f, ρ̃, σ̃)
+ρ̃0 = ρ̃λ [x 7→ ã]
+
+2.3
+
+σ̃ 0 = σ̃ t [ã 7→ Ã(æ, ρ̃, σ̃)]
+]
+ã = alloc(x,
+ς˜)
+σ̃κ0 = σ̃κ t [ã0κ 7→ {((y, e, ρ̃), ãκ̂ )}]
+] κ (˜
+ã0κ = alloc
+ς , e0 , ρ̃0 , σ̃ 0 )
+As Ã yields a set of abstract closures for f , a successor state is
+produced for each. Likewise, so each point in the store accumulates
+all closures bound at that abstract address ã and so we faithfully
+over-approximate all the addresses a that ã simulates, we use a
+join operation when extending the store. The join of two stores
+distributes point-wise as follows.
+0
+
+Soundness
+
+An analysis is sound if the information it provides about a program represents an accurate bound on the behavior of all possible concrete executions. The kind of control-flow information the
+finite-state analysis in section 2.2 obtains is a conservative overapproximation of program behavior. It places an upper bound on
+the propagation of closures though a program.
+To establish such a relationship between a concrete and abstract
+semantics, we use Galois connections. A Galois connection is a
+pair of functions for abstraction and concretization such that the
+following holds.
+α : S → S̃
+
+γ : S̃ → S
+
+0
+
+σ̃ t σ̃ , λã. σ̃(ã) ∪ σ̃ (ã)
+σ̃κ t σ̃κ0 , λãκ . σ̃κ (ãκ ) ∪ σ̃κ0 (ãκ )
+
+α(s) ⊆ s̃ ⇐⇒ s ⊆ γ(s̃)
+
+Instead of generating a fresh address for ã, we use our abstract allocation policy to select one. To instantiate a monovariant analysis
+like 0-CFA, this address is simply the syntactic variable x. Likewise, we generate an address for our continuation (a new stack
+frame atop the current continuation) and extend the continuation
+store.
+The return transition is modified in the same way:
+
+Using this defined notion of simulation, we may show that our
+abstract semantics approximates the concrete semantics by proving
+that simulation is preserved across transition:
+α(s) ⊆ s̃ ∧ s
+
+~
+Σ
+
+(e, ρ̃0 , σ̃ 0 , σ̃κ , ã0κ ), where
+
+]
+ã = alloc(x,
+ς˜)
+Where multiple topmost stack frames are pointed to by ãκ , this
+transition yields multiple successors. An updated environment and
+store are produced as before, but the continuation store remains as
+it was. The current continuation ã0κ reinstated in each successor is
+the address associated with each topmost stack frame.
+To approximately evaluate a program according to these abstract
+semantics, we first define an abstract injection function, Ĩ, where
+the stores begin as functions, ⊥, that map every abstract address to
+the empty set.
+
+2.4
+
+Ĩ(e) , (e, ∅, ⊥, ⊥, ãhalt )
+
+^
+|Store|
+
+The number of syntactic points in an input program is in O(n). In
+the monovariant case, environments map variables to themselves
+and are isomorphic to the sets of free variables that may be determined for each syntactic point. The number of addresses produced
+by our monovariant allocators is in O(n) as these are either syntactic variables or expressions. The number of value stores may
+be visualized as a table of possible mappings from every address
+to every abstract closure—each may be included in a given store
+
+s̃ ∈ S̃ , P(Σ̃)
+Σ
+
+^
+|KStore|
+
+g|
+^|
+|Exp|
+|Env
+|Addr
+z}|{
+z}|{
+z}|{ z}|{
+z}|{
+n2
+n2
+O( n × n × 2
+× 2
+× n )
+
+The address ãhalt can be any otherwise unused address that is never
+returned by the allocation function. Our machine will eventually be
+unable to transition into this continuation and will then produce no
+successors, which simulates the behavior of our concrete machine
+upon reaching an empty stack ().
+We again lift ( Σ~ ) to obtain a collecting semantics ( ~S ) defined over sets of states:
+~
+
+Store Widening
+
+Various forms of widening and further approximations may be
+layered on top of this naïve analysis. One such approximation is
+store widening, which is necessary for our analysis to be tractable
+(i.e., polynomial time). To see why store widening is necessary,
+let us consider the complexity of an analysis using ( ~S ). The
+height of the power-set lattice (S̃, ∪, ∩) is the number of elements
+in Σ̃ which is the product of expressions, environments, stores,
+and addresses. A standard worklist algorithm at most does work
+proportional to the number of states it can discover [13]. For the
+imprecise allocators we have defined, analysis run-time is thus in:
+
+Ĩ : Exp → Σ̃
+
+s̃0 , s̃0 = {˜
+ς 0 | ς˜ ∈ s̃ ∧ ς˜
+
+s̃0 ∧ α(s0 ) ⊆ s̃0
+
+~
+
+σ̃ 0 = σ̃ t [ã 7→ Ã(æ, ρ̃, σ̃)]
+
+~
+
+S
+
+−−−S−
+→ s̃0
+s̃ −
+Both constructing analyses using Galois connections and proving
+them sound using Galois connections has been extensively explored in the literature [12, 15]. The analysis style we constructed
+in section 2.2 has been previously proven sound using the above
+method [11].
+
+ρ̃0 = ρ̃κ [x 7→ ã]
+
+S
+
+~
+
+s −
+−−−S−
+→ s0
+
+
+
+
+⊆yα
+⊆yα
+
+((x, e, ρ̃κ ), ã0κ ) ∈ σ̃κ (ãκ )
+
+s̃
+
+s0 =⇒ s̃
+
+Diagrammatically this is:
+
+ς̃
+
+z
+}|
+{
+(æ, ρ̃, σ̃, σ̃κ , ãκ )
+
+S
+
+ς˜0 } ∪ {Ĩ(e0 )}
+
+4
+
+In this definition, an underscore (wildcard) matches anything. The
+height of the R̃ lattice is linear (as environments are monovariant)
+and the height of the store lattices are quadratic (as each global
+store is strictly extended). Each extension of the store may require
+O(n) transitions because at any given store, we must transition
+every configuration to be sure to obtain any changes to the store
+or otherwise reach a fixed point. A traditional worklist algorithm
+for computing a fixed point is thus cubic:
+
+O(n)
+
+}|
+
+z
+f0
+clo
+
+
+
+ã0
+0
+
+
+
+
+ã1 
+1
+
+
+
+ .  .
+..  ..
+O(n)
+
+
+
+ã
+0
+ j 
+
+
+
+
+..
+..
+
+ .
+.
+
+{
+
+f1
+clo
+
+···
+
+fi
+clo
+
+···
+
+0
+1
+..
+.
+0
+..
+.
+
+···
+···
+..
+.
+···
+..
+.
+
+1
+0
+..
+.
+1
+..
+.
+
+···
+···
+..
+.
+···
+..
+.
+
+
+
+
+
+
+
+
+
+
+^
+|Store|
+
+Figure 1. The value space of stores.
+2.5
+
+[state-spaces]
+
+r̃ ∈ R̃ , P(C̃)
+
+[reachable configurations]
+
+g × Addr
+]
+c̃ ∈ C̃ , Exp × Env
+
+] 1 , consider the following snippet of code where
+Now, using alloc
+the variable id is already bound to (λ (x) 0 x):
+... 1 (let ([y (id #t)])
+2
+(let ([z (id #f)])
+3
+...))
+We number these expressions for ease of reference. For example, e2
+refers to the let-form that binds z, and e0 to the return point of id.
+We assume the starting configuration for this example is (e1 , ρ̃, ãκ )
+where ρ̃ and ãκ are the binding environment and continuation address at the start of this code. We likewise let ρ̃λ be the environment
+of id’s closure.
+The first call to id transitions to evaluate e0 with the continuation address e0 . This transition reaches the configuration
+(e0 , ρ̃λ [x 7→ (x, e1 )], e0 ) and binds (x, e1 ) to #t and the continuation address e0 to the continuation ((y, e2 , ρ̃), ãκ ), which gives us
+the following stores:
+σ̃ = {(x, e1 ) 7→ {#t}}
+σ̃κ = {e0
+7→ {((y, e2 , ρ̃), ãκ )}}
+Next, id returns and transitions from e0 to e2 , extending the continuation’s environment to ρ̃[y 7→ (y, e0 )] and reinstating the
+continuation address ãκ . This yields a configuration (e2 , ρ̃[y 7→
+(y, e0 )], ãκ ). This transition binds (y, e0 ) to #t, giving us the following stores:
+
+[configurations]
+
+σ̃ = {(x, e1 ) 7→ {#t},
+(y, e0 ) 7→ {#t}}
+
+~
+
+A widened transfer function ( Ξ ) may then be defined that, like
+( S~ ), is a monotonic, total function we may iterate to a fixed point.
+(
+
+~
+Ξ
+
+σ̃κ = {e0
+
+) : Ξ̃ → Ξ̃
+
+~
+Ξ
+
+(r̃0 , σ̃ 0 , σ̃κ0 ), where
+
+s̃ = {˜
+ς | (e, ρ̃, ãκ ) ∈ r̃ ∧ (e, ρ̃, σ̃, σ̃κ , ãκ )
+
+σ̃ = {(x, e1 ) 7→ {#t},
+
+~
+
+˜} ∪ {Ĩ(e0 )}
+Σ ς
+
+(y, e0 ) 7→ {#t},
+(x, e2 ) 7→ {#f}}
+
+r̃0 = {(e, ρ̃, ãκ ) | (e, ρ̃, σ̃, σ̃κ , ãκ ) ∈ s̃}
+G
+G 00
+σ̃ 0 =
+σ̃ 00
+σ̃κ0 =
+σ̃κ
+(_,_,σ̃ 00 ,_,_)∈s̃
+
+7→ {((y, e2 , ρ̃), ãκ )}}
+
+Then the second call to id transitions to evaluate e0 with the con] κ 0 ).
+tinuation address e0 once again (recall the definition of alloc
+This transition reaches the configuration (e0 , ρ̃λ [x 7→ (x, e2 )], e0 ),
+binding (x, e2 ) to #f and the continuation address e0 to the continuation ((z, e3 , ρ̃[y 7→ (y, e0 )]), ãκ ), giving us the following stores:
+
+This may be defined in terms of ( ~Σ ), as was ( S~ ), by transitioning each reachable configuration using the global store to yield a
+new set of reachable configurations and a set of stores whose least
+upper bound is the new global store:
+(r̃, σ̃, σ̃κ )
+
+Stack Imprecision
+
+To illustrate the effect of an imprecise stack on data-flow and
+control-flow precision, we first define a more precise 1-callsensitive (first-order, 1-CFA) allocator. A k-call-sensitive analysis
+style differentiates bindings to a variable so they are unique to a
+history of the last k call sites reached before the binding. A history of length k = 1 then allocates an address unique to the call
+site immediately preceeding the binding by using the following
+allocator.
+] 1 (x, (e, ρ̃, σ̃, σ̃κ , κ̃)) , (x, e)
+alloc
+
+or not as seen in figure 1. The number of abstract closures is in
+O(n) because lambdas uniquely determine a monovariant environment. This times the number of addresses gives O(n2 ) possible additions to the value store. The number of continuations is likewise
+in O(n) because let-forms uniquely determine their binding variable, body, and monovariant environment. This times the number
+of possible addresses gives O(n2 ) possible additions to the continuation store.
+The crux of the issue is that, in exploring a naïve state-space
+(where each state is specific to a whole store), we may explore both
+sides of every diamond in the store lattices. All combinations of
+possible bindings in a store may need to be explored, including
+every alternate path up the store lattice. For example, along one
+f 1 before
+explored path we might extend an address ã1 with clo
+f 2 , and along another path we might add these
+extending it with clo
+f 2 before clo
+f 1 ). We might also
+closures in the reverse order (i.e., clo
+f 1 either before or after either
+extend another address ã2 with clo
+of these cases, and so forth. This potential for exponential blowup is unavoidable without further widening or coarser structural
+abstraction.
+Global-store widening is an essential technique for combating
+exponential blow up. This lifts the store alongside a set of reachable
+states instead of nesting them inside states in Σ̃. To formalize this,
+we define new widened state spaces that pair a set of reachable
+configurations (states sans stores) with a global value store and
+global continuation store. Instead of accumulating whole stores,
+and thereby all possible sequences of additions within such stores,
+the analysis strictly accumulates new values in the store in the same
+way ( S~ ) accumulates reachable states in an s̃:
+^ × KStore
+^
+ξ˜ ∈ Ξ̃ , R̃ × Store
+
+^
+|KStore|
+
+|C̃|
+z}|{
+z}|{
+z}|{
+O( n × ( n2 + n2 ))
+
+σ̃κ = {e0
+
+00 ,_)∈s̃
+(_,_,_,σ̃κ
+
+5
+
+7→ {((y, e2 , ρ̃), ãκ ) ,
+((z, e3 , ρ̃ [y 7→ (y, e0 )]), ãκ )}}
+
+Next, id returns and transitions from e0 to e3 , reinstating the continuation address ãκ and extending the continuation’s environment
+to ρ̃[y 7→ (y, e0 )][z 7→ (z, e0 )]. Because e0 is bound to two continuations, this transition binds (z, e0 ) to #f while another spuriously
+binds (y, e0 ) to #f, causing return-flow imprecision in the following stores:
+
+have seen so far, we call this an unbounded-stack machine. Components unique to this machine wear hats:
+d × Store
+\ × Kont
+[
+ςˆ ∈ Σ̂ , Exp × Env
+
+σ̃ = {(x, e1 ) 7→ {#t},
+(x, e2 ) 7→ {#f},
+(y, e0 ) 7→ {#t, #f},
+
+σ̃κ = {e0
+
+d , Var * Addr
+[
+ρ̂ ∈ Env
+
+[environments]
+
+[ → D̂
+\ , Addr
+σ̂ ∈ Store
+ˆ
+d
+d ∈ D̂ , P(Clo)
+
+[stores]
+[flow-sets]
+
+c ∈ Clo
+d , Lam × Env
+d
+clo
+
+[closures]
+
+[ , Frame
+\
+κ̂ ∈ Kont
+
+(z, e0 ) 7→ {#f}}
+7→ {((y, e2 , ρ̃), ãκ ) ,
+((z, e3 , ρ̃ [y 7→ (y, e0 )]), ãκ )}}
+
+[states]
+
+∗
+
+[whole stacks]
+
+d
+\ , Var × Exp × Env
+φ̂ ∈ Frame
+
+[stack frames]
+
+[ is a finite set
+â ∈ Addr
+
+[addresses]
+
+Our atomic-expression evaluator works just as before:
+d × Store
+\ * D̂
+Â : AExp × Env
+
+The address (y, e0 ), representing y within e3 , maps to both #t and
+#f, even though no concrete execution binds y to #f. A similar
+pair of transitions from (e0 , ρ̃λ [x 7→ (x, e1 )], e0 ) (the second of
+which is prompted by a change in the global continuation store at
+the address e0 ) cause the same conflation for z.
+Clearly, one solution is to increase the context sensitivity of our
+]κ1
+continuation allocator. Consider a continuation allocator alloc
+] 1 uses a single call site of context and allocates
+that like alloc
+a continuation address (e0 , e) formed from both the expression
+being transitioned to, e0 , and the expresson being transitioned from,
+e. This results in no spurious merging at return points because
+continuations are kept as distinct as the 1-call-sensitive value-store
+addresses we allocate.
+It seems reasonable from here to suspect that perfect stack
+precision could always be obtained through a sufficiently precise
+strategy for polyvariant continuation allocation. The difficulty is
+in knowing how to obtain this in the general case given an arbitrary value-store allocation strategy. Given that CFA2 and PDCFA
+promise a fixed method for implementing perfect stack precision,
+albeit at significant engineering and run-time costs, can perfect
+stack precision be implemented as a fixed, adaptive continuation
+allocator? In this paper, we both answer this question in the affirmative and show that this leads us not only to a trivial implementation
+but to only a constant-factor increase in run-time complexity.
+
+3.
+
+[variable lookup]
+
+Â(lam, ρ̂, σ̂) , {(lam, ρ̂)}
+
+[closure creation]
+
+As does a monovariant allocator:
+[ : Var × Σ̂ → Addr
+[
+alloc
+[ 0 (x, ςˆ) , x
+alloc
+This may be tuned to any other allocation strategy as easily as
+before.
+We now define a non-deterministic unbounded-stack-machine
+transition relation ( Σ ) ⊆ Σ̂× Σ̂ and a rule for call-site transitions:
+∧
+
+ς̂
+
+z
+}|
+{
+((let ([y (f æ)]) e), ρ̂, σ̂, κ̂)
+
+∧
+
+Σ
+
+(e0 , ρ̂0 , σ̂ 0 , φ̂ : κ̂), where
+
+φ̂ = (y, e, ρ̂)
+0
+
+((λ (x) e ), ρ̂λ ) ∈ Â(f, ρ̂, σ̂)
+ρ̂0 = ρ̂λ [x 7→ â]
+σ̂ 0 = σ̂ t [â 7→ Â(æ, ρ̂, σ̂)]
+[
+â = alloc(x,
+ςˆ)
+This is slightly simplified from its analogue in ( Σ~ ). The definitions of e0 , ρ̂0 , and σ̂ 0 are effectively identical, but the continuation store and continuation address have been replaced with an unbounded stack φ̂ : κ̂.
+Likewise, the return transition also changes to the following.
+
+Perfect Stack Precision
+
+ς̂
+
+We next formalize what is meant by a static analysis with perfect
+stack precision by using an abstract abstract machine (AAM) [15]
+with unbounded stacks within each machine configuration. We then
+review the existing polynomial-time methods for computing an
+analysis with equivalent precision to this machine: PDCFA and
+AAC.
+3.1
+
+Â(x, ρ̂, σ̂) , σ̂(ρ̂(x))
+
+z
+}|
+{
+(æ, ρ̂, σ̂, φ̂ : κ̂)
+
+∧
+
+Σ
+
+(e, ρ̂0 , σ̂ 0 , κ̂), where
+
+φ̂ = (x, e, ρ̂κ )
+ρ̂0 = ρ̂κ [x 7→ â]
+σ̂ 0 = σ̂ t [â 7→ Â(æ, ρ̂, σ̂)]
+
+Unbounded-Stack Analysis
+
+[
+â = alloc(x,
+ςˆ)
+
+In the same manner as previous work on this topic, we formalize
+perfect stack precision using a static analysis that leaves the structure of stacks fully unabstracted. Each frame of this unbounded
+stack is itself abstract because its environment is abstract and references the abstracted value store. States and configurations, however, directly contain lists of such frames that are unbounded in
+length. Environments, closures, stack frames, flow sets, and value
+stores are otherwise abstracted in the same manner as the finite machine of section 2.2. To differentiate this from the machines we
+
+To follow a return transition, the stack must contain at least one
+frame. Then the appropriate e is reinstated with the environment ρ̂
+extended with an address for x. The store is extended and whatever
+stack tail existed after φ̂ is the successor’s continuation κ̂.
+Unbounded-state injection is defined as we would expect:
+Î : Exp → Σ̂
+Î(e) , (e, ∅, ⊥, )
+
+6
+
+As before, we lift ( Σ ) to obtain a monotonic naïve collecting relation ( S ) for a program e0 that is defined over sets of unboundedstates:
+
+these machines are closely related:
+
+∧
+
+∧
+
+ŝ ∈ Ŝ , P(Σ̂)
+ŝ
+
+∧
+
+S
+
+ŝ0 , ŝ0 = {ˆ
+ς 0 | ςˆ ∈ ŝ ∧ ςˆ
+
+∧
+
+Σ
+
+ςˆ0 } ∪ {Î(e0 )}
+
+This analysis is approximate but remains incomputable because
+the stack can grow without bound. Put another way, the height of
+the lattice (Ŝ, ∪, ∩) is infinite and so no finite number of ( S )iterations is guaranteed to obtain a fixed point.
+
+\
+ĝ ∈ Ĝ , V̂ × Ê × Store
+
+[Dyke graph]
+
+v̂ ∈ V̂ , P(Q)
+
+[Dyke vertices]
+
+d
+q̂ ∈ Q̂ , Exp × Env
+
+[Dyke configs.]
+
+\ ± × Q̂)
+ê ∈ Ê , P(Q̂ × Frame
+
+[Dyke edges]
+
+\ ± , Frame
+\ × {push, pop}
+φ̂± ∈ Frame
+
+[edge actions]
+
+For readability, we style an edge (q̂, (φ̂, push), q̂ 0 ) ∈ ê like so:
+
+∧
+
+φ̂+
+
+q̂ −→ q̂ 0 ∈ ê
+3.2
+
+Store-Widened Unbounded-Stack Analysis
+
+It would be too verbose to formalize all the machinery required
+to compute a valid Dyke state graph. Instead, we define it from a
+ˆ The function DSG : Ξ̂ →
+completed unbounded-stack analysis ξ.
+Ĝ produces a Dyke state graph from a fixed-point ξˆ for ( Ξ ).
+ˆ is a valid Dyke state graph analysis for
+The graph ĝ = DSG(ξ)
+a program e0 when ξˆ is the unbounded-stack analysis of e0 .
+
+As we will be comparing this unbounded-stack analysis to our new
+technique using precise store-allocated continuations, we derive a
+global-store-widened version as before:
+\
+ξˆ ∈ Ξ̂ , R̂ × Store
+b
+r̂ ∈ R̂ , P(C )
+
+[reachable configs.]
+
+d × Kont
+[
+ĉ ∈ Ĉ , Exp × Env
+
+[configurations]
+
+∧
+
+[state-spaces]
+
+ξ̂
+
+A widened transfer function ( Ξ ) is defined in terms of ( Σ ) in
+exactly the same manner as ( ~Ξ ) was derived from ( ~Σ ) except
+that we now have only a single global value store and no continuation store:
+∧
+
+(
+(r̂, σ̂)
+
+∧
+
+Ξ
+
+∧
+
+Ξ
+
+∧
+
+v̂ = {(e, ρ̂) | (e, ρ̂, κ̂) ∈ r̂}
+φ̂+
+
+ê = {(e, ρ̂) −→ (e0 , ρ̂0 ) | (e, ρ̂, κ̂) ∈ r̂
+∧ (e, ρ̂, σ̂, κ̂)
+
+) : Ξ̂ → Ξ̂
+0
+
+φ̂
+
+∧
+
+Σ
+
+(e0 , ρ̂0 , σ̂, φ̂ : κ̂)}
+
+−
+
+∪ {(e, ρ̂) −→ (e0 , ρ̂0 ) | (e, ρ̂, κ̂) ∈ r̂
+
+0
+
+(r̂ , σ̂ ), where
+
+ŝ = {ˆ
+ς | (e, ρ̂, κ̂) ∈ r̂ ∧ (e, ρ̂, σ̂, κ̂)
+
+∧
+
+Σ
+
+∧ (e, ρ̂, σ̂, φ̂ : κ̂)
+
+∧
+
+Σ
+
+(e0 , ρ̂0 , σ̂, κ̂)}
+
+Although we do not formalize transition relations for Dyke
+state graphs themselves, it will be helpful for us to illustrate the
+major source of additional complexity in engineering a PDCFA
+directly. In the finite-state analysis, a transition is able to trivially
+compute a set of stacks by looking up the current continuation
+address in the continuation store. In the unbounded-stack analysis,
+a transition is able to trivially compute the stack by looking at the
+final component of the state or configuration being transitioned.
+In a Dyke state graph, canceling sequences of pushes and pops
+may place the set of topmost stack frames on edges arbitrarily
+distant from the configuration q̂ being transitioned. In this way,
+the implicitness of stacks in a Dyke state graph obfuscates one of
+the most common operations needed to compute the analysis (i.e.,
+stack introspection). As an example, observe how the topmost stack
+frame φ̂0 for q̂3 is located elsewhere in the graph:
+
+ςˆ} ∪ {Î(e0 )}
+
+r̂0 = {(e, ρ̂, κ̂) | (e, ρ̂, σ̂, κ̂) ∈ ŝ}
+G
+σ̂ 0 =
+σ̂ 00
+(_,_,σ̂ 00 ,_)∈ŝ
+
+3.3
+
+ĝ
+
+z }| {
+z }| {
+DSG((r̂, σ̂)) , (v̂, ê, σ̂), where
+
+Pushdown Control-Flow Analysis (PDCFA)
+
+Pushdown control-flow analysis (PDCFA) is a strategy for creating
+a computable equivalent to the precision of our unbounded-stack
+machine at a quadratic-factor increase to the complexity class of the
+underlying finite analysis (e.g., monovariant or 1-call-sensitive) [4].
+This strategy tracks both reachable states (or in the store-widened
+case, configurations) as well as push or pop edges between them. A
+quadratic blow up comes from the fact that each pair of reachable
+states may have an explicitly-tracked edge between them. These
+edges implicitly represent, as possible paths through the graph,
+the stacks explicitly represented in the unbounded-stack machine.
+This graph precisely describes the regular expression of all stacks
+reachable in the pushdown states of the unbounded-stack analysis.
+PDCFA formalizes a Dyke state graph for this. Where a sequence of pushes may be repeated ad infinitum, a Dyke state graph
+explicitly represents a cycle of push edges and a cycle of pop edges
+finitely. Broadly speaking, this is also how AAC and our adaptive
+continuation allocator work, except that such cycles are represented
+in the store instead of the state graph. A Dyke state graph is a state
+transition graph where each edge is annotated with either a frame
+push, a frame pop, or an epsilon. The set of continuations for a particular state in a Dyke state graph is determined by the pushes and
+pops along the paths that reach that state.
+To formalize these Dyke state graphs, we reuse some components of our unbounded-stack machine, continuing to use hats as
+
+q̂0
+
+φ̂+
+0
+
+/ q̂1
+
+φ̂+
+1
+
+/ q̂2
+
+φ̂−
+1
+
+/ q̂3
+
+PDCFA therefore requires a non-trivial algorithm for stack introspection [5] and extra analysis machinery overall. Specifically,
+PDCFA requires the inductive maintenance of an epsilon closure
+graph in addition to the Dyke state graph as seen in the following.
+
+
+q̂0
+
+φ̂+
+0
+
+/ q̂1
+
+φ̂+
+1
+
+/ q̂2
+
+φ̂−
+1
+
+
+/ q̂3
+
+This structure makes all sequences of canceling stack actions explicit as an epsilon edge. As we will see, this epsilon closure graph
+represents unnecessary additional complexity for both computer
+and analysis developer.
+
+7
+
+3.4
+
+Precise Allocation of Continuations (AAC)
+
+Abstracting abstract control (AAC) [8] is another polynomial-time
+method for obtaining perfect stack precision. This technique works
+by store-allocating continuations using addresses unique enough
+to ensure no spurious merging and, like PDCFA, does not require
+foreknowledge of the polyvariance (e.g., context sensitivity) being used in the value store. The method is worse than PDCFA’s
+quadratic-factor increase in run-time complexity. In the monovariant and store-widened case, its authors believe it to be in O(n8 ) [7].
+However, AAC makes perfect stack precision available for free in
+terms of development cost (i.e., labor).
+Given the standard finite-state abstraction we built up in section 2.2, we can define AAC’s essential strategy in a single line:
+
+c̃0
+
+c̃2
+f
+
+c̃3
+
+c̃4
+
+c̃5
+
+g
+
+The configuration c̃0 represents the entry point to the function, and
+its incoming edge is a call-site transition. The configuration c̃5 represents an exit point for the function, and its outgoing edge is a
+return-point transition. A transition where one intraprocedural configuration follows another, like c̃0 → c̃1 , is not technically possible in our restricted ANF language but in more general languages
+would be. The function’s body may call other functions f and g
+whose configurations are not a part of the same intraprocedural set
+of nodes. The primary insight behind our technique is that a set
+of intraprocedural configurations (like c̃0 through c̃5 ) necessarily
+share the exact same set of genuine continuations (in this example,
+the incoming call-sites for c̃0 ).
+We call the set of configurations c̃0 through c̃5 an intraprocedural group because they are those configurations that represent the
+body of a function for a single abstract invocation—defined by an
+entry point unique to some e and ρ̃. Our central insight is to notice
+that this idea of an intraprocedural group also corresponds to those
+configurations that share a single set of continuations. Our finitestate machine represents this set of continuations with a continuation address, so if this continuation address is precise enough to
+uniquely determine an intraprocedural group’s entry point (e and
+ρ̃), then it can be used for all configurations in that same group.
+Thus our allocator may be defined as simply:
+
+] κ AAC ((e, ρ̃, σ̃, κ̃), e0 , ρ̃0 , σ̃ 0 ) , (e0 , ρ̃0 , e, ρ̃, σ̃)
+alloc
+That is, continuations are stored at an address unique to the target
+state’s expression e0 and environment ρ̃0 as well as the source state’s
+expression e, environment ρ̃, and store σ̃.
+We have simplified AAC slightly and translated its notation
+to give this definition in the terms of our framework. A more
+faithful presentation of AAC shows fundamental differences between their framework and ours. AAC uses an eval-apply semantics and explodes each flow set into a set of distinct states
+across every application. The exact address AAC proposes using is
+f σ̃) (Figure 7 in [8]) where ((λ (y) e0 ), ρ̃λ )
+(((λ (y) e0 ), ρ̃λ ), clo,
+f is one particular abstract
+is the target closure of an application, clo
+closure flowing to y, and σ̃ is the value store in the source state.
+Our components e0 and ρ̃0 are isomorphic to the target closure in
+the sense that e0 is identical and ρ̃0 is produced from the combination of ρ̃λ and y. The source state’s components (e, ρ̃, σ̃) are
+f and σ̃, but they do uniquely determine a flow
+not as specific as clo
+f However,
+set d˜ (the result of Ã invoked on f ) that contains clo.
+a semantics using an eval-apply factoring like AAC is needed to
+obtain a unique continuation address for every closure propagated
+across an application. This would have significantly complicated
+our presentation of the finite-state analysis, and in section 4 we
+f adds run-time complexity to an
+will see that being specific to clo
+analysis without adding any precision.
+The intuition for AAC is that by allocating continuations specific to both the source state and target state of a call-site transition,
+no merging may occur when returning according to this (transitionspecific) continuation-address. If we were to add some arbitrary
+additional context sensitivity (e.g., 3-call-sensitivity), this informa] κ AAC upon protion would be encoded in ρ̃0 and inherited by alloc
+ducing an address. Including this target-state binding environment
+in continuation addresses is the key reason why AAC allocates precise continuation addresses.
+In section 4, we will see that only the target state’s expression
+e0 and environment ρ̃0 are truly necessary for obtaining the perfect
+stack precision of our unbounded-stack machine. Including components of the transition’s source state, its store, or its flow set only
+adds run-time complexity that is unnecessary for achieving perfect
+stack precision. This optimization extends AAC’s core insight to be
+computationally for free while remaining precise and developmentally for free.
+
+] κ P4F ((e, ρ̃, σ̃, σ̃κ , ãκ ), e0 , ρ̃0 , σ̃ 0 ) = (e0 , ρ̃0 )
+alloc
+The impact of this change is easily missed, belied by its simplicity. We allocate a continuation based only on the expression and
+environment at the entry point of each intraprocedural sequence of
+let-forms and it is precisely reinstated when each of the calls in
+these let-forms return.
+Recall that the monovariant continuation allocator in our example from section 2.5 resulted in return-flow merging because a single continuation address was being used for transitions to multiple
+entry points of different intraprocedural groups. More generally,
+return-flow merging occurs in a finite-state analysis when, at some
+return-point configuration (æ, ρ̃æ , ãκ ), the set of continuations for
+ãκ is less precise than the set of source configurations that transition to the entry point (e, ρ̃) of the same intraprocedural group.
+Because we allocate a continuation address specific to this exact
+entry point, and because that address is propagated by shallowly
+copying it to each return point for the same intraprocedural group,
+the set of continuations will be as precise as the set of source configurations transitioning to the same entry point in all cases. This
+means the return-flow merging problem cannot occur when using
+] κ P4F and neither is there a run-time overhead for stack introalloc
+spection.
+In section 5, we formalize these intuitions and provide a proof
+that our unbounded-stack analysis simulates (i.e., is no more pre] κ P4F .
+cise than) a finite-state analysis when using alloc
+4.1
+
+4.
+
+c̃1
+
+Complexity
+
+To see why this allocation scheme leads to only a constant-factor
+overhead, consider a set of configurations c̃0 , c̃1 , · · · , c̃n that form
+an intraprocedural group and a set of call sites transitioning to c̃0
+with the continuations κ̃0 , κ̃1 , · · · , κ̃m−1 . We can diagrammatically visualize this as the following.
+
+Perfect Stack Precision for Free
+
+The primary intuition of our work can be illustrated by considering
+a set of intraprocedural configurations for some function invocation
+as in the following with c̃0 through c̃5 .
+
+8
+
+κ̃0
+c̃1 · · ·
+
+c̃n−1
+
+c̃n
+
+4.2
+
+Constant Overhead Requires Store Widening
+
+That no function can have two entry points that lead to the same
+exit point is a genuine restriction worth discussing further. If this
+were not true, our technique would be precise (assuming multiple
+entry points are not merged), but it would not necessarily be a
+constant-factor increase in complexity. The combination of no store
+widening (per-state value stores) and mutation is a good example
+of how this situation could arise.
+To see how per-state stores can cause a further blow up in
+complexity, consider a function that is called with two different
+continuations and two different stores. Without store widening,
+each store causes a different state to be created for the entry point
+(e, ρ̃) of the function. In the following diagram for example, ς˜1 is
+the state for the entry point with one store and ς˜10 the state for the
+entry point with another store.
+
+−1
+
+κ̃m
+
+c̃0
+
+κ̃ m
+
+−1
+
+κ̃1
+..
+.
+
+also be imported into the PDCFA style of analysis to yield a variant of PDCFA that incurs only a constant-factor overhead, but this
+would require additional machinery.
+
+κ̃ 0
+κ̃1
+..
+.
+
+Note that, for each call site, there is a corresponding return flow
+using the same continuation. Our allocation strategy means that
+all of the configurations c̃0 , c̃1 , · · · , c̃n use the same continuation
+address (e, ρ̃). The global continuation store then maps this address
+to the set {κ̃0 , κ̃1 , · · · , κ̃m−1 }.
+Now consider what must be done if a new call site transitions
+to c0 . First, the continuation store must be extended to contain the
+continuation for this new call site, say κ̃m , in the continuation set at
+the address (e, ρ̃). Then the corresponding return edge transitions
+must be added. Note that none of c̃0 , c̃1 , · · · , c̃n−1 need to be
+modified or accessed. The only work done here beyond that of the
+underlying analysis is the extension of the continuation store by
+adding κ̃m at (e, ρ̃) and the addition of a corresponding return edge
+at return points. Thus, the additional work is a constant factor of the
+number of times a continuation is added to the continuation store.
+A naïve analysis might lead us to conclude that this is bounded
+by the product of the number of continuation addresses and the
+number of continuations. However, there is a tighter bound. Each
+transition adds only one continuation to the continuation store.
+Thus the work done is a constant factor of the number of transitions
+in the underlying analysis.
+Note that this differs from AAC, which may make duplicate
+copies of the continuation set for an intraprocedural group as it produces one for each combination of components e, ρ̃, and σ̃ drawn
+from the source states transitioning to it. As a consequence, AAC
+allocates addresses strictly more unique than the target (e0 , ρ̃0 ) configuration. Two different source expressions e0 and e1 may both
+have transitions to (e0 , ρ̃0 ), but AAC will produce two different
+target configurations c̃00 and c̃01 because the continuation addresses
+they allocate will be distinct. This difference is maintained through
+the two variants of the function starting at e0 with environment ρ̃0 ,
+and when an exit point æ is reached for each, the expression and
+its environment are the same and propagate the same values to two
+sets of continuations. Thus, these continuation addresses and the
+sets of stacks they represent are kept separate without any benefit.
+PDCFA, on the other hand, is more complex for an entirely different reason: the epsilon closure graph. Without the epsilon closure graph, PDCFA has no way to efficiently determine a topmost
+stack frame at each return transition. Both our method and AAC’s
+method make this trivial by propagating an address explicitly to
+each state. While our method allows a continuation address to be
+shallowly propagated across each intraprocedural node in a function, the epsilon closure graph recomputes a separate set of incoming epsilon edges for every node. This means that the number of
+such edges for a given entry point (e, ρ̂) is the number of callers
+times the number of intraprocedural nodes. This is a quadratic
+blow up from the number of nodes in a finite-state model. This
+is why monovariant store-widened PDCFA is in O(n6 ) instead of
+in O(n3 ) like traditional 0-CFA. We are able to naturally exploit
+our insight that each intraprocedural node following an entry point
+(e, ρ̂) shares the same set of continuations (i.e., the same epsilon
+edges) by propagating a pointer to this set instead of rebuilding
+it for each node. PDCFA is unable to exploit this insight without
+adding machinery to propagate only a shallow copy of an incoming
+epsilon edge set intraprocedurally. It is likely that this insight could
+
+κ̃1
+ς˜2
+
+ς˜3
+
+ς˜4
+
+ς˜10
+
+ς˜20
+
+ς˜30
+
+ς˜40
+
+κ̃ 2
+
+ς˜1
+
+f
+Now suppose that along both sequences of states there is a call to
+some function f and that f contains a side effect that causes the
+previously different value stores to become equal. For example, in
+ς˜1 perhaps the address for x maps to {#t} and in ς˜10 it maps to {#f}.
+If x becomes bound to {#t, #f} along both paths in the body of f ,
+the stores along both paths would become identical.
+A problem now arises. Should f return only to one state using
+this common store such as ς˜3 or should it return to two different
+states (with identical stores) such as both ς˜3 and ς˜30 ? Either choice
+has drawbacks. The semantics we have given would naturally yield
+the latter option, producing two distinct states that differ only by
+their continuation addresses (their original entry point). Because
+these states are otherwise identical, splitting κ̃1 and κ̃2 into sets
+represented by two different continuation addresses results in additional transitions and complexity without any benefit. Arguably,
+these continuation sets should be merged and represented by a single address. This corresponds to the former option and could save
+on run-time complexity but only at the cost of additional analysis machinery. This means per-state stores are incompatible with
+our goal of obtaining perfect stack precision for free in both senses
+(running time and human labor).
+4.3
+
+Implementation
+
+We have implemented both our technique and AAC’s technique for
+analysis of a simplified Scheme intermediate language. This language extends Exp with a variety of additional core forms including
+conditionals, mutation, recursive binding, tail calls, and a library of
+primitive operations. Our implementation was written in Scala and
+executed using Scala 2.11 for OSX on an Intel Core i5 (1.3 GHz)
+with 4GB of RAM. It is built upon the implementation of Earl et
+al. [5], which implements both traditional k-CFA and PDCFA. The
+test cases we ran came from the Larceny R6RS benchmark suite
+(ack, cpstak, tak) and examples compiled from the previous litera-
+
+9
+
+500
+
+AAC Configurations
+AAC States
+
+P4F Configurations
+P4F States
+
+AAC Configurations
+AAC States
+
+2,000
+
+P4F Configurations
+P4F States
+
+400
+1,500
+300
+1,000
+200
+500
+
+100
+
+ture on obtaining perfect stack precision (mj09, eta, kcfa2, kcfa3,
+blur, loop2, sat). As a sanity check, we have verified that both AAC
+and our method produce results of equivalent precision in every
+case. We ran each comparison using both a monovariant value-store
+allocator (figure 2), and a 1-call-sensitive polyvariant allocator (figure 3). Across the board, our method requires visiting strictly fewer
+machine configurations. In some of these cases the difference is
+rather small, but in others it is significant. We saw as much as a
+16.0× improvement in the monovariant analysis and as much as
+a 10.4× improvement in the context-sensitive analysis. The mean
+speedup in terms of states visited was 5.4× and 4.9× in the monovariant and context-sensitive analyses, respectively.
+
+∧
+
+Σ
+
+ξˆ0 and ξ˜
+
+tak
+
+cpstak
+
+ack
+
+sat
+
+loop2
+
+blur
+
+kcfa3
+
+Lemma 10
+
+ĉ0 ,→ (e, HEnv (ρ̃), HKont (ψ̃))
+
+Lemma 8
+
+(e, HEnv (ρ̃), HKont (ψ̃)) ∈ r̂
+
+Figure 4. The logical chain proving lemma 10. Assumes (r̂, σ̂) is
+at a fixed point and (r̃, σ̃, σ̃κ ) is well-formed.
+
+(lemma 5) and for which we can show that any well-formed ξ˜ is
+precise relative to any ξˆ that is at a fixed point (lemmas 9 and 10).
+The well-formedness property is defined in terms of two additional concepts. First, we formally define the stacks, ψ̃, implied by
+a continuation address, ãκ , and continuation store, σ̃κ , in terms of
+a relation ψ̃ ∈ψ ãκ (via σ̃κ ) that we define. Then, we define paths,
+~
+(,→) and (,→), through ξˆ and ξ˜ in terms of a sequence of state steps,
+( Σ ) and ( Σ~ ), between states represented by configurations in ξˆ
+˜ This allows us to prove the precision of any well-formed ξ˜
+and ξ.
+(i.e., lemma 10) through a logical chain informally shown in figure 4. In lemma 6, we show that for any configuration (e, ρ̃, ãκ )
+in the r̃ of a ξ˜ and any ψ̃ implied by aκ with the continuation store
+˜ there exists a path from the initial configuration c̃0 with an
+σκ of ξ,
+empty stack  to the configuration (e, ρ̃, ãκ ) with the implied stack
+ψ̃. In lemma 7, we then show that there exists a corresponding path
+in ξˆ from ĉ0 to (e, HEnv (ρ̃), HKont (ψ̃)). Finally, in lemma 8, we show
+that the endpoint of that path is in ξˆ and thus the set of reachable
+configurations in ξ˜ is precise relative to ξˆ (lemma 10).
+∧
+
+∧
+
+~ ˜0
+
+Σ
+
+(e, ρ̃, ãκ ) ∈ r̃
+ψ̃ ∈ψ ãκ (via σ̃κ )
+
+Lemma 7
+
+Proving soundness is fairly straight forward as discussed in section 2.3, but proving precision poses a greater challenge. To do this,
+we first define a simulation relation (wΞ ) where ξˆ wΞ ξ˜ (read as
+˜ if and only if all stored values and machine con“ξˆ simulates ξ”)
+figurations in ξ˜ (including stacks implicit in this configuration) are
+ˆ Usually, the
+accounted for in the unbounded-stack representation ξ.
+next step in such a proof would be to show that taking parallel steps
+preserves precision as in fallacy 1.
+∧
+
+Lemma 6
+
+~
+
+(c̃0 , ) ,→ ((e, ρ̃, ãκ ), ψ̃)
+
+Proof of Precision
+
+Fallacy 1 (Steps preserve precision). If ξˆ
+ξˆ wΞ ξ˜ implies ξˆ0 wΞ ξ˜0 .
+
+kcfa2
+
+mj09
+
+cpstak
+
+ack
+
+sat
+
+loop2
+
+blur
+
+kcfa3
+
+kcfa2
+
+eta
+
+mj09
+
+tak
+
+Figure 3. A 1-call-sensitive comparison.
+
+Figure 2. A monovariant comparison.
+
+5.
+
+eta
+
+0
+
+0
+
+ξ , then
+
+However, fallacy 1 is not true. This is because after some finite
+number of steps ξ˜ may contain a cycle in its continuation store. This
+means that an infinite family of successively longer stacks must
+also be in ξˆ for precision to hold. After a finite number of steps,
+however, all stacks in ξˆ are bounded by a finite length. Hence, there
+are stacks that precision says should be in ξˆ that are not.
+We thus take a different approach to proving precision. Before
+going into the details, the high-level overview of this proof is as
+follows. Instead of stepping both ξˆ and ξ˜ in parallel, we show that
+successive steps of ξ˜ are all precise relative to any ξˆ that is already
+at a fixed point (i.e., theorem 11 found at the end of this section).
+To show this, we need two inductions. One is over the steps taken
+˜ and the other is over the stacks implied by ξ.
+˜ To separate these
+by ξ,
+inductions, we define a well-formedness property (wf in figure 7)
+that we can show is preserved by iterative steps from an initial ξ˜0
+
+5.1
+
+Definitions and Assumptions
+
+In order to prove precision, we first require that the address spaces
+for both σ̂ and σ̃ correspond as follows.
+Assumption 2 (Address equivalence). There exists an equiva] ) and
+lence (≡Addr ) between finite-state-machine addresses (Addr
+[ ) that can be decomunbounded-stack-machine addresses (Addr
+[ TAddr Addr
+].
+posed into a bijection Addr
+HAddr
+
+10
+
+~
+
+((e, ρ̃, ãκ ), ψ̃) ,→ ((e, ρ̃, ãκ ), ψ̃) (via (r̃, σ̃, σ̃κ ), (r̃0 , σ̃ 0 , σ̃κ0 )), where
+ψ̃ ∈ψ ãκ (via σ̃κ0 )
+
+(e, ρ̃, ãκ ) ∈ r̃0
+
+~
+
+((e, ρ̃, ãκ ), ψ̃) ,→ ((e0 , ρ̃0κ , ã0κ ), ψ̃ 0 ) (via (r̃, σ̃, σ̃κ ), (r̃0 , σ̃ 0 , σ̃κ0 )), where
+]
+ρ̃0κ = ρ̃κ [x 7→ alloc(x,
+(æ, ρ̃00 , σ̃, σ̃κ , ã00κ ))]
+00
+
+(æ, ρ̃ , ã00κ ) ∈ r̃
+
+(e0 , ρ̃0κ , ã0κ ) ∈ r̃0
+
+((x, e0 , ρ̃κ ), ã0κ ) ∈ σ̃κ (ã00κ )
+
+~
+
+((e, ρ̃, ãκ ), ψ̃) ,→ ((æ, ρ̃00 , ã00κ ), ((x, e0 , ρ̃κ ), ã0κ ) : ψ̃ 0 ) (via (r̃, σ̃, σ̃κ ), (r̃0 , σ̃ 0 , σ̃κ0 ))
+(æ, ρ̃00 , σ̃, σ̃κ , ã00κ )
+
+v
+
+~
+Σ
+
+(e0 , ρ̃0κ , σ̃ 0 , σ̃κ0 , ã0κ )
+
+~
+
+((e, ρ̃, ãκ ), ψ̃) ,→ ((e0 , ρ̃0 , ã0κ ), ((x, e00 , ρ̃00 ), ã00κ ) : ψ̃ 0 ) (via (r̃, σ̃, σ̃κ ), (r̃0 , σ̃ 0 , σ̃κ0 )), where
+((x, e00 , ρ̃00 ), ã00κ ) ∈ σ̃κ0 (ã0κ )
+
+((e, ρ̃, ãκ ), ψ̃) ∈ r̃
+~
+
+((e, ρ̃, ãκ ), ψ̃) ,→ (((let ([x (f æ)]) e00 ), ρ̃00 , ã00κ ), ψ̃ 0 ) (via (r̃, σ̃, σ̃κ ), (r̃0 , σ̃ 0 , σ̃κ0 ))
+((let ([x (f æ)]) e00 ), ρ̃00 , σ̃, σ̃κ , ã00κ )
+
+v
+
+~
+Σ
+
+(e0 , ρ̃0 , σ̃ 0 , σ̃κ0 , ã0κ )
+
+Figure 5. Finite-state paths
+From this we can build up equivalences (≡Env , ≡F rame , ≡Clo ) and
+precision relations (wΞ , wStore , wR , wD , wStore ) for all the components
+of our machine. In addition, we can define conversion bijections
+(HEnv , TEnv , HF rame , TF rame , HClo , TClo , HD , TD , HStore , TStore ) for most
+but not all of the components. These relations have the following
+signatures.
+(wΞ ) ⊆ Ξ̂ × Ξ̃
+
+∧
+
+(e, ρ̂, κ̂) ,→ (e, ρ̂, κ̂) (via r̂, σ̂)
+(e, ρ̂, κ̂) ,→ (e0 , ρ̂0 , κ̂0 ) (via r̂, σ̂), where
+∧
+
+(e, ρ̂, κ̂) ,→ (e00 , ρ̂00 , κ̂00 ) (via r̂, σ̂)
+∧
+
+(e00 , ρ̂00 , σ̂, κ̂00 )
+
+[state-space precision]
+
+\ × Store
+^
+(wStore ) ⊆ Store
+
+[store precision]
+
+^
+(wR ) ⊆ R̂ × R̃ × KStore
+d
+g
+(≡Env ) ⊆ Env × Env
+
+[reachable configs. precision]
+
+\ × Frame
+^
+(≡F rame ) ⊆ Frame
+
+[frame equivalence]
+
+(wD ) ⊆ D̂ × D̃
+d × Clo
+g
+(≡Clo ) ⊆ Clo
+
+[env. equivalence]
+
+Σ
+
+(e0 , ρ̂0 , σ̂, κ̂0 )
+
+(φ̃, ã0κ ) ∈ σ̃κ (ãκ ) ∧ ψ̃ ∈ψ ã0κ (via σ̃κ ) ∧ ãκ 6= ãhalt
+=⇒ ((φ̃, ã0κ ) : ψ̃) ∈ψ ãκ (via σ̃κ )
+
+[flow-set precision]
+
+Then given such a ψ̃, we can directly construct its equivalent
+unbounded stack:
+
+[closure equivalence]
+
+HKont () , 
+
+HKont ((φ̃, ãκ ) : ψ̃) , HF rame (φ̃) : HKont (ψ̃)
+
+Also, given a finite-state configuration c̃ and an implicit stack ψ̃,
+we can construct an unbounded-stack configuration ĉ:
+
+Assumption 3 (Allocation equivalence). If ρ̂ ≡Env ρ̃, σ̂ wStore σ̃,
+and ψ̃ ∈ψ ãκ (via σ̃κ ), then:
+
+HC ((e, ρ̃, ãκ ), ψ̃) , (e, HEnv (ρ̃), HKont (ψ̃))
+
+[
+]
+alloc(x,
+(e, ρ̂, σ̂, HKont (ψ̃))) ≡Addr alloc(x,
+(e, ρ̃, σ̃, σ̃κ , ãκ ))
+
+Next, in figures 5 and 6 , we define paths to configurations. For
+(,→) this is defined by a base case from a configuration to itself and
+a recursive case that builds onto an existing path with a step within
+ˆ This uses a variation of the step relation defined in figure 8 that
+ξ.
+allows the output store of the step to be a sub-store of the store in
+~
+ˆ The (,→)
+ξ.
+relation is similar but adds extra side conditions that
+ensure invariants used in our proof.
+Then, in figure 7, we define well-formedness. This is a binary
+predicate with the first argument ξ˜ being the predecessor of the
+second argument ξ˜0 , which is the result we say is well-formed.
+This predicate is defined in terms of several sub-properties. The
+wf ξ̃ property requires ξ˜ be well-formed and the predecessor of ξ˜0 .
+The wf v property requires that ξ˜0 be component-wise greater
+˜ The wf
+than or equal to ξ.
+init and wf halt properties respectively
+∧
+
+This assumption uses (∈ψ ) and HKont , which deal with the stacks
+implied by an address and continuation store. We define an implied
+stack as an unbounded list of finite-state continuations κ̃:
+∗
+
+∧
+
+Figure 6. Unbounded-stack paths
+
+In addition, with the following assumption, we require that the
+value allocators respect the address correspondence.
+
+]
+ψ̃ ∈ Ψ̃ = Kont
+
+v
+
+[implied stack]
+
+These ψ̃ are an intermediate representation in that, like κ̂, their
+structure is unbounded, but each element is taken directly from the
+finite-state machine. We define a trinary relation (∈ψ ) that specifies
+which ψ̃ are implied by an ãκ in σ̃κ . This has the following base
+case and inductive case:
+ ∈ψ ãhalt (via σ̃κ )
+
+11
+
+˜ ξ˜0 ) , wf (ξ,
+˜ ξ˜0 ) ∧ wf (ξ,
+˜ ξ˜0 ) ∧ wf (ξ,
+˜ ξ˜0 ) ∧ wf (ξ,
+˜ ξ˜0 )
+wf (ξ,
+v
+init
+halt
+ξ̃
+˜ ˜0
+
+˜ ˜0
+
+v
+
+˜ ˜0
+
+∧wf r̃ (ξ, ξ ) ∧ wf σ̃ (ξ, ξ ) ∧ wf σ̃κ (ξ, ξ )
+
+(e, ρ̂, σ̂, κ̂)
+
+∧
+
+(e, ρ̂, σ̂, κ̂)
+
+∧
+
+(e0 , ρ̂0 , σ̂ 00 , κ̂0 )
+
+v
+
+~ ˜0
+
+Ξ
+
+Σ
+
+(e0 , ρ̂0 , σ̂ 0 , κ̂0 ), where
+
+σ̂ 00 v σ̂ 0
+
+˜ ξ˜0 ) , (ξ˜ = ξ˜0 = ({(e0 , ∅, ãhalt )}, ⊥, ⊥))
+wf ξ̃ (ξ,
+∨ (ξ˜
+
+Σ
+
+˜
+ξ ∧ ∃ξ˜00 . wf (ξ˜00 , ξ))
+
+(e, ρ̃, σ̃, σ̃κ , ãκ )
+
+~
+Σ
+
+(e0 , ρ̃0 , σ̃ 0 , σ̃κ0 , ã0κ ), where
+
+0
+0
+000
+~
+, σ̃κ000 , ã0κ )
+Σ (e , ρ̃ , σ̃
+00
+000
+0
+v σ̃) ∧ (σ̃κ v σ̃κ ) ∧ (σ̃ v σ̃ ) ∧ (σ̃κ000 v σ̃κ0 )
+
+(e, ρ̃, σ̃ 00 , σ̃κ00 , ãκ )
+
+wf v ((r̃, σ̃, σ̃κ ), (r̃0 , σ̃ 0 , σ̃κ0 )) , (r̃ ⊆ r̃0 ) ∧ (σ̃ v σ̃ 0 ) ∧ (σ̃κ v σ̃κ0 )
+(σ̃
+
+00
+
+˜ (r̃0 , σ̃ 0 , σ̃κ0 )) , (e0 , ∅, ãhalt ) ∈ r̃0
+wf init (ξ,
+v
+
+(e, ρ̃, σ̃, σ̃κ , ãκ )
+
+˜ (r̃0 , σ̃ 0 , σ̃κ0 )) , ∀κ̃. κ̃ ∈
+wf halt (ξ,
+/ σ̃κ0 (ãhalt )
+0
+
+(e, ρ̃, σ̃
+
+0
+
+˜ (r̃ , σ̃ , σ̃κ0 )) ,
+wf r̃ (ξ,
+
+00
+
+~
+Σ
+
+, σ̃κ00 , ãκ )
+
+~
+Σ
+
+f where
+(e0 , ρ̃0 , σ̃ 0 , σ̃κ0 , ã0κ ) (with ã, clo),
+(e0 , ρ̃0 , σ̃ 000 , σ̃κ000 , ã0κ )
+
+f ∈ σ̃ 000 (ã)
+(σ̃ 00 v σ̃) ∧ (σ̃κ00 v σ̃κ ) ∧ (σ̃ 000 v σ̃ 0 ) ∧ (σ̃κ000 v σ̃κ0 ) ∧ clo
+
+∀(e, ρ̃, ãκ ) ∈ r̃ . ∃ψ̃ ∈ψ ãκ (via σ̃κ0 ).
+0
+
+v
+
+~
+
+˜ (r̃0 , σ̃ 0 , σ̃κ0 ))
+((e0 , ∅, ãhalt ), ) ,→ ((e, ρ̃, ãκ ), ψ̃) (via ξ,
+
+(e, ρ̃, σ̃, σ̃κ , ãκ )
+(e, ρ̃, σ̃ 00 , σ̃κ00 , ãκ )
+
+wf σ̃ ((r̃, σ̃, σ̃κ ), (r̃0 , σ̃ 0 , σ̃κ0 )) ,
+
+v
+
+~
+Σ
+
+Σ
+
+~
+Σ
+
+(e0 , ρ̃0 , σ̃ 0 , σ̃κ0 , ã0κ ) (with κ̃, ã00κ ), where
+(e0 , ρ̃0 , σ̃ 000 , σ̃κ000 , ã0κ )
+
+(σ̃ 00 v σ̃) ∧ (σ̃κ00 v σ̃κ ) ∧ (σ̃ 000 v σ̃ 0 ) ∧ (σ̃κ000 v σ̃κ0 ) ∧ κ̃ ∈ σ̃κ000 (ã00κ )
+
+f ∈ σ̃ 0 (ã). ∃(e, ρ̃, ãκ ) ∈ r̃. ∃(e0 , ρ̃0 , ã0κ ) ∈ r̃0 .
+∀ã. ∀clo
+(e, ρ̃, σ̃, σ̃κ , ãκ )
+
+~
+
+Figure 8. Sub-step Relations
+
+f
+(e0 , ρ̃0 , σ̃ 0 , σ̃κ0 , ã0κ ) (with ã, clo)
+
+wf σ̃κ ((r̃, σ̃, σ̃κ ), (r̃0 , σ̃ 0 , σ̃κ0 )) ,
+
+∧ ∃f. ∃æ. ((let ([x (f æ)]) e), ρ̃κ , ãκ ) ∈ r̃
+
+˜ (r̃, σ̃, σ̃κ )), and
+Assumption 4 (Allocation consistency). If wf (ξ,
+~
+(e0 , ρ̃0 [x 7→ ã], σ̃ 00 , σ̃κ00 , ã0κ )
+the state step (e, ρ̃, σ̃, σ̃κ , ãκ )
+Σ
+]
+holds where ã = alloc(x,
+(e, ρ̃, σ̃, σ̃κ , ãκ )) and there is a result
+step (r̃, σ̃, σ̃κ ) Ξ~ (r̃0 , σ̃ 0 , σ̃κ0 ), then the corresponding allocation
+for e, ρ̃, and ãκ , but with σ̃ 0 and σ̃κ0 , is the same:
+
+∧ ((let ([x (f æ)]) e), ρ̃κ , σ̃, σ̃κ , ãκ )
+
+]
+]
+alloc(x,
+(e, ρ̃, σ̃, σ̃κ , ãκ )) = alloc(x,
+(e, ρ̃, σ̃ 0 , σ̃κ0 , ãκ ))
+
+∀ã0κ . ∀((x, e, ρ̃κ ), ãκ ) ∈ σ̃κ0 (ã0κ ).
+∃e0κ . ∃ρ̃0κ . ã0κ = (e0κ , ρ̃0κ ) ∧ Entry(ã0κ ) ∈ r̃0
+
+v
+
+~
+Σ
+
+(e0κ , ρ̃0κ , σ̃ 0 , σ̃κ0 , ã0κ ) (with ã0κ , ((x, e, ρ̃κ ), ãκ ))
+
+5.2
+
+Lemmas and Theorems
+
+˜
+To start, lemma 5 shows that iterated steps produce well-formed ξ.
+] → C̃
+Entry : Addr
+
+Lemma 5 (Well-formedness of analysis results). If ξ˜0 is the result
+of taking zero or more steps of ( Ξ~ ), starting from the initial result,
+˜ ξ˜0 ) for some ξ.
+˜
+({(e0 , ∅, ãhalt )}, ⊥, ⊥), then wf (ξ,
+
+Entry(ãhalt ) , (e0 , ∅, ãhalt )
+Entry((eκ , ρ̃κ )) , (eκ , ρ̃κ , (eκ , ρ̃κ ))
+
+Proof. We induct over ( Ξ~ ) steps. In the base case, we can easily
+show that the initial result is well-formed. We can also show that
+˜ ξ˜0 ) then wf (ξ˜0 , ξ˜00 ). This is done using
+for any ξ˜0 Ξ~ ξ˜00 , if wf (ξ,
+sublemmas for the components of well-formedness. We omit these
+for space.
+
+Figure 7. Well-formedness properties
+
+require that the initial configuration be in ξ˜0 and that the haltcontinuation address ahalt not have any continuations associated
+with it. Finally, wf r̃ , wf σ̃ , and wf σ̃κ ensure that everything in the
+r̃, σ̃, and σ̃κ for ξ˜0 has a reason to be there. For wf r̃ , this means
+that every element of r̃ has some path leading to it. For wf σ̃ and
+wf σ̃κ , this means that every value stored in σ̃ or σ̃κ has some step
+( Σ~ ) that put it there. These are defined in terms of the variations
+
+Next, with lemma 6, we show that every configuration paired
+with one of its implied stacks has a path leading to it (i.e., the top
+edge of figure 4).
+Lemma 6 (Stacks have paths). If (e, ρ̃, ãκ ) ∈ r̃ such that
+˜ (r̃, σ̃, σ̃κ )), then:
+wf (ξ,
+
+v
+
+∀ψ̃ ∈ψ ãκ (via σ̃κ ).
+
+of ( ~Σ ) in figure 8 that have side conditions about the contents of
+the store.
+For wf σ̃κ , we define Entry, which maps a continuation address to the configuration that is the entry point for the function
+invocation that contains the configurations using that continuation
+address.
+Finally, with the following assumption, we require that once
+allocation creates an address it must always produce the same
+address for the same configuration even if the value or continuation
+stores have changed.
+
+~
+˜ (r̃, σ̃, σ̃κ ))
+((e0 , ∅, ãhalt ), ) ,→ ((e, ρ̃, ãκ ), ψ̃) (via ξ,
+
+˜ (r̃, σ̃, σ̃κ )), there is some ψ̃ 0 ∈ψ ãκ (via σ̃κ )
+Proof. By wf r̃ (ξ,
+~
+˜ (r̃, σ̃, σ̃κ )).
+for which ((e0 , ∅, ãhalt ), ) ,→ ((e, ρ̃, ãκ ), ψ̃ 0 ) (via ξ,
+0
+However, this path uses ψ̃ instead of our desired ψ̃. Thus we induct
+over ψ̃. If ψ̃ is the empty list, , then ãκ must be ãhalt and thus
+ is the only ψ̃ for which ψ̃ ∈ψ ãκ (via σ̃κ ). So ψ̃ 0 = ψ̃ = ,
+˜ (r̃, σ̃, σ̃κ )) equals our desired
+and the path obtained from wf r̃ (ξ,
+conclusion.
+
+12
+
+If ψ̃ is ((x, eκ , ρ̃κ ), ã0κ ) : ψ̃ 00 for some x, eκ , ρ̃κ , ã0κ , ψ̃ 00 , then
+there is a path for ψ̃ 0 from Entry(ãκ ) to (e, ρ̃, ãκ ). By another
+induction there is a similar path for ψ̃:
+~
+˜ (r̃, σ̃, σ̃κ ))
+(Entry(ãκ ), ψ̃) ,→ ((e, ρ̃, ãκ ), ψ̃) (via ξ,
+
+Then, with lemma 8, we show that the endpoint of any path in ξˆ
+is in ξˆ (i.e., the bottom edge of figure 4).
+
+˜ (r̃, σ̃, σ̃κ )), there exist f and æ for a call site
+By wf r̃ (ξ,
+((let ([x (f æ)]) eκ ), ρ̃κ , ã0κ ) ∈ r̃ and a step from that call
+site to Entry(ãκ ):
+
+Proof. Trivial. By induction.
+
+((let ([x (f æ)]) eκ ), ρ̃κ , σ̃, σ̃κ , ã0κ )
+0
+
+v
+
+~
+Σ
+
+Lemma 8 (Path endpoint). If (r̂, σ̂) Σ (r̂, σ̂), then for any path
+ĉ0 ,→ (e, ρ̂, κ̂) (via r̂, σ̂), we have: (e, ρ̂, κ̂) ∈ r̂.
+∧
+
+∧
+
+Finally, with lemmas 9 and 10, we show that precision is preserved by the step relation Σ~ (i.e., the right edge of figure 4).
+Then in theorem 11, we show that these are all precise, which is
+ultimately what we want to prove.
+
+(e0 , ρ̃0 , σ̃, σ̃κ , ãκ )
+
+0
+
+(e , ρ̃ , ãκ ) = Entry(ãκ )
+
+where
+
+Lemma 9 (Preservation of precision for value stores). If (r̂, σ̂) Ξ
+˜ (r̃, σ̃, σ̃κ )), (r̃, σ̃, σ̃κ ) ~Ξ (r̃0 , σ̃ 0 , σ̃κ0 ), and (r̂, σ̂) wΞ
+(r̂, σ̂), wf (ξ,
+(r̃, σ̃, σ̃κ ), then σ̂ wStore σ̃ 0 .
+∧
+
+By the induction hypothesis, we have a path for ψ̃ 00 from (e0 , ∅, ãhalt )
+to the call site:
+~
+
+((e0 , ∅, ãhalt ), ) ,→ (((let ([x (f æ)]) eκ ), ρ̃κ , ã0κ ), ψ̃ 00 )
+
+Proof. Omitted for space.
+
+We now have a path from ((e0 , ∅, ãhalt ), ) to the call site with ψ̃ 00 ,
+a step from the call site to Entry(ãκ ) that pushes (x, eκ , ρ̃κ ) onto
+the stack, and a path from Entry(ãκ ) to (e, ρ̃, ãκ ) with ψ̃. From
+these we can then construct the path desired in our conclusion.
+
+Lemma 10 (Preservation of precision for reachable configura~
+˜ (r̃, σ̃, σ̃κ )), (r̃, σ̃, σ̃κ )
+tions). If (r̂, σ̂)
+(r̂, σ̂), wf (ξ,
+Ξ
+Ξ
+(r̃0 , σ̃ 0 , σ̃κ0 ), and (r̂, σ̂) wΞ (r̃, σ̃, σ̃κ ), then r̂ wR r̃0 .
+
+Next, with lemma 7, we show that every path in a well-formed
+ξ˜ has a corresponding path in any ξˆ that is at at fixed point (i.e., the
+left edge of figure 4).
+
+Proof. If we unfold the definition of (wR ), we must show that for all
+(e, ρ̂, κ̂) ∈ r̂0 and ψ̃ ∈ψ ãκ (via σ̃κ0 ), that (e, HEnv (ρ̃), HKont (ψ̃)) ∈
+r̂. By lemma 6, we have:
+
+∈
+
+Lemma 7 (Path conversion). If (e, ρ̃, ãκ )
+˜ (r̃, σ̃, σ̃κ )) and (r̂, σ̂) Ξ (r̂, σ̂), then:
+wf (ξ,
+
+∧
+
+~
+˜ (r̃, σ̃, σ̃κ ))
+((e0 , ∅, ãhalt ), ) ,→ ((e, ρ̃, ãκ ), ψ̃) (via ξ,
+
+r̃ such that
+
+∧
+
+From this, by lemma 7, we have:
+
+~
+
+˜ (r̃, σ̃, σ̃κ ))
+((e0 , ∅, ãhalt ), ) ,→ ((e, ρ̃, ãκ ), ψ̃) (via ξ,
+
+∧
+
+(e0 , ∅, ) ,→ (e, HEnv (ρ̃), HKont (ψ̃)) (via r̂, σ̂)
+
+∧
+
+=⇒ (e0 , ∅, ) ,→ HC ((e, ρ̃, ãκ ), ψ̃) (via r̂, σ̂)
+
+Finally, by lemma 8, we have our conclusion.
+Theorem 11 (Precision of analysis results). If ξ˜ is the result of taking zero or more steps of ( Ξ~ ), starting from ({(e0 , ∅, ãhalt )}, ⊥, ⊥),
+ˆ then ξˆ wΞ ξ.
+˜
+and ξˆ Ξ ξ,
+
+Proof. By induction over the finite-state path. We have three cases.
+Case: The path is empty. Trivial.
+Case: The last step of the path is a return. For some æ, ρ̃0 , ãκ ,
+ã0κ , and ρ̃00 , there is a step (æ, ρ̃0 , σ̃, σ̃κ , ã0κ )
+and, by the induction hypothesis, a path:
+
+v
+
+~
+Σ
+
+∧
+
+(e, ρ̃, σ̃, σ̃κ , ãκ )
+
+Proof. By induction over the number of steps, trivial simplifications, unfoldings, and lemmas 5, 9, and 10.
+
+(e0 , ∅, ) ,→ HC ((æ, ρ̃0 , ã0κ ), ((x, e, ρ̃00 ), ãκ ) : ψ̃) (via r̂, σ̂)
+]
+where
+ρ̃ = ρ̃00 [x 7→ alloc(x,
+(æ, ρ̃0 , σ̃, σ̃κ , ã0κ ))]
+∧
+
+6.
+
+Conclusion
+
+(e0 , ∅, ) ,→ HC (((let ([x (f æ)]) e0 ), ρ̃0 , ã0κ ), ψ̃ 0 ) (via r̂, σ̂)
+
+Traditional control-flow analysis has long suffered from returnflow conflation of values, even when context sensitivity and related techniques keep these values separate across function calls.
+Recent approaches have made significant progress in addressing
+this problem. However, each suffers from serious drawbacks. PDCFA incurs a substantial development cost and causes a quadraticfactor increase in run-time complexity. AAC is trivial to implement,
+but incurs an even worse increase in run-time complexity. Our approach, however, both is simple to implement and adds no asymptotic cost to run-time complexity. To accomplish this, we synthesize
+the lessons learned from PDCFA and AAC to show that the ideal
+continuation address is simply a function’s polyvariant entry point:
+its expression and abstract binding environment. This introspection
+on entry points and the corresponding choice of continuation address yields a finite-state analysis whose call transitions are precisely matched with return transitions at no cost to either run-time
+or development-time overhead.
+
+We can then show that (r̂, σ̂) contains a step corresponding to the
+step in (r̃, σ̃, σ̃κ ):
+
+Acknowledgments
+
+We can then show that (r̂, σ̂) contains a step corresponding to the
+step in (r̃, σ̃, σ̃κ ):
+(æ, HEnv (ρ̃0 ), σ̂, (x, e, HEnv (ρ̃00 )) : HKont (ψ̃))
+v
+
+~
+Σ
+
+(e, HEnv (ρ̃), σ̂, HKont (ψ̃))
+
+Combining this with the path from the induction hypothesis, we
+can then construct the path in our conclusion.
+Case: The last step of the path is a call. For some x, y, f , æ, e0 ,
+ρ̃0 , ρ̃λ , ãκ , ψ̃ 0 , we have (y, e, ρ̃λ ) ∈ Ã(f, ρ̃0 , σ̃), and a step:
+v
+
+((let ([x (f æ)]) e0 ), ρ̃0 , σ̃, σ̃κ , ã0κ ) Σ~ (e, ρ̃, σ̃, σ̃κ , ãκ ), where
+]
+ρ̃ = ρ̃λ [x 7→ alloc(x,
+((let ([x (f æ)]) e0 ), ρ̃0 , σ̃, σ̃κ , ã0κ ))]
+and, by the induction hypothesis, a path:
+∧
+
+This material is partially based on research sponsored by DARPA
+under agreement numbers AFRL FA8750-15-2-0092 and FA875012-2-0106 and by NSF under CAREER grant 1350344. The U.S.
+Government is authorized to reproduce and distribute reprints for
+Governmental purposes notwithstanding any copyright notation
+thereon.
+
+((let ([x (f æ)]) e0 ), HEnv (ρ̃0 ), σ̂, HKont (ψ̃ 0 ))
+v
+
+~
+Σ
+
+(e, HEnv (ρ̃), σ̂, (x, e0 , HEnv (ρ̃0 )) : HKont (ψ̃ 0 ))
+
+Combining this with the path from the induction hypothesis, we
+can then construct the path in our conclusion.
+
+13
+
+References
+
+[9] J. I. Johnson, N. Labich, M. Might, and D. Van Horn. Optimizing abstract abstract machines. In Proceedings of the 18th ACM SIGPLAN
+International Conference on Functional Programming, ICFP ’13,
+pages 443–454, New York, NY, USA, Sept. 2013. ACM. ISBN 9781-4503-2326-0. doi: 10.1145/2500365.2500604.
+
+[1] P. Cousot and R. Cousot. Static determination of dynamic properties
+of programs. In Proceedings of the Second International Symposium
+on Programming, pages 106–130. Paris, France, 1976.
+[2] P. Cousot and R. Cousot. Abstract interpretation: a unified lattice
+model for static analysis of programs by construction or approximation of fixpoints. In Proceedings of the 4th ACM SIGACT-SIGPLAN
+Symposium on Principles of Programming Languages, POPL ’77,
+pages 238–252, New York, NY, USA, Jan. 1977. ACM. doi: 10.1145/
+512950.512973.
+[3] P. Cousot and R. Cousot. Systematic design of program analysis
+frameworks. In Proceedings of the 6th ACM SIGACT-SIGPLAN Symposium on Principles of Programming Languages, POPL ’79, pages
+269–282, New York, NY, USA, Jan. 1979. ACM. doi: 10.1145/
+567752.567778.
+[4] C. Earl, M. Might, and D. Van Horn. Pushdown control-flow analysis
+of higher-order programs: Precise, polyvariant and polynomial-time.
+In Scheme Workshop, August 2010.
+[5] C. Earl, I. Sergey, M. Might, and D. Van Horn. Introspective pushdown analysis of higher-order programs. In Proceedings of the 17th
+ACM SIGPLAN International Conference on Functional Programming, ICFP ’12, pages 177–188, New York, NY, USA, Sept. 2012.
+ACM. ISBN 978-1-4503-1054-3. doi: 10.1145/2364527.2364576.
+[6] C. Flanagan, A. Sabry, B. F. Duba, and M. Felleisen. The essence of
+compiling with continuations. In Proceedings of the ACM SIGPLAN
+1993 Conference on Programming Language Design and Implementation, PLDI ’93, pages 237–247, New York, NY, USA, Aug. 1993.
+ACM. ISBN 0-89791-598-4. doi: 10.1145/155090.155113.
+[7] J. I. Johnson. AAC complexity analysis discussion. Unpublished
+correspondence, June 2015.
+[8] J. I. Johnson and D. Van Horn. Abstracting abstract control. In
+Proceedings of the 10th ACM Symposium on Dynamic Languages,
+DLS ’14, pages 11–22, New York, NY, USA, Oct. 2014. ACM. ISBN
+978-1-4503-3211-8. doi: 10.1145/2661088.2661098.
+
+[10] J. Midtgaard. Control-flow analysis of functional programs. ACM
+Computing Surveys (CSUR), 44(3):10:1–10:33, June 2012. ISSN
+0360-0300. doi: 10.1145/2187671.2187672.
+[11] M. Might. Environment Analysis of Higher-Order Languages. PhD
+thesis, Georgia Institute of Technology, Atlanta, GA, 2007.
+[12] M. Might. Abstract interpreters for free. In R. Cousot and M. Martel, editors, Proceedings of the Static Analysis Symposium, volume
+6337 of Lecture Notes in Computer Science, pages 407–421. Springer
+Berlin Heidelberg, 2010. ISBN 978-3-642-15768-4. doi: 10.1007/
+978-3-642-15769-1\_25.
+[13] M. Might, Y. Smaragdakis, and D. Van Horn. Resolving and exploiting
+the k-CFA paradox: illuminating functional vs. object-oriented program analysis. In Proceedings of the 31st ACM SIGPLAN Conference
+on Programming Language Design and Implementation, PLDI ’10,
+pages 305–315, New York, NY, USA, June 2010. ACM. ISBN 978-14503-0019-3. doi: 10.1145/1806596.1806631.
+[14] A. Tarski. A lattice-theoretical fixpoint theorem and its applications.
+Pacific Journal of Mathematics, 5(2):285–309, 1955.
+[15] D. Van Horn and M. Might. Abstracting abstract machines. In
+Proceedings of the 15th ACM SIGPLAN International Conference on
+Functional Programming, ICFP ’10, pages 51–62, New York, NY,
+USA, Sept. 2010. ACM. ISBN 978-1-60558-794-3. doi: 10.1145/
+1863543.1863553.
+[16] D. Vardoulakis and O. Shivers. CFA2: A context-free approach to
+control-flow analysis. In A. D. Gordon, editor, Proceedings of the
+European Symposium on Programming, volume 6012 of Lecture Notes
+in Computer Science, pages 570–589. Springer Berlin Heidelberg,
+2010. ISBN 978-3-642-11956-9. doi: 10.1007/978-3-642-11957-6\
+_30.
+
+14
+
+

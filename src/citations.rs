@@ -24,6 +24,10 @@ use std::path::Path;
 use std::process::Command;
 use std::sync::Arc;
 
+#[cfg(test)]
+#[path = "citations_test.rs"]
+mod citations_test;
+
 const CITATIONS_TREE: &str = "citations";
 const BEGIN_MARKER: &str = "<!-- BEGIN AUTO-CITATIONS -->";
 const END_MARKER: &str = "<!-- END AUTO-CITATIONS -->";
@@ -53,23 +57,46 @@ fn run_pdftotext(path: &Path, layout: bool) -> Result<String, String> {
         .map_err(|e| format!("pdftotext output not valid UTF-8: {}", e))
 }
 
-/// Extract PDF text, trying both with and without `-layout` flag.
-/// Returns whichever mode yields more reference entries, since different
-/// paper layouts work better with different modes:
-/// - Without `-layout`: better for heading detection in multi-column papers
-/// - With `-layout`: better for preserving numbered reference formatting
+/// Extract text using the `pdf-extract` Rust crate (no external dependency).
+fn run_pdf_extract(path: &Path) -> Result<String, String> {
+    let bytes = std::fs::read(path).map_err(|e| format!("Cannot read PDF: {}", e))?;
+    pdf_extract::extract_text_from_mem(&bytes)
+        .map_err(|e| format!("pdf-extract failed: {}", e))
+}
+
+/// Extract PDF text, trying multiple methods and picking whichever yields
+/// the most reference entries:
+/// - `pdftotext` without `-layout`: good for multi-column heading detection
+/// - `pdftotext -layout`: good for preserving numbered reference formatting
+/// - `pdf-extract` (native Rust): handles some PDFs that pdftotext misses
 fn extract_pdf_text_best(path: &Path) -> Result<(String, Vec<String>), String> {
-    let text_plain = run_pdftotext(path, false)?;
-    let refs_plain = extract_references_from_text(&text_plain);
+    let mut candidates: Vec<(String, Vec<String>)> = Vec::new();
 
-    let text_layout = run_pdftotext(path, true)?;
-    let refs_layout = extract_references_from_text(&text_layout);
-
-    if refs_layout.len() > refs_plain.len() {
-        Ok((text_layout, refs_layout))
-    } else {
-        Ok((text_plain, refs_plain))
+    // Try pdftotext plain
+    if let Ok(text) = run_pdftotext(path, false) {
+        let refs = extract_references_from_text(&text);
+        candidates.push((text, refs));
     }
+
+    // Try pdftotext with layout
+    if let Ok(text) = run_pdftotext(path, true) {
+        let refs = extract_references_from_text(&text);
+        candidates.push((text, refs));
+    }
+
+    // Try native Rust pdf-extract
+    if let Ok(text) = run_pdf_extract(path) {
+        let refs = extract_references_from_text(&text);
+        candidates.push((text, refs));
+    }
+
+    if candidates.is_empty() {
+        return Err("All PDF text extraction methods failed".to_string());
+    }
+
+    // Pick whichever yields the most references
+    candidates.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
+    Ok(candidates.into_iter().next().unwrap())
 }
 
 // ============================================================================
@@ -82,17 +109,19 @@ fn extract_references_from_text(text: &str) -> Vec<String> {
     let lines: Vec<&str> = text.lines().collect();
 
     // Search backwards for a heading line that signals references.
-    // Matches optional section numbering: "7. REFERENCES", "VII. REFERENCES", "REFERENCES", etc.
-    let section_prefix = r"(?:\d+[\.\)]\s*|[IVXLC]+[\.\)]\s*)?";
+    // Matches optional section numbering: "7. REFERENCES", "VII. REFERENCES",
+    // "A. References", "REFERENCES", etc.
+    let section_prefix = r"(?:\d+[\.\)]\s*|[IVXLC]+[\.\)]\s*|[A-Z][\.\)]\s*)?";
+    let headings = r"references|bibliography|works cited|cited references|references and notes|literature cited|literature";
     // Strict match: heading alone on the line.
     let heading_strict = Regex::new(&format!(
-        r"(?i)^\s*{section_prefix}(references|bibliography|works cited|cited references)\s*$"
+        r"(?i)^\s*{section_prefix}({headings})\s*$"
     ))
     .unwrap();
     // Lenient match: heading at start of line (for multi-column PDFs where
     // column text may follow on the same line).
     let heading_lenient = Regex::new(&format!(
-        r"(?i)^\s*{section_prefix}(references|bibliography|works cited|cited references)\s"
+        r"(?i)^\s*{section_prefix}({headings})\s"
     ))
     .unwrap();
 
@@ -111,6 +140,45 @@ fn extract_references_from_text(text: &str) -> Vec<String> {
             if heading_lenient.is_match(lines[i]) {
                 ref_start = Some(i + 1);
                 break;
+            }
+        }
+    }
+
+    // Fallback: if no heading found, look for a cluster of DOIs/URLs in the
+    // last 30% — that's likely the reference section even without a heading.
+    if ref_start.is_none() {
+        let doi_re = Regex::new(r"10\.\d{4,}/|arxiv\.org/|doi\.org/|https?://").unwrap();
+        let last_30_start = lines.len().saturating_sub(lines.len() * 3 / 10);
+        // Count DOI/URL lines in sliding windows of 20 lines
+        let window = 20;
+        let mut best_density = 0usize;
+        let mut best_start = 0usize;
+        for start in last_30_start..lines.len().saturating_sub(window) {
+            let count = lines[start..start + window]
+                .iter()
+                .filter(|l| doi_re.is_match(l))
+                .count();
+            if count > best_density && count >= 3 {
+                best_density = count;
+                best_start = start;
+            }
+        }
+        if best_density >= 3 {
+            // Walk backwards from the dense region to find the start of the first reference
+            let bracket_re = Regex::new(r"^\s*\[\d+\]").unwrap();
+            let mut scan = best_start;
+            while scan > last_30_start {
+                if lines[scan].trim().is_empty()
+                    && scan + 1 < lines.len()
+                    && bracket_re.is_match(lines[scan + 1])
+                {
+                    ref_start = Some(scan + 1);
+                    break;
+                }
+                scan -= 1;
+            }
+            if ref_start.is_none() {
+                ref_start = Some(best_start);
             }
         }
     }
@@ -170,7 +238,24 @@ fn extract_references_from_text(text: &str) -> Vec<String> {
         }
     }
 
-    // 5. Fallback: split by blank-line separated blocks
+    // 5. Author-year format (ACM style): "AuthorName. Year." or "AuthorName, ... Year."
+    //    Each new reference starts at the beginning of a line with a capitalized name
+    //    (FirstName LastName or FirstName particle LastName) followed by more names or a year.
+    let author_year_start = Regex::new(
+        r"(?m)^[A-Z][a-z]{1,20}[\s,]+(?:(?:de|van|von|le|la|di|del|den|der)\s+)?[A-Z][a-z]"
+    ).unwrap();
+    let author_year_count = author_year_start.find_count(&ref_text);
+    if author_year_count >= 5 {
+        let entries = split_by_pattern(&ref_text, &author_year_start);
+        // Verify these look like real references (most should contain a year)
+        let year_re = Regex::new(r"\b(?:19|20)\d{2}\b").unwrap();
+        let entries_with_years = entries.iter().filter(|e| year_re.is_match(e)).count();
+        if entries_with_years * 2 >= entries.len() {
+            return entries;
+        }
+    }
+
+    // 6. Fallback: split by blank-line separated blocks
     split_by_blank_lines(&ref_text)
 }
 
@@ -198,9 +283,6 @@ fn strip_page_noise(lines: &[&str]) -> Vec<String> {
 
     // Also detect standalone page numbers and very short noise lines
     let page_num_re = Regex::new(r"^\s*\d{1,4}\s*$").unwrap();
-    // Detect "Author and Author" or "FirstName LastName" running headers
-    let _short_name_header_re =
-        Regex::new(r"^\s*[A-Z][a-z]+(\s+(and\s+)?[A-Z]\.?\s*)+[A-Za-z]+\s*$").unwrap();
     // Detect page:column markers like "7:27", "7:28"
     let page_col_re = Regex::new(r"^\s*\d+:\d+\s*$").unwrap();
 
@@ -211,7 +293,11 @@ fn strip_page_noise(lines: &[&str]) -> Vec<String> {
             if trimmed.is_empty() {
                 return true; // Keep blank lines for structure
             }
-            // Filter out repeated noise
+            // Filter lines containing form feed characters (page breaks from pdftotext)
+            if line.contains('\x0c') {
+                return false;
+            }
+            // Filter out repeated noise (running headers, conference names)
             if repeated_noise.contains(&trimmed.to_lowercase()) && trimmed.len() < 60 {
                 // But don't filter if it looks like a real reference number
                 if page_num_re.is_match(trimmed) {
@@ -220,6 +306,17 @@ fn strip_page_noise(lines: &[&str]) -> Vec<String> {
                     return num <= 200;
                 }
                 return false;
+            }
+            // Filter standalone page numbers that appear after form feeds
+            // (pdftotext sometimes puts page number on its own line)
+            if page_num_re.is_match(trimmed) {
+                let num: usize = trimmed.trim().parse().unwrap_or(999);
+                // Reference numbers are typically sequential and < 200;
+                // but isolated page numbers > 10 in a reference section
+                // (where we expect [1]-style refs) are likely noise
+                if num > 200 {
+                    return false;
+                }
             }
             // Filter standalone page:column markers
             if page_col_re.is_match(trimmed) {
@@ -289,13 +386,29 @@ fn split_by_pattern(text: &str, pattern: &Regex) -> Vec<String> {
 }
 
 /// Split by blank lines (two or more consecutive newlines).
+/// Merges short fragments (< 60 chars) into the preceding entry since
+/// they're usually continuations that got split by a stray blank line.
 fn split_by_blank_lines(text: &str) -> Vec<String> {
     let splitter = Regex::new(r"\n\s*\n").unwrap();
-    splitter
+    let raw: Vec<String> = splitter
         .split(text)
         .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty() && s.len() > 20) // Skip very short fragments
-        .collect()
+        .filter(|s| !s.is_empty() && s.len() > 40) // Skip very short fragments
+        .collect();
+
+    // Merge short fragments into the previous entry
+    let mut merged: Vec<String> = Vec::new();
+    for entry in raw {
+        if entry.len() < 60 && !merged.is_empty() {
+            // Append to previous — likely a continuation
+            let last = merged.last_mut().unwrap();
+            last.push(' ');
+            last.push_str(&entry);
+        } else {
+            merged.push(entry);
+        }
+    }
+    merged
 }
 
 /// Helper trait for counting regex matches without allocating a Vec.
@@ -355,7 +468,7 @@ fn extract_author_lastnames(text: &str) -> Vec<String> {
         Some(m) => &stripped[..m.start()],
         None => {
             // Take up to first period followed by a space and uppercase
-            let period_re = Regex::new(r"\.\s+[A-Z]").unwrap();
+            let period_re = Regex::new(r"\.\s+[A-Z][a-z]").unwrap();
             match period_re.find(&stripped) {
                 Some(m) => &stripped[..m.start() + 1],
                 None => {
@@ -366,34 +479,74 @@ fn extract_author_lastnames(text: &str) -> Vec<String> {
         }
     };
 
-    // Extract capitalized words that look like last names
-    let name_re = Regex::new(r"\b([A-Z][a-z]{1,20})\b").unwrap();
-    name_re
-        .captures_iter(author_part)
+    // Handle "et al." — only use text before it
+    let author_text = if let Some(pos) = author_part.find("et al") {
+        &author_part[..pos]
+    } else {
+        author_part
+    };
+
+    // Try explicit "LastName, F." and "F. LastName" patterns first
+    let explicit_re = Regex::new(r"\b([A-Z][a-z]{1,20}(?:-[A-Z][a-z]{1,20})?)\s*,\s*[A-Z]\.").unwrap();
+    let mut names: Vec<String> = explicit_re
+        .captures_iter(author_text)
         .filter_map(|c| {
             let name = c.get(1)?.as_str();
-            // Skip common non-name words
-            let skip = [
-                "The", "And", "For", "With", "From", "This", "That", "Into", "Over", "Under",
-                "Vol", "Proc", "IEEE", "ACM", "Int", "Conf",
-            ];
-            if skip.contains(&name) {
-                None
-            } else {
-                Some(name.to_lowercase())
-            }
+            if is_author_skip_word(name) { None } else { Some(name.to_lowercase()) }
         })
-        .collect()
+        .collect();
+
+    // If explicit patterns didn't find enough, fall back to capitalized word extraction
+    if names.len() < 2 {
+        let name_re = Regex::new(r"\b([A-Z][a-z]{1,20}(?:-[A-Z][a-z]{1,20})?)\b").unwrap();
+        names = name_re
+            .captures_iter(author_text)
+            .filter_map(|c| {
+                let name = c.get(1)?.as_str();
+                if is_author_skip_word(name) { None } else { Some(name.to_lowercase()) }
+            })
+            .collect();
+    }
+
+    // Deduplicate while preserving order
+    let mut seen = std::collections::HashSet::new();
+    names.retain(|n| seen.insert(n.clone()));
+    names
 }
 
+/// Words that look like capitalized names but are actually venue/method terms.
+fn is_author_skip_word(name: &str) -> bool {
+    const SKIP: &[&str] = &[
+        "The", "And", "For", "With", "From", "This", "That", "Into", "Over", "Under",
+        "Vol", "Proc", "IEEE", "ACM", "Int", "Conf", "Proceedings", "Conference",
+        "International", "Workshop", "Journal", "University", "Department",
+        "Technical", "Report", "Available", "Accessed", "Retrieved",
+        "Lecture", "Notes", "Computer", "Science", "Society", "Press",
+        "Springer", "Chapter", "Section", "Part", "New", "York",
+    ];
+    SKIP.contains(&name)
+}
+
+/// Venue/source indicators that signal the end of a title in a reference.
+const VENUE_INDICATORS: &[&str] = &[
+    "In ", "In:", "Proceedings", "Proc.", "Journal of", "Trans.",
+    "IEEE ", "ACM ", "SIGMOD", "VLDB", "ICSE", "PLDI", "POPL",
+    "ICFP", "OOPSLA", "ECOOP", "SAS ", "CAV ", "LICS", "ICALP",
+    "Springer", "Lecture Notes", "LNCS", "arXiv:", "https://", "http://",
+    "pp.", "vol.", "Vol.", "pages ", "Technical Report",
+    "Ph.D.", "PhD", "Master", "Dissertation", "thesis",
+];
+
 /// Heuristic title extraction from a reference entry.
+/// Tries multiple strategies in order, returning the first success.
 fn extract_title_from_ref(text: &str) -> Option<String> {
-    // Strip leading numbering
+    // Strip leading numbering: [1], 1., etc.
     let stripped = Regex::new(r"^\s*(?:\[\d+\]\s*|\d+\.\s*)")
         .unwrap()
-        .replace(text, "");
+        .replace(text, "")
+        .to_string();
 
-    // Look for quoted title
+    // Strategy 1: Quoted title (works for styles that quote titles)
     let quoted_re = Regex::new(r#"["\u{201c}]([^"\u{201d}]{10,}?)["\u{201d}]"#).unwrap();
     if let Some(caps) = quoted_re.captures(&stripped) {
         if let Some(m) = caps.get(1) {
@@ -401,19 +554,129 @@ fn extract_title_from_ref(text: &str) -> Option<String> {
         }
     }
 
-    // Heuristic: after authors (first period or year), the title runs to the next period
-    // that's followed by a space and an identifier (venue, "In ", year, etc.)
-    let after_author_re = Regex::new(r"(?:19|20)\d{2}[.)]*\s*(.+?)(?:\.\s|$)").unwrap();
-    if let Some(caps) = after_author_re.captures(&stripped) {
-        if let Some(m) = caps.get(1) {
-            let candidate = m.as_str().trim();
-            if candidate.len() >= 10 {
-                return Some(candidate.to_string());
+    // Strategy 2: Post-author, pre-venue extraction
+    // Find the title between the author block and the first venue indicator.
+    // Author block ends at the year or the first sentence-ending period.
+    if let Some(title) = extract_title_post_author(&stripped) {
+        if title.len() >= 10 {
+            return Some(title);
+        }
+    }
+
+    // Strategy 3: Longest capitalized phrase
+    // Find the longest contiguous run of Title Case words (min 4 words).
+    if let Some(title) = extract_longest_title_case_phrase(&stripped) {
+        return Some(title);
+    }
+
+    None
+}
+
+/// Strategy 2: Extract title from the region between authors and venue.
+fn extract_title_post_author(text: &str) -> Option<String> {
+    // Find the end of the author block.
+    // Common patterns: "Author, A. and Author, B. (2020)." or "Author, A., Author, B. 2020."
+    // The author block typically ends at the year or after a period following initials.
+
+    // Find the first year occurrence
+    let year_re = Regex::new(r"\b((?:19|20)\d{2})\b").unwrap();
+    let year_match = year_re.find(text);
+
+    // Find the start of the title region: just after the year (and any trailing punctuation),
+    // or after the first period that follows a sequence of short name-like tokens.
+    let title_start = if let Some(ym) = year_match {
+        // Skip past year and trailing ". " or ") " or ". "
+        let after_year = &text[ym.end()..];
+        let skip = after_year
+            .chars()
+            .take_while(|c| *c == '.' || *c == ')' || *c == ',' || *c == ' ' || *c == ']')
+            .count();
+        ym.end() + skip
+    } else {
+        // No year found — try to find end of author block by looking for
+        // a period followed by a space and an uppercase letter (sentence boundary)
+        let period_re = Regex::new(r"\.\s+[A-Z][a-z]").unwrap();
+        match period_re.find(text) {
+            Some(m) => m.start() + 2, // skip the ". "
+            None => return None,
+        }
+    };
+
+    if title_start >= text.len() {
+        return None;
+    }
+
+    let rest = &text[title_start..];
+
+    // Find where the title ends: at the first venue indicator or sentence-ending period
+    // followed by a venue-like context.
+    let mut title_end = rest.len();
+
+    // Check for venue indicators
+    for indicator in VENUE_INDICATORS {
+        if let Some(pos) = rest.find(indicator) {
+            if pos > 0 && pos < title_end {
+                title_end = pos;
             }
         }
     }
 
-    None
+    // Also look for a period followed by a space and then a venue-like word
+    let period_venue_re = Regex::new(
+        r"\.\s+(?:In\b|Proceedings|Proc\.|Journal|Trans\.|IEEE|ACM|Springer|Lecture|LNCS|Ph\.D|vol\.|pp\.|Technical|\d{4})"
+    ).unwrap();
+    if let Some(m) = period_venue_re.find(rest) {
+        if m.start() < title_end {
+            title_end = m.start();
+        }
+    }
+
+    let candidate = rest[..title_end].trim().trim_end_matches('.');
+    if candidate.len() >= 10 {
+        Some(candidate.to_string())
+    } else {
+        None
+    }
+}
+
+/// Strategy 3: Find the longest Title Case phrase (most words capitalized).
+fn extract_longest_title_case_phrase(text: &str) -> Option<String> {
+    // Split into sentences at period+space boundaries
+    let sentences: Vec<&str> = text.split(". ").collect();
+    let mut best: Option<String> = None;
+    let mut best_len = 0;
+
+    for sentence in &sentences {
+        let words: Vec<&str> = sentence.split_whitespace().collect();
+        if words.len() < 4 {
+            continue;
+        }
+
+        // Count capitalized words (excluding small words like "of", "the", "and")
+        let small_words = ["of", "the", "and", "in", "on", "for", "a", "an", "to",
+                           "with", "by", "from", "or", "as", "at", "its", "via", "vs"];
+        let cap_count = words.iter().filter(|w| {
+            let first = w.chars().next().unwrap_or('a');
+            first.is_uppercase() || small_words.contains(&w.to_lowercase().as_str())
+        }).count();
+
+        // At least 60% of words should be capitalized or small-words
+        if cap_count * 100 / words.len() >= 60 && words.len() > best_len {
+            // Skip if it looks like an author block (many single-letter initials)
+            let initial_count = words.iter().filter(|w| {
+                w.len() <= 2 && w.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
+            }).count();
+            if initial_count * 3 > words.len() {
+                continue; // Too many initials — probably authors
+            }
+
+            best_len = words.len();
+            best = Some(sentence.trim().trim_end_matches('.').to_string());
+        }
+    }
+
+    // Only return if we found something substantial (at least 4 words)
+    best.filter(|s| s.split_whitespace().count() >= 4)
 }
 
 // ============================================================================
@@ -424,8 +687,43 @@ pub struct NotePoolIndex {
     doi_to_key: HashMap<String, String>,
     arxiv_to_key: HashMap<String, String>,
     title_to_key: HashMap<String, String>,
+    /// (normalized_title, note_key) pairs for fuzzy title matching
+    title_entries: Vec<(String, String)>,
     /// author_lastname + year -> list of keys (may be ambiguous)
     author_year_to_keys: HashMap<String, Vec<String>>,
+}
+
+/// Compute Levenshtein edit distance between two strings.
+fn edit_distance(a: &str, b: &str) -> usize {
+    let a_bytes = a.as_bytes();
+    let b_bytes = b.as_bytes();
+    let m = a_bytes.len();
+    let n = b_bytes.len();
+
+    // Short-circuit: if length difference alone exceeds any reasonable threshold, bail
+    if m.abs_diff(n) > m.max(n) / 5 + 3 {
+        return m.max(n);
+    }
+
+    let mut prev = vec![0usize; n + 1];
+    let mut curr = vec![0usize; n + 1];
+
+    for j in 0..=n {
+        prev[j] = j;
+    }
+
+    for i in 1..=m {
+        curr[0] = i;
+        for j in 1..=n {
+            let cost = if a_bytes[i - 1] == b_bytes[j - 1] { 0 } else { 1 };
+            curr[j] = (prev[j] + 1)
+                .min(curr[j - 1] + 1)
+                .min(prev[j - 1] + cost);
+        }
+        std::mem::swap(&mut prev, &mut curr);
+    }
+
+    prev[n]
 }
 
 impl NotePoolIndex {
@@ -490,6 +788,7 @@ impl NotePoolIndex {
         let mut doi_to_key = HashMap::new();
         let mut arxiv_to_key = HashMap::new();
         let mut title_to_key = HashMap::new();
+        let mut title_entries = Vec::new();
         let mut author_year_to_keys: HashMap<String, Vec<String>> = HashMap::new();
 
         for (dois, arxivs, title_entry, author_years) in per_note {
@@ -500,7 +799,8 @@ impl NotePoolIndex {
                 arxiv_to_key.entry(arxiv).or_insert(key);
             }
             if let Some((norm, key)) = title_entry {
-                title_to_key.insert(norm, key);
+                title_to_key.insert(norm.clone(), key.clone());
+                title_entries.push((norm, key));
             }
             for (lookup, key) in author_years {
                 author_year_to_keys.entry(lookup).or_default().push(key);
@@ -517,13 +817,14 @@ impl NotePoolIndex {
             doi_to_key,
             arxiv_to_key,
             title_to_key,
+            title_entries,
             author_year_to_keys,
         }
     }
 
     /// Match a parsed reference against the note pool using tiered matching.
     pub fn match_reference(&self, reference: &ExtractedReference) -> Option<CitationMatch> {
-        // Tier 1: DOI exact match (confidence 1.0)
+        // Tier 1: DOI exact match
         if let Some(ref doi) = reference.doi {
             if let Some(key) = self.doi_to_key.get(&doi.to_lowercase()) {
                 return Some(CitationMatch {
@@ -535,46 +836,100 @@ impl NotePoolIndex {
             }
         }
 
-        // Tier 2: arXiv exact match (confidence 1.0)
+        // Tier 2: arXiv exact match
         if let Some(ref arxiv_id) = reference.arxiv_id {
             if let Some(key) = self.arxiv_to_key.get(arxiv_id) {
                 return Some(CitationMatch {
                     target_key: key.clone(),
                     match_type: "arxiv".to_string(),
-                    confidence: 1.0,
+                    confidence: 0.95,
                     raw_text: reference.raw_text.clone(),
                 });
             }
         }
 
-        // Tier 3: Title match (confidence 0.85)
+        // Tier 3: Title matching — exact normalized first, then edit-distance fallback
         if let Some(ref title) = reference.title {
             let norm = normalize_title(title);
             if norm.len() >= 5 {
+                // 3a: Exact normalized match (fast HashMap lookup)
                 if let Some(key) = self.title_to_key.get(&norm) {
                     return Some(CitationMatch {
                         target_key: key.clone(),
                         match_type: "title".to_string(),
-                        confidence: 0.85,
+                        confidence: 0.90,
+                        raw_text: reference.raw_text.clone(),
+                    });
+                }
+
+                // 3b: Fuzzy match — Levenshtein edit distance ≤ 5% of title length
+                // Linear scan over all titles (hundreds, not millions, so fine)
+                let max_dist = (norm.len() / 20).max(2); // ≤5% of chars, minimum 2
+                let mut best_match: Option<(&str, usize)> = None;
+
+                for (pool_title, pool_key) in &self.title_entries {
+                    // Quick length filter before computing edit distance
+                    if pool_title.len().abs_diff(norm.len()) > max_dist {
+                        continue;
+                    }
+                    let dist = edit_distance(&norm, pool_title);
+                    if dist <= max_dist && dist > 0 {
+                        if best_match.is_none() || dist < best_match.unwrap().1 {
+                            best_match = Some((pool_key.as_str(), dist));
+                        }
+                    }
+                }
+
+                if let Some((key, dist)) = best_match {
+                    // Confidence scales from 0.85 (at max_dist) to 0.89 (at dist=1)
+                    let confidence = 0.90 - (dist as f64 * 0.05 / max_dist as f64).min(0.10);
+                    return Some(CitationMatch {
+                        target_key: key.to_string(),
+                        match_type: "title_fuzzy".to_string(),
+                        confidence,
                         raw_text: reference.raw_text.clone(),
                     });
                 }
             }
         }
 
-        // Tier 4: Author last name + year (confidence 0.5, only if unambiguous)
+        // Tier 4: Author last name + year — vote counting across all extracted authors
         if let Some(year) = reference.year {
+            let mut candidate_votes: HashMap<&str, usize> = HashMap::new();
+
             for author in &reference.authors {
                 let lookup = format!("{}_{}", author, year);
                 if let Some(keys) = self.author_year_to_keys.get(&lookup) {
                     if keys.len() == 1 {
-                        return Some(CitationMatch {
-                            target_key: keys[0].clone(),
-                            match_type: "author_year".to_string(),
-                            confidence: 0.5,
-                            raw_text: reference.raw_text.clone(),
-                        });
+                        *candidate_votes.entry(&keys[0]).or_insert(0) += 1;
                     }
+                }
+            }
+
+            // Pick candidate with most author matches
+            if let Some((&best_key, &vote_count)) =
+                candidate_votes.iter().max_by_key(|(_, &v)| v)
+            {
+                // Require either 2+ author matches, or 1 match on the first author
+                let is_first_author_match = reference.authors.first().map_or(false, |first| {
+                    let lookup = format!("{}_{}", first, year);
+                    self.author_year_to_keys
+                        .get(&lookup)
+                        .map_or(false, |keys| keys.len() == 1 && keys[0] == best_key)
+                });
+
+                if vote_count >= 2 || (vote_count == 1 && is_first_author_match) {
+                    let confidence = match vote_count {
+                        1 => 0.40,
+                        2 => 0.55,
+                        _ => 0.65, // 3+
+                    };
+                    return Some(CitationMatch {
+                        target_key: best_key.to_string(),
+                        match_type: "author_year".to_string(),
+                        confidence,
+                        raw_text: reference.raw_text.clone(),
+                    });
                 }
             }
         }
@@ -831,26 +1186,70 @@ pub async fn citation_write(
         }
     };
 
-    let cached = match load_cached_result(&state.db, &req.note_key) {
-        Some(r) => r,
-        None => {
-            return (
-                axum::http::StatusCode::BAD_REQUEST,
-                "No cached scan results. Run scan first.",
-            )
-                .into_response();
+    // Build the effective scan result: filter by accepted_keys if present
+    let effective_result = if let Some(ref accepted_keys) = req.accepted_keys {
+        if accepted_keys.is_empty() {
+            return (axum::http::StatusCode::OK, "No citations to write").into_response();
+        }
+
+        let accepted_set: std::collections::HashSet<&str> =
+            accepted_keys.iter().map(|k| k.as_str()).collect();
+
+        // Start from cached scan results if available
+        let cached_matches = load_cached_result(&state.db, &req.note_key)
+            .map(|r| r.matches)
+            .unwrap_or_default();
+
+        // Keep only accepted matches from the scan
+        let mut filtered: Vec<CitationMatch> = cached_matches
+            .into_iter()
+            .filter(|m| accepted_set.contains(m.target_key.as_str()))
+            .collect();
+
+        // Find keys that were manually added (in accepted_keys but not in scan results)
+        let scan_keys: std::collections::HashSet<String> =
+            filtered.iter().map(|m| m.target_key.clone()).collect();
+        for key in accepted_keys {
+            if !scan_keys.contains(key.as_str()) {
+                // Manual addition — create a synthetic CitationMatch
+                filtered.push(CitationMatch {
+                    target_key: key.clone(),
+                    match_type: "manual".to_string(),
+                    confidence: 1.0,
+                    raw_text: String::new(),
+                });
+            }
+        }
+
+        CitationScanResult {
+            source_key: req.note_key.clone(),
+            matches: filtered,
+            unmatched_count: 0,
+            timestamp: Utc::now().to_rfc3339(),
+            pdf_hash: String::new(),
+        }
+    } else {
+        // Legacy: write all cached matches
+        match load_cached_result(&state.db, &req.note_key) {
+            Some(r) if !r.matches.is_empty() => r,
+            Some(_) => {
+                return (axum::http::StatusCode::OK, "No matches to write").into_response();
+            }
+            None => {
+                return (
+                    axum::http::StatusCode::BAD_REQUEST,
+                    "No cached scan results. Run scan first.",
+                )
+                    .into_response();
+            }
         }
     };
 
-    if cached.matches.is_empty() {
-        return (axum::http::StatusCode::OK, "No matches to write").into_response();
-    }
-
-    match write_citations_to_markdown(&note, &cached, &notes_map, &state.notes_dir) {
+    match write_citations_to_markdown(&note, &effective_result, &notes_map, &state.notes_dir) {
         Ok(()) => {
             state.invalidate_notes_cache();
             state.reindex_graph_note(&req.note_key);
-            let msg = format!("Wrote {} citation(s) to {}", cached.matches.len(), req.note_key);
+            let msg = format!("Wrote {} citation(s) to {}", effective_result.matches.len(), req.note_key);
             (axum::http::StatusCode::OK, msg).into_response()
         }
         Err(e) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),

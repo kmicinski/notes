@@ -58,4 +58,14 @@ Section 3 shows us why paying for SQL server has been a justified decision even 
 
 Stupid question: why was it that the discovery of bloom filters made this palatable to industry?
 
+<!-- BEGIN AUTO-CITATIONS -->
+## References
 
+- [@335fc9] Fast Equi-Join Algorithms on GPUs: Design and Implementation
+- [@5a34f0] Space-Time Tradeoffs for Conjunctive Queries with Access Patterns
+- [@66f71d] On the Decidability of Disassembling Binaries
+- [@9afa95] HoneyComb: A Parallel Worst-Case Optimal Join on Multicores
+- [@a36630] cvc5: A Versatile and Industrial-Strength SMT Solver
+- [@d02082] Free Join: Unifying Worst-Case Optimal and Traditional Joins
+- [@f60ccd] Evaluating Datalog over Semirings: A Grounding-based Approach
+<!-- END AUTO-CITATIONS -->

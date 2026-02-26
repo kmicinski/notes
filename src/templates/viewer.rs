@@ -4,6 +4,7 @@
 
 use crate::models::Note;
 use crate::notes::html_escape;
+use super::graph_js::{render_graph_js, graph_css, GraphRendererConfig, GraphDataSource};
 
 // ============================================================================
 // Viewer Template (View mode with PDF support)
@@ -30,8 +31,10 @@ pub fn render_viewer(
         } else {
             ""
         };
-        let scan_btn = if is_paper && logged_in {
-            r#" <button class="pdf-toggle-btn" onclick="scanReferences()" title="Scan PDF for references to other papers">Scan Refs</button>"#
+        let cite_btn = if is_paper && logged_in {
+            r#" <button class="pdf-toggle-btn" onclick="scanReferences()" title="Scan PDF and manage citations">Scan &amp; Cite</button>"#
+        } else if logged_in {
+            r#" <button class="pdf-toggle-btn" onclick="openCitationManager()" title="Manage citations manually">Cite</button>"#
         } else {
             ""
         };
@@ -41,10 +44,12 @@ pub fn render_viewer(
             html_escape(pdf),
             html_escape(pdf),
             unlink_btn,
-            scan_btn
+            cite_btn
         )
     } else if is_paper && logged_in {
-        r#"<button class="pdf-toggle-btn" id="pdf-toggle-btn" onclick="togglePdfViewer()">Find PDF</button>"#.to_string()
+        r#"<button class="pdf-toggle-btn" id="pdf-toggle-btn" onclick="togglePdfViewer()">Find PDF</button> <button class="pdf-toggle-btn" onclick="openCitationManager()" title="Manage citations manually">Cite</button>"#.to_string()
+    } else if logged_in {
+        r#"<button class="pdf-toggle-btn" onclick="openCitationManager()" title="Manage citations manually">Cite</button>"#.to_string()
     } else {
         String::new()
     };
@@ -711,64 +716,15 @@ pub fn render_viewer(
             overflow: hidden;
         }}
         .mini-graph-body svg {{ width: 100%; height: 100%; }}
-        .mini-graph-body .mg-link {{ stroke: #93a1a1; stroke-opacity: 0.3; }}
-        .mini-graph-body .mg-link.deg1 {{ stroke: #073642; stroke-opacity: 0.7; stroke-width: 1.5px; }}
-        .mini-graph-body .mg-link.citation {{ stroke-dasharray: 4,2; stroke: #b58900; stroke-opacity: 0.5; }}
-        .mini-graph-body .mg-link.citation.deg1 {{ stroke-opacity: 0.8; stroke-width: 1.5px; }}
-        .mini-graph-body .mg-link.highlighted {{ stroke: var(--fg); stroke-opacity: 0.9; stroke-width: 2.5px; }}
-        .mini-graph-body .mg-node circle {{ cursor: pointer; stroke: var(--bg); stroke-width: 1.5px; }}
-        .mini-graph-body .mg-node .mg-label {{
-            font-size: 8px;
-            fill: var(--fg);
-            pointer-events: none;
-            text-anchor: middle;
-            opacity: 0.7;
-        }}
-        .mini-graph-body .mg-node.center .mg-label {{ opacity: 1; font-size: 10px; font-weight: 600; }}
-        .mini-graph-body .mg-node:hover .mg-label {{ opacity: 1; font-size: 10px; }}
-        .mg-tooltip {{
-            position: absolute;
-            background: var(--bg);
-            border: 1px solid var(--border);
-            border-radius: 4px;
-            padding: 0.4rem 0.6rem;
-            font-size: 0.8rem;
-            pointer-events: none;
-            z-index: 1001;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.15);
-            max-width: 250px;
-        }}
-        .mg-tooltip .mgt-title {{ font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
-        .mg-tooltip .mgt-meta {{ font-size: 0.75rem; color: var(--muted); margin-top: 0.15rem; }}
-        .mg-legend {{
-            position: absolute;
-            bottom: 6px;
-            left: 6px;
-            font-size: 0.7rem;
-            color: var(--muted);
-            display: flex;
-            gap: 0.6rem;
-            align-items: center;
-        }}
-        .mg-legend-item {{
-            display: flex;
-            align-items: center;
-            gap: 0.2rem;
-        }}
-        .mg-legend-dot {{
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            display: inline-block;
-        }}
+        {mini_graph_css}
 
-        /* Citation scan results panel */
+        /* Citation Manager panel */
         .citation-panel {{
             position: fixed;
             top: 60px;
             right: 20px;
-            width: 380px;
-            max-height: 70vh;
+            width: 440px;
+            max-height: 80vh;
             background: var(--bg);
             border: 1px solid var(--border);
             border-radius: 8px;
@@ -799,33 +755,8 @@ pub fn render_viewer(
         }}
         .citation-panel-body {{
             overflow-y: auto;
-            padding: 0.75rem 1rem;
+            padding: 0;
             flex: 1;
-        }}
-        .citation-match {{
-            padding: 0.5rem 0;
-            border-bottom: 1px solid var(--border);
-            font-size: 0.85rem;
-        }}
-        .citation-match:last-child {{ border-bottom: none; }}
-        .citation-match .cm-key {{
-            font-family: monospace;
-            color: var(--link);
-            font-size: 0.8rem;
-        }}
-        .citation-match .cm-type {{
-            display: inline-block;
-            font-size: 0.7rem;
-            padding: 0.1rem 0.3rem;
-            border-radius: 3px;
-            background: var(--accent);
-            color: var(--muted);
-            margin-left: 0.3rem;
-        }}
-        .citation-match .cm-title {{
-            display: block;
-            margin-top: 0.2rem;
-            color: var(--fg);
         }}
         .citation-panel-footer {{
             padding: 0.75rem 1rem;
@@ -833,6 +764,196 @@ pub fn render_viewer(
             display: flex;
             gap: 0.5rem;
             align-items: center;
+        }}
+
+        /* Section headers */
+        .cm-section-header {{
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--muted);
+            padding: 0.5rem 1rem 0.3rem;
+            border-bottom: 1px solid var(--border);
+            background: var(--accent);
+        }}
+
+        /* Each scan match item */
+        .cm-item {{
+            padding: 0.5rem 1rem;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.82rem;
+            border-left: 3px solid transparent;
+            transition: opacity 0.2s, border-color 0.2s;
+        }}
+        .cm-item.accepted {{ border-left-color: var(--green); opacity: 1; }}
+        .cm-item.rejected {{ border-left-color: var(--red); opacity: 0.5; }}
+        .cm-item.rejected .cm-key {{ text-decoration: line-through; }}
+        .cm-item-row {{
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            flex-wrap: wrap;
+        }}
+
+        /* Accept/reject toggle buttons */
+        .cm-toggle-btn {{
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 1.5rem;
+            height: 1.5rem;
+            border-radius: 50%;
+            border: 1px solid var(--border);
+            background: var(--bg);
+            cursor: pointer;
+            font-size: 0.75rem;
+            transition: background 0.15s, color 0.15s;
+        }}
+        .cm-toggle-btn:hover {{ background: var(--accent); }}
+        .cm-toggle-btn.accept {{ color: var(--green); border-color: var(--green); }}
+        .cm-toggle-btn.accept:hover {{ background: var(--green); color: white; }}
+        .cm-toggle-btn.reject {{ color: var(--red); border-color: var(--red); }}
+        .cm-toggle-btn.reject:hover {{ background: var(--red); color: white; }}
+        .cm-toggle-btn.active-accept {{ background: var(--green); color: white; border-color: var(--green); }}
+        .cm-toggle-btn.active-reject {{ background: var(--red); color: white; border-color: var(--red); }}
+
+        .cm-key {{
+            font-family: monospace;
+            color: var(--link);
+            font-size: 0.78rem;
+        }}
+        .cm-confidence {{
+            font-size: 0.68rem;
+            color: var(--muted);
+        }}
+
+        /* Match type badges */
+        .cm-badge {{
+            display: inline-block;
+            font-size: 0.65rem;
+            padding: 0.08rem 0.35rem;
+            border-radius: 3px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }}
+        .cm-badge-doi {{ background: #859900; color: white; }}
+        .cm-badge-arxiv {{ background: #268bd2; color: white; }}
+        .cm-badge-title {{ background: #b58900; color: white; }}
+        .cm-badge-author_year {{ background: #cb4b16; color: white; }}
+        .cm-badge-manual {{ background: #6c71c4; color: white; }}
+
+        /* Raw reference text (expandable) */
+        .cm-raw-text {{
+            font-size: 0.75rem;
+            color: var(--muted);
+            margin-top: 0.3rem;
+            max-height: 2.6rem;
+            overflow: hidden;
+            word-break: break-word;
+            line-height: 1.3;
+            transition: max-height 0.25s ease;
+            cursor: pointer;
+        }}
+        .cm-raw-text.expanded {{ max-height: 20rem; }}
+        .cm-raw-text-toggle {{
+            font-size: 0.65rem;
+            color: var(--link);
+            cursor: pointer;
+            margin-top: 0.15rem;
+            display: inline-block;
+        }}
+
+        /* Manual add section */
+        .cm-search-section {{
+            padding: 0.5rem 1rem;
+            border-bottom: 1px solid var(--border);
+        }}
+        .cm-search-wrap {{
+            position: relative;
+        }}
+        .cm-search-input {{
+            width: 100%;
+            padding: 0.4rem 0.6rem;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-size: 0.82rem;
+            background: var(--bg);
+            color: var(--fg);
+            box-sizing: border-box;
+        }}
+        .cm-search-input:focus {{ outline: none; border-color: var(--link); }}
+        .cm-search-dropdown {{
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            max-height: 200px;
+            overflow-y: auto;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-top: none;
+            border-radius: 0 0 4px 4px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+            z-index: 10;
+            display: none;
+        }}
+        .cm-search-dropdown.visible {{ display: block; }}
+        .cm-search-item {{
+            padding: 0.4rem 0.6rem;
+            cursor: pointer;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.8rem;
+        }}
+        .cm-search-item:last-child {{ border-bottom: none; }}
+        .cm-search-item:hover, .cm-search-item.focused {{ background: var(--accent); }}
+        .cm-search-item-title {{ color: var(--fg); }}
+        .cm-search-item-meta {{ font-size: 0.72rem; color: var(--muted); margin-top: 0.1rem; }}
+        .cm-search-item-key {{ font-family: monospace; font-size: 0.7rem; color: var(--link); }}
+
+        /* Accepted list section */
+        .cm-accepted-section {{
+            background: color-mix(in srgb, var(--accent) 50%, var(--bg));
+        }}
+        .cm-accepted-item {{
+            padding: 0.35rem 1rem;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.8rem;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            animation: cm-slide-in 0.2s ease;
+        }}
+        .cm-accepted-item:last-child {{ border-bottom: none; }}
+        .cm-accepted-item .cm-remove-btn {{
+            background: none;
+            border: none;
+            color: var(--red);
+            cursor: pointer;
+            font-size: 0.85rem;
+            padding: 0 0.2rem;
+            opacity: 0.6;
+        }}
+        .cm-accepted-item .cm-remove-btn:hover {{ opacity: 1; }}
+        .cm-accepted-item .cm-accepted-info {{
+            flex: 1;
+            min-width: 0;
+        }}
+        .cm-accepted-item .cm-accepted-title {{
+            color: var(--fg);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }}
+        @keyframes cm-slide-in {{
+            from {{ opacity: 0; transform: translateX(-8px); }}
+            to {{ opacity: 1; transform: translateX(0); }}
+        }}
+        .cm-empty-msg {{
+            padding: 0.5rem 1rem;
+            font-size: 0.8rem;
+            color: var(--muted);
+            font-style: italic;
         }}
         /* Share panel - reuses citation panel styles */
         .share-panel {{
@@ -981,13 +1102,26 @@ pub fn render_viewer(
         </div>
         <div class="citation-panel" id="citation-panel">
             <div class="citation-panel-header">
-                <span>Citation Scan Results</span>
+                <span>Citation Manager</span>
                 <button class="citation-panel-close" onclick="closeCitationPanel()">&times;</button>
             </div>
-            <div class="citation-panel-body" id="citation-panel-body"></div>
-            <div class="citation-panel-footer" id="citation-panel-footer" style="display:none;">
+            <div class="citation-panel-body" id="citation-panel-body">
+                <div id="cm-scan-section"></div>
+                <div class="cm-section-header">Add Citation Manually</div>
+                <div class="cm-search-section">
+                    <div class="cm-search-wrap">
+                        <input type="text" class="cm-search-input" id="cm-search-input"
+                               placeholder="Search by title, author, key..."
+                               autocomplete="off">
+                        <div class="cm-search-dropdown" id="cm-search-dropdown"></div>
+                    </div>
+                </div>
+                <div class="cm-section-header">Accepted Citations (<span id="cm-accepted-count">0</span>)</div>
+                <div class="cm-accepted-section" id="cm-accepted-list"></div>
+            </div>
+            <div class="citation-panel-footer" id="citation-panel-footer">
                 <span class="citation-stats" id="citation-stats"></span>
-                <button class="pdf-toggle-btn" onclick="writeCitations()" id="write-citations-btn">Write to note</button>
+                <button class="pdf-toggle-btn" onclick="writeCitations()" id="write-citations-btn" disabled>Write 0 citations</button>
             </div>
         </div>
     </div>
@@ -1772,18 +1906,33 @@ pub fn render_viewer(
         }}
 
         // =====================================================================
-        // Citation Scanning
+        // Citation Manager — state, scan, accept/reject, manual add, write
         // =====================================================================
+
+        const cmState = {{
+            scanResults: [],    // {{ target_key, match_type, confidence, raw_text, accepted }}
+            manualAdds: [],     // {{ key, title }}
+            allNotes: null,     // loaded from /api/notes/list
+            searchFocusIdx: -1, // keyboard nav index in dropdown
+        }};
+
+        function escHtml(s) {{
+            const d = document.createElement('div');
+            d.textContent = s;
+            return d.innerHTML;
+        }}
+
+        // --- Open citation manager (with or without scan) ---
 
         async function scanReferences() {{
             const panel = document.getElementById('citation-panel');
-            const body = document.getElementById('citation-panel-body');
-            const footer = document.getElementById('citation-panel-footer');
-            const stats = document.getElementById('citation-stats');
-
             panel.classList.add('active');
-            body.innerHTML = '<div style="text-align:center;padding:1rem;color:var(--muted);"><span class="smart-find-spinner"></span> Scanning PDF references...</div>';
-            footer.style.display = 'none';
+            const scanSection = document.getElementById('cm-scan-section');
+            scanSection.innerHTML = '<div style="text-align:center;padding:1rem;color:var(--muted);"><span class="smart-find-spinner"></span> Scanning PDF references...</div>';
+            cmState.scanResults = [];
+            cmState.manualAdds = [];
+            renderAcceptedList();
+            loadNotesForSearch();
 
             try {{
                 const resp = await fetch('/api/citations/scan', {{
@@ -1794,35 +1943,284 @@ pub fn render_viewer(
 
                 if (!resp.ok) {{
                     const err = await resp.text();
-                    body.innerHTML = '<div style="color:var(--red);padding:0.5rem;">' + err + '</div>';
+                    scanSection.innerHTML = '<div style="color:var(--red);padding:0.75rem 1rem;">' + escHtml(err) + '</div>';
                     return;
                 }}
 
                 const data = await resp.json();
+                cmState.scanResults = data.matches.map(m => ({{
+                    ...m,
+                    accepted: m.confidence >= 0.85
+                }}));
 
-                if (data.matches.length === 0) {{
-                    body.innerHTML = '<div style="padding:0.5rem;color:var(--muted);">No matches found among ' + data.unmatched_count + ' references.</div>';
-                    return;
-                }}
-
-                let html = '';
-                for (const m of data.matches) {{
-                    html += '<div class="citation-match">' +
-                        '<span class="cm-key">[@' + m.target_key + ']</span>' +
-                        '<span class="cm-type">' + m.match_type + ' ' + Math.round(m.confidence * 100) + '%</span>' +
-                        '<span class="cm-title">' + (m.raw_text.substring(0, 120)) + '</span>' +
-                        '</div>';
-                }}
-                body.innerHTML = html;
-
-                stats.textContent = data.matches.length + ' match(es), ' + data.unmatched_count + ' unmatched';
-                footer.style.display = 'flex';
+                renderScanResults(data.unmatched_count);
+                renderAcceptedList();
             }} catch (e) {{
-                body.innerHTML = '<div style="color:var(--red);padding:0.5rem;">Error: ' + e.message + '</div>';
+                scanSection.innerHTML = '<div style="color:var(--red);padding:0.75rem 1rem;">Error: ' + escHtml(e.message) + '</div>';
             }}
         }}
 
+        function openCitationManager() {{
+            const panel = document.getElementById('citation-panel');
+            panel.classList.add('active');
+            const scanSection = document.getElementById('cm-scan-section');
+            cmState.scanResults = [];
+            cmState.manualAdds = [];
+            scanSection.innerHTML = '<div class="cm-empty-msg">No PDF scan — use search below to add citations manually.</div>';
+            renderAcceptedList();
+            loadNotesForSearch();
+        }}
+
+        function closeCitationPanel() {{
+            document.getElementById('citation-panel').classList.remove('active');
+        }}
+
+        // --- Notes list for autocomplete ---
+
+        async function loadNotesForSearch() {{
+            if (cmState.allNotes) return;
+            try {{
+                const resp = await fetch('/api/notes/list');
+                if (resp.ok) cmState.allNotes = await resp.json();
+            }} catch (e) {{
+                console.error('Failed to load notes list:', e);
+            }}
+        }}
+
+        // --- Render scan results section ---
+
+        function renderScanResults(unmatchedCount) {{
+            const scanSection = document.getElementById('cm-scan-section');
+            if (cmState.scanResults.length === 0) {{
+                scanSection.innerHTML = '<div class="cm-section-header">Auto-Scan Results</div>' +
+                    '<div class="cm-empty-msg">No matches found' +
+                    (unmatchedCount ? ' among ' + unmatchedCount + ' references' : '') + '.</div>';
+                return;
+            }}
+
+            let html = '<div class="cm-section-header">Auto-Scan Results (' + cmState.scanResults.length + ' matches, ' + unmatchedCount + ' unmatched)</div>';
+            cmState.scanResults.forEach((m, i) => {{
+                const cls = m.accepted ? 'accepted' : 'rejected';
+                const acceptCls = m.accepted ? 'active-accept' : 'accept';
+                const rejectCls = m.accepted ? 'reject' : 'active-reject';
+                const title = getNoteTitle(m.target_key);
+                html += '<div class="cm-item ' + cls + '" id="cm-scan-' + i + '">' +
+                    '<div class="cm-item-row">' +
+                    '<button class="cm-toggle-btn ' + acceptCls + '" onclick="cmToggle(' + i + ',true)" title="Accept">&#10003;</button>' +
+                    '<button class="cm-toggle-btn ' + rejectCls + '" onclick="cmToggle(' + i + ',false)" title="Reject">&#10007;</button>' +
+                    ' <a href="/note/' + escHtml(m.target_key) + '" class="cm-key" target="_blank">[@' + escHtml(m.target_key) + ']</a>' +
+                    ' <span class="cm-badge cm-badge-' + escHtml(m.match_type) + '">' + escHtml(m.match_type) + '</span>' +
+                    ' <span class="cm-confidence">' + Math.round(m.confidence * 100) + '%</span>' +
+                    '</div>';
+                if (title) {{
+                    html += '<div style="font-size:0.78rem;margin-top:0.15rem;color:var(--fg);">' + escHtml(title) + '</div>';
+                }}
+                if (m.raw_text) {{
+                    html += '<div class="cm-raw-text" onclick="this.classList.toggle(\'expanded\')">' + escHtml(m.raw_text) + '</div>';
+                }}
+                html += '</div>';
+            }});
+            scanSection.innerHTML = html;
+        }}
+
+        function getNoteTitle(key) {{
+            if (!cmState.allNotes) return '';
+            const n = cmState.allNotes.find(n => n.key === key);
+            return n ? n.title : '';
+        }}
+
+        // --- Toggle accept/reject ---
+
+        function cmToggle(index, accept) {{
+            cmState.scanResults[index].accepted = accept;
+            renderScanResults(0);  // re-render (unmatched count not critical for re-render)
+            renderAcceptedList();
+        }}
+
+        // --- Render accepted list ---
+
+        function renderAcceptedList() {{
+            const container = document.getElementById('cm-accepted-list');
+            const countSpan = document.getElementById('cm-accepted-count');
+            const accepted = getAcceptedKeys();
+            countSpan.textContent = accepted.length;
+
+            if (accepted.length === 0) {{
+                container.innerHTML = '<div class="cm-empty-msg">No citations accepted yet.</div>';
+            }} else {{
+                let html = '';
+                accepted.forEach(item => {{
+                    const badgeCls = 'cm-badge cm-badge-' + (item.matchType || 'manual');
+                    html += '<div class="cm-accepted-item">' +
+                        '<button class="cm-remove-btn" onclick="cmRemoveAccepted(\'' + escHtml(item.key) + '\')" title="Remove">&#10007;</button>' +
+                        '<div class="cm-accepted-info">' +
+                        '<span class="cm-key">[@' + escHtml(item.key) + ']</span>' +
+                        ' <span class="' + badgeCls + '">' + escHtml(item.matchType || 'manual') + '</span>' +
+                        '<div class="cm-accepted-title">' + escHtml(item.title || '') + '</div>' +
+                        '</div></div>';
+                }});
+                container.innerHTML = html;
+            }}
+
+            // Update footer
+            const btn = document.getElementById('write-citations-btn');
+            const stats = document.getElementById('citation-stats');
+            btn.textContent = 'Write ' + accepted.length + ' citation' + (accepted.length !== 1 ? 's' : '');
+            btn.disabled = accepted.length === 0;
+            stats.textContent = accepted.length + ' accepted';
+        }}
+
+        function getAcceptedKeys() {{
+            const items = [];
+            const seen = new Set();
+            // From scan results
+            cmState.scanResults.forEach(m => {{
+                if (m.accepted && !seen.has(m.target_key)) {{
+                    seen.add(m.target_key);
+                    items.push({{ key: m.target_key, title: getNoteTitle(m.target_key), matchType: m.match_type }});
+                }}
+            }});
+            // From manual adds
+            cmState.manualAdds.forEach(m => {{
+                if (!seen.has(m.key)) {{
+                    seen.add(m.key);
+                    items.push({{ key: m.key, title: m.title, matchType: 'manual' }});
+                }}
+            }});
+            return items;
+        }}
+
+        // --- Remove from accepted ---
+
+        function cmRemoveAccepted(key) {{
+            // If it's in scanResults, toggle to rejected
+            const scanIdx = cmState.scanResults.findIndex(m => m.target_key === key);
+            if (scanIdx >= 0) {{
+                cmState.scanResults[scanIdx].accepted = false;
+                renderScanResults(0);
+            }}
+            // If it's in manualAdds, remove it
+            cmState.manualAdds = cmState.manualAdds.filter(m => m.key !== key);
+            renderAcceptedList();
+        }}
+
+        // --- Manual add: autocomplete search ---
+
+        (function() {{
+            const input = document.getElementById('cm-search-input');
+            const dropdown = document.getElementById('cm-search-dropdown');
+            if (!input || !dropdown) return;
+            let debounceTimer = null;
+
+            input.addEventListener('input', function() {{
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(() => cmSearch(input.value), 120);
+            }});
+
+            input.addEventListener('keydown', function(e) {{
+                const items = dropdown.querySelectorAll('.cm-search-item');
+                if (e.key === 'ArrowDown') {{
+                    e.preventDefault();
+                    cmState.searchFocusIdx = Math.min(cmState.searchFocusIdx + 1, items.length - 1);
+                    updateFocus(items);
+                }} else if (e.key === 'ArrowUp') {{
+                    e.preventDefault();
+                    cmState.searchFocusIdx = Math.max(cmState.searchFocusIdx - 1, 0);
+                    updateFocus(items);
+                }} else if (e.key === 'Enter') {{
+                    e.preventDefault();
+                    if (cmState.searchFocusIdx >= 0 && cmState.searchFocusIdx < items.length) {{
+                        items[cmState.searchFocusIdx].click();
+                    }}
+                }} else if (e.key === 'Escape') {{
+                    dropdown.classList.remove('visible');
+                    cmState.searchFocusIdx = -1;
+                }}
+            }});
+
+            // Close dropdown on outside click
+            document.addEventListener('click', function(e) {{
+                if (!input.contains(e.target) && !dropdown.contains(e.target)) {{
+                    dropdown.classList.remove('visible');
+                }}
+            }});
+
+            function updateFocus(items) {{
+                items.forEach((el, i) => el.classList.toggle('focused', i === cmState.searchFocusIdx));
+                if (cmState.searchFocusIdx >= 0 && items[cmState.searchFocusIdx]) {{
+                    items[cmState.searchFocusIdx].scrollIntoView({{ block: 'nearest' }});
+                }}
+            }}
+        }})();
+
+        function cmSearch(query) {{
+            const dropdown = document.getElementById('cm-search-dropdown');
+            cmState.searchFocusIdx = -1;
+            if (!query || query.length < 2 || !cmState.allNotes) {{
+                dropdown.classList.remove('visible');
+                return;
+            }}
+
+            const q = query.toLowerCase();
+            const accepted = new Set(getAcceptedKeys().map(a => a.key));
+            accepted.add(noteKey); // exclude current note
+
+            const matches = cmState.allNotes
+                .filter(n => {{
+                    if (accepted.has(n.key)) return false;
+                    return (n.title && n.title.toLowerCase().includes(q)) ||
+                           n.key.toLowerCase().includes(q) ||
+                           (n.authors && n.authors.toLowerCase().includes(q)) ||
+                           (n.venue && n.venue.toLowerCase().includes(q));
+                }})
+                .slice(0, 12);
+
+            if (matches.length === 0) {{
+                dropdown.innerHTML = '<div style="padding:0.5rem;color:var(--muted);font-size:0.8rem;">No results</div>';
+                dropdown.classList.add('visible');
+                return;
+            }}
+
+            let html = '';
+            matches.forEach(n => {{
+                const meta = [n.authors, n.year, n.venue].filter(Boolean).join(' · ');
+                html += '<div class="cm-search-item" onclick="cmAddManual(\'' + escHtml(n.key) + '\',\'' + escHtml((n.title || '').replace(/'/g, '')) + '\')">' +
+                    '<div class="cm-search-item-title">' + escHtml(n.title || n.key) + '</div>' +
+                    (meta ? '<div class="cm-search-item-meta">' + escHtml(meta) + '</div>' : '') +
+                    '<div class="cm-search-item-key">' + escHtml(n.key) + '</div>' +
+                    '</div>';
+            }});
+            dropdown.innerHTML = html;
+            dropdown.classList.add('visible');
+        }}
+
+        function cmAddManual(key, title) {{
+            // Avoid duplicates
+            if (cmState.manualAdds.find(m => m.key === key)) return;
+            if (cmState.scanResults.find(m => m.target_key === key && m.accepted)) return;
+
+            // If it was a rejected scan result, re-accept it instead
+            const scanIdx = cmState.scanResults.findIndex(m => m.target_key === key);
+            if (scanIdx >= 0) {{
+                cmState.scanResults[scanIdx].accepted = true;
+                renderScanResults(0);
+            }} else {{
+                cmState.manualAdds.push({{ key, title }});
+            }}
+
+            const input = document.getElementById('cm-search-input');
+            const dropdown = document.getElementById('cm-search-dropdown');
+            input.value = '';
+            dropdown.classList.remove('visible');
+            renderAcceptedList();
+        }}
+
+        // --- Write citations ---
+
         async function writeCitations() {{
+            const accepted = getAcceptedKeys();
+            if (accepted.length === 0) return;
+
             const btn = document.getElementById('write-citations-btn');
             btn.disabled = true;
             btn.textContent = 'Writing...';
@@ -1831,7 +2229,10 @@ pub fn render_viewer(
                 const resp = await fetch('/api/citations/write', {{
                     method: 'POST',
                     headers: {{ 'Content-Type': 'application/json' }},
-                    body: JSON.stringify({{ note_key: noteKey }})
+                    body: JSON.stringify({{
+                        note_key: noteKey,
+                        accepted_keys: accepted.map(a => a.key)
+                    }})
                 }});
 
                 if (resp.ok) {{
@@ -1840,12 +2241,12 @@ pub fn render_viewer(
                     const err = await resp.text();
                     alert('Failed to write citations: ' + err);
                     btn.disabled = false;
-                    btn.textContent = 'Write to note';
+                    btn.textContent = 'Write ' + accepted.length + ' citations';
                 }}
             }} catch (e) {{
                 alert('Error: ' + e.message);
                 btn.disabled = false;
-                btn.textContent = 'Write to note';
+                btn.textContent = 'Write ' + accepted.length + ' citations';
             }}
         }}
 
@@ -1858,7 +2259,6 @@ pub fn render_viewer(
         // =====================================================================
 
         let miniGraphLoaded = false;
-        let miniGraphSim = null;
 
         function toggleMiniGraph() {{
             const panel = document.getElementById('mini-graph-panel');
@@ -1877,279 +2277,15 @@ pub fn render_viewer(
         function closeMiniGraph() {{
             document.getElementById('mini-graph-panel').classList.remove('active');
             document.getElementById('mini-graph-btn').classList.remove('active');
-            if (miniGraphSim) {{ miniGraphSim.stop(); }}
+            if (window._kgMiniSim) {{ window._kgMiniSim.stop(); }}
         }}
 
-        async function loadMiniGraph() {{
+        function loadMiniGraph() {{
             const body = document.getElementById('mini-graph-body');
             body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:0.85rem;"><span class="smart-find-spinner"></span> Loading graph...</div>';
-
-            try {{
-                const resp = await fetch('/api/graph?q=from:' + encodeURIComponent(noteKey) + '+depth:3');
-                if (!resp.ok) {{ body.innerHTML = '<div style="padding:1rem;color:var(--red);">Failed to load graph</div>'; return; }}
-
-                const data = await resp.json();
-                miniGraphLoaded = true;
-                renderMiniGraph(data);
-            }} catch (e) {{
-                body.innerHTML = '<div style="padding:1rem;color:var(--red);">Error: ' + e.message + '</div>';
-            }}
-        }}
-
-        function renderMiniGraph(data) {{
-            const container = document.getElementById('mini-graph-body');
-            container.innerHTML = '';
-
-            const rect = container.getBoundingClientRect();
-            const width = rect.width || 460;
-            const height = rect.height || 360;
-
-            // --- BFS to compute distance from center node ---
-            const adj = {{}};
-            data.nodes.forEach(n => {{ adj[n.id] = []; }});
-            data.edges.forEach(e => {{
-                const sid = typeof e.source === 'object' ? e.source.id : e.source;
-                const tid = typeof e.target === 'object' ? e.target.id : e.target;
-                if (adj[sid]) adj[sid].push(tid);
-                if (adj[tid]) adj[tid].push(sid);
-            }});
-            const dist = {{}};
-            dist[noteKey] = 0;
-            const queue = [noteKey];
-            let qi = 0;
-            while (qi < queue.length) {{
-                const cur = queue[qi++];
-                (adj[cur] || []).forEach(nb => {{
-                    if (dist[nb] === undefined) {{
-                        dist[nb] = dist[cur] + 1;
-                        queue.push(nb);
-                    }}
-                }});
-            }}
-            data.nodes.forEach(n => {{
-                n._dist = dist[n.id] !== undefined ? dist[n.id] : 99;
-            }});
-
-            // --- Prune distant nodes when graph is too large ---
-            // Always keep center + all 1st degree. If > 30 nodes, trim from furthest distance inward.
-            const MAX_NODES = 30;
-            const firstDegreeNodes = data.nodes.filter(n => n._dist <= 1);
-            let keepNodes;
-            if (data.nodes.length <= MAX_NODES) {{
-                keepNodes = data.nodes;
-            }} else {{
-                // Always keep dist 0 and 1. Fill remaining budget from dist 2, then 3, etc.
-                const budget = Math.max(MAX_NODES, firstDegreeNodes.length);
-                const byDist = {{}};
-                data.nodes.forEach(n => {{
-                    if (n._dist > 1) {{
-                        if (!byDist[n._dist]) byDist[n._dist] = [];
-                        byDist[n._dist].push(n);
-                    }}
-                }});
-                keepNodes = [...firstDegreeNodes];
-                const distances = Object.keys(byDist).map(Number).sort((a, b) => a - b);
-                for (const d of distances) {{
-                    if (keepNodes.length >= budget) break;
-                    const remaining = budget - keepNodes.length;
-                    const candidates = byDist[d];
-                    if (candidates.length <= remaining) {{
-                        keepNodes.push(...candidates);
-                    }} else {{
-                        // Take a random sample to avoid bias
-                        candidates.sort(() => Math.random() - 0.5);
-                        keepNodes.push(...candidates.slice(0, remaining));
-                    }}
-                }}
-            }}
-            const keepIds = new Set(keepNodes.map(n => n.id));
-            data.nodes = keepNodes;
-            data.edges = data.edges.filter(e => {{
-                const sid = typeof e.source === 'object' ? e.source.id : e.source;
-                const tid = typeof e.target === 'object' ? e.target.id : e.target;
-                return keepIds.has(sid) && keepIds.has(tid);
-            }});
-
-            // --- Color palette by distance ---
-            const distColors = ['#dc322f', '#cb4b16', '#268bd2', '#93a1a1'];
-            function nodeColor(d) {{
-                return distColors[Math.min(d._dist, distColors.length - 1)];
-            }}
-            function nodeRadius(d) {{
-                if (d._dist === 0) return 16;
-                if (d._dist === 1) return 10;
-                if (d._dist === 2) return 7;
-                return 5;
-            }}
-            function nodeOpacity(d) {{
-                if (d._dist === 0) return 1;
-                if (d._dist === 1) return 0.95;
-                if (d._dist === 2) return 0.7;
-                return 0.45;
-            }}
-
-            const svg = d3.select(container).append('svg');
-            const g = svg.append('g');
-
-            // Tooltip
-            const tip = d3.select(container).append('div')
-                .attr('class', 'mg-tooltip')
-                .style('display', 'none');
-
-            // Pin center node to middle
-            const centerNode = data.nodes.find(n => n.id === noteKey);
-            if (centerNode) {{
-                centerNode.fx = width / 2;
-                centerNode.fy = height / 2;
-            }}
-
-            // Count 1st degree neighbors for link distance tuning
-            const deg1Count = firstDegreeNodes.length - 1; // exclude center
-            // Spread 1st degree nodes in a ring that fits the viewport
-            const ringRadius = Math.min(width, height) * 0.3;
-            const linkDist1 = Math.max(60, ringRadius);
-
-            // Simulation tuned so 1st degree fills viewport nicely
-            const sim = d3.forceSimulation(data.nodes)
-                .force('link', d3.forceLink(data.edges).id(d => d.id).distance(d => {{
-                    const s = d.source._dist !== undefined ? d.source._dist : 1;
-                    const t = d.target._dist !== undefined ? d.target._dist : 1;
-                    const maxDist = Math.max(s, t);
-                    if (maxDist <= 1) return linkDist1;
-                    return linkDist1 * 0.6 + maxDist * 20;
-                }}).strength(d => {{
-                    const s = d.source._dist !== undefined ? d.source._dist : 1;
-                    const t = d.target._dist !== undefined ? d.target._dist : 1;
-                    return Math.max(s, t) <= 1 ? 1.0 : 0.3;
-                }}))
-                .force('charge', d3.forceManyBody().strength(d => {{
-                    if (d._dist === 0) return -400;
-                    if (d._dist === 1) return -200;
-                    return -60;
-                }}))
-                .force('center', d3.forceCenter(width / 2, height / 2).strength(0.05))
-                .force('collision', d3.forceCollide().radius(d => nodeRadius(d) + 6))
-                .force('radial', d3.forceRadial(d => {{
-                    if (d._dist === 0) return 0;
-                    if (d._dist === 1) return ringRadius;
-                    return ringRadius + d._dist * 60;
-                }}, width / 2, height / 2).strength(d => d._dist <= 1 ? 0.6 : 0.2));
-            miniGraphSim = sim;
-
-            // Links — 1st degree edges (touching center) get 'deg1' class for visibility
-            const link = g.append('g').selectAll('line')
-                .data(data.edges).join('line')
-                .attr('class', d => {{
-                    const sid = typeof d.source === 'object' ? d.source.id : d.source;
-                    const tid = typeof d.target === 'object' ? d.target.id : d.target;
-                    const isDeg1 = sid === noteKey || tid === noteKey;
-                    let cls = 'mg-link';
-                    if (isDeg1) cls += ' deg1';
-                    if (d.edge_type === 'citation') cls += ' citation';
-                    return cls;
-                }});
-
-            // Nodes — sorted so center renders on top
-            const sortedNodes = [...data.nodes].sort((a, b) => b._dist - a._dist);
-            const node = g.append('g').selectAll('g')
-                .data(sortedNodes, d => d.id).join('g')
-                .attr('class', d => 'mg-node' + (d._dist === 0 ? ' center' : ''))
-                .style('opacity', d => nodeOpacity(d))
-                .call(d3.drag()
-                    .on('start', (e, d) => {{ if (!e.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; }})
-                    .on('drag', (e, d) => {{ d.fx = e.x; d.fy = e.y; }})
-                    .on('end', (e, d) => {{
-                        if (!e.active) sim.alphaTarget(0);
-                        if (d.id !== noteKey) {{ d.fx = null; d.fy = null; }}
-                    }}));
-
-            node.append('circle')
-                .attr('r', d => nodeRadius(d))
-                .attr('fill', d => nodeColor(d));
-
-            // Labels — "Smith et al." style, hide for 3rd+ degree to reduce clutter
-            node.append('text')
-                .attr('class', 'mg-label')
-                .text(d => {{
-                    if (d._dist >= 3) return '';
-                    return d.short_label || d.title.substring(0, 14);
-                }})
-                .attr('dy', d => -(nodeRadius(d) + 3));
-
-            // Hover
-            node.on('mouseover', function(event, d) {{
-                d3.select(this).raise().select('circle').attr('stroke', 'var(--fg)').attr('stroke-width', 2.5);
-                // Show label on hover for nodes without one
-                if (d._dist >= 3) {{
-                    d3.select(this).select('text').text(d.short_label || d.title.substring(0, 20));
-                }}
-                link.classed('highlighted', l => l.source.id === d.id || l.target.id === d.id);
-                const distLabel = d._dist === 0 ? 'center' : d._dist + (d._dist === 1 ? 'st' : d._dist === 2 ? 'nd' : d._dist === 3 ? 'rd' : 'th') + ' degree';
-                tip.style('display', 'block')
-                    .html('<div class="mgt-title">' + d.title + '</div><div class="mgt-meta">' + d.node_type + ' \u00b7 ' + distLabel + '</div>')
-                    .style('left', (event.offsetX + 14) + 'px')
-                    .style('top', (event.offsetY - 10) + 'px');
-            }})
-            .on('mouseout', function(event, d) {{
-                d3.select(this).select('circle').attr('stroke', 'var(--bg)').attr('stroke-width', 1.5);
-                if (d._dist >= 3) {{
-                    d3.select(this).select('text').text('');
-                }}
-                link.classed('highlighted', false);
-                tip.style('display', 'none');
-            }})
-            .on('click', function(event, d) {{
-                if (d.id !== noteKey) {{
-                    window.location.href = '/note/' + d.id;
-                }}
-            }});
-
-            sim.on('tick', () => {{
-                link.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
-                    .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
-                node.attr('transform', d => 'translate(' + d.x + ',' + d.y + ')');
-            }});
-
-            // After simulation stabilizes, auto-fit so 1st degree nodes fill viewport
-            sim.on('end', () => {{
-                // Compute bounding box of 1st degree nodes
-                const deg1Nodes = data.nodes.filter(n => n._dist <= 1);
-                if (deg1Nodes.length < 2) return;
-                let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-                deg1Nodes.forEach(n => {{
-                    minX = Math.min(minX, n.x);
-                    maxX = Math.max(maxX, n.x);
-                    minY = Math.min(minY, n.y);
-                    maxY = Math.max(maxY, n.y);
-                }});
-                const pad = 60;
-                const bw = (maxX - minX) + pad * 2;
-                const bh = (maxY - minY) + pad * 2;
-                const scale = Math.min(width / bw, height / bh, 2.0);
-                const cx = (minX + maxX) / 2;
-                const cy = (minY + maxY) / 2;
-                const tx = width / 2 - cx * scale;
-                const ty = height / 2 - cy * scale;
-                const transform = d3.zoomIdentity.translate(tx, ty).scale(scale);
-                svg.transition().duration(500).call(
-                    d3.zoom().scaleExtent([0.2, 5]).on('zoom', e => {{
-                        g.attr('transform', e.transform);
-                    }}).transform, transform
-                );
-            }});
-
-            // Zoom — apply to single group
-            svg.call(d3.zoom().scaleExtent([0.2, 5]).on('zoom', e => {{
-                g.attr('transform', e.transform);
-            }}));
-
-            // Legend
-            const legend = d3.select(container).append('div').attr('class', 'mg-legend');
-            [['Center', distColors[0]], ['1st', distColors[1]], ['2nd', distColors[2]], ['3rd+', distColors[3]]].forEach(([label, color]) => {{
-                const item = legend.append('span').attr('class', 'mg-legend-item');
-                item.append('span').attr('class', 'mg-legend-dot').style('background', color);
-                item.append('span').text(label);
-            }});
+            miniGraphLoaded = true;
+            // The unified graph engine runs as an async IIFE injected below
+            _kgMiniInit();
         }}
 
         // Draggable mini-graph panel
@@ -2319,6 +2455,7 @@ pub fn render_viewer(
             savePdfState();
         }});
     </script>
+    {mini_graph_script}
 </body>
 </html>"##,
         title = html_escape(&note.title),
@@ -2334,5 +2471,20 @@ pub fn render_viewer(
         time_html = time_html,
         sub_notes_html = sub_notes_html,
         history_html = history_html,
+        mini_graph_css = graph_css(),
+        mini_graph_script = render_graph_js(&GraphRendererConfig {
+            container_selector: "#mini-graph-body".into(),
+            center_key: Some(note.key.clone()),
+            is_mini: true,
+            logged_in,
+            show_arrows: true,
+            show_edge_tooltips: true,
+            auto_fit: true,
+            max_nodes: 30,
+            data_source: GraphDataSource::FetchUrl {
+                url: format!("/api/graph?q=from:{}+depth:3", note.key),
+            },
+            notes_json: None,
+        }),
     )
 }

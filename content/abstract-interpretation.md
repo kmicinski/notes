@@ -14,6 +14,7 @@ bibtex: |
     doi = {10.1145/512950.512973},
     journal = {Proceedings of the 4th ACM SIGACT-SIGPLAN symposium on Principles of programming languages  - POPL '77},
   }
+pdf: abstract-interpretation.pdf
 ---
 
 ## Summary

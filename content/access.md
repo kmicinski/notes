@@ -8,6 +8,8 @@ bibtex: |
       howpublished = {https://www.ncsa.illinois.edu/research/project-highlights/delta/
   },
   }
+
+pdf: access.pdf
 ---
 
 ## Summary

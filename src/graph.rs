@@ -7,7 +7,7 @@ use crate::auth::is_logged_in;
 use crate::graph_index;
 use crate::models::{GraphEdge, GraphNode, GraphQuery, GraphStats, KnowledgeGraph};
 use crate::notes::html_escape;
-use crate::templates::base_html;
+use crate::templates::{base_html, render_graph_js, graph_css, GraphRendererConfig, GraphDataSource};
 use axum::{
     extract::{Query, State},
     response::{Html, IntoResponse, Response},
@@ -127,12 +127,15 @@ pub fn build_knowledge_graph(query: &GraphQuery, db: &sled::Db) -> KnowledgeGrap
             in_degree: indeg,
             out_degree: outdeg,
             parent: node.parent_key.clone(),
+            authors: node.authors.clone(),
+            year: node.year,
+            venue: node.venue.clone(),
         });
     }
 
     // Build edges (only between included nodes)
     let included: HashSet<String> = graph_nodes.iter().map(|n| n.id.clone()).collect();
-    let annotations = graph_index::load_manual_edge_annotations(db).unwrap_or_default();
+    let annotations = graph_index::load_all_edge_annotations(db).unwrap_or_default();
     let mut graph_edges = Vec::new();
 
     for ((src, tgt), weight) in &edge_counts {
@@ -297,748 +300,251 @@ pub async fn graph_page(
     let graph = crate::graph_query::query_graph(&query, &state.db);
     let has_center = query.center.is_some();
 
-    // Build notes list for autocomplete
+    // Build notes list for autocomplete (enriched with scholarly metadata)
     let notes_list: Vec<serde_json::Value> = state.notes_map().values().map(|n| {
-        let nt = match n.note_type {
-            crate::models::NoteType::Paper(_) => "paper",
-            crate::models::NoteType::Note => "note",
+        let (nt, authors, year, venue, short_label) = match &n.note_type {
+            crate::models::NoteType::Paper(meta) => {
+                let eff = meta.effective_metadata(&n.title);
+                ("paper", eff.authors, eff.year, eff.venue, crate::graph_index::compute_short_label_pub(n))
+            }
+            crate::models::NoteType::Note => ("note", None, None, None, crate::graph_index::compute_short_label_pub(n)),
         };
-        serde_json::json!({"key": n.key, "title": n.title, "node_type": nt})
+        serde_json::json!({
+            "key": n.key,
+            "title": n.title,
+            "node_type": nt,
+            "authors": authors,
+            "year": year,
+            "venue": venue,
+            "short_label": short_label,
+            "date": n.date.map(|d| d.to_string()),
+        })
     }).collect();
     let notes_json = serde_json::to_string(&notes_list).unwrap_or("[]".to_string());
 
-    let graph_styles = r#"
-        .graph-container {
-            position: relative;
-            border: 1px solid var(--border);
-            border-radius: 4px;
-            background: var(--accent);
-            height: calc(100vh - 280px);
-            min-height: 400px;
-        }
+    let graph_json = serde_json::to_string(&graph).unwrap_or("{}".to_string());
 
-        .graph-controls {
-            display: flex;
-            gap: 1rem;
-            align-items: center;
-            flex-wrap: wrap;
-            margin-bottom: 1rem;
-        }
+    let config = GraphRendererConfig {
+        container_selector: "#graph-container".into(),
+        center_key: query.center.clone(),
+        is_mini: false,
+        logged_in,
+        show_arrows: true,
+        show_edge_tooltips: true,
+        auto_fit: has_center,
+        max_nodes: 0,
+        data_source: GraphDataSource::Inline { graph_json },
+        notes_json: if logged_in { Some(notes_json) } else { None },
+    };
 
-        .graph-query-input {
-            flex: 1;
-            min-width: 300px;
-            padding: 0.5rem 0.75rem;
-            border: 1px solid var(--border);
-            border-radius: 4px;
-            background: var(--bg);
-            color: var(--fg);
-            font-family: monospace;
-            font-size: 0.9rem;
-        }
+    let graph_script = render_graph_js(&config);
+    let graph_styles = graph_css();
 
-        .graph-stats {
-            display: flex;
-            gap: 1.5rem;
-            font-size: 0.85rem;
-            color: var(--muted);
-            margin-bottom: 0.5rem;
-        }
-
-        .graph-stats span { display: flex; align-items: center; gap: 0.3rem; }
-
-        .query-description {
-            font-size: 0.9rem;
-            color: var(--muted);
-            margin-bottom: 1rem;
-            font-style: italic;
-        }
-
-        .graph-help {
-            font-size: 0.8rem;
-            color: var(--muted);
-            margin-top: 1rem;
-            padding: 0.75rem;
-            background: var(--accent);
-            border-radius: 4px;
-        }
-
-        .graph-help code {
-            background: var(--bg);
-            padding: 0.1rem 0.3rem;
-            border-radius: 2px;
-            font-size: 0.85em;
-        }
-
-        .graph-help-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            gap: 0.5rem;
-            margin-top: 0.5rem;
-        }
-
-        .node-tooltip {
-            position: absolute;
-            background: var(--bg);
-            border: 1px solid var(--border);
-            border-radius: 4px;
-            padding: 0.5rem 0.75rem;
-            font-size: 0.85rem;
-            pointer-events: none;
-            z-index: 1000;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-            max-width: 300px;
-        }
-
-        .node-tooltip .title { font-weight: 600; margin-bottom: 0.25rem; }
-        .node-tooltip .meta { color: var(--muted); font-size: 0.8rem; }
-
-        svg { width: 100%; height: 100%; }
-
-        .link { stroke: var(--border); stroke-opacity: 0.6; }
-        .link.citation { stroke-dasharray: 5,3; stroke: #b58900; stroke-opacity: 0.5; }
-        .link.manual { stroke: #859900; stroke-opacity: 0.7; }
-        .link.highlighted { stroke: var(--link); stroke-opacity: 1; stroke-width: 2px; }
-
-        .link-handle {
-            fill: #859900;
-            stroke: none;
-            cursor: crosshair;
-            opacity: 0;
-            transition: opacity 0.15s;
-        }
-        .node:hover .link-handle { opacity: 0.7; }
-        .node.link-target circle { stroke: #859900 !important; stroke-width: 3px !important; }
-        .temp-link-line { stroke: #859900; stroke-width: 2; stroke-dasharray: 6,4; pointer-events: none; }
-
-        .node circle { cursor: pointer; stroke: var(--bg); stroke-width: 1.5px; }
-        .node.note circle { fill: var(--link); }
-        .node.paper circle { fill: #f4a460; }
-        .node.orphan circle { fill: var(--muted); opacity: 0.6; }
-        .node.hub circle { stroke: var(--fg); stroke-width: 2px; }
-        .node.selected circle { stroke: #fff; stroke-width: 3px; }
-
-        .node text {
-            font-size: 10px;
-            fill: var(--fg);
-            pointer-events: none;
-            text-anchor: middle;
-            dominant-baseline: middle;
-        }
-
-        .legend {
-            position: absolute;
-            bottom: 10px;
-            left: 10px;
-            background: var(--bg);
-            border: 1px solid var(--border);
-            border-radius: 4px;
-            padding: 0.5rem;
-            font-size: 0.75rem;
-        }
-
-        .legend-item { display: flex; align-items: center; gap: 0.4rem; margin: 0.2rem 0; }
-        .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
-        .legend-dot.note { background: var(--link); }
-        .legend-dot.paper { background: #f4a460; }
-
-        .graph-ctx-menu {
+    let page_styles = r#"
+        /* Full-screen immersive graph */
+        .container { max-width: none; padding: 0; margin: 0; }
+        .nav-bar { position: fixed; top: 0; left: 0; right: 0; z-index: 200; opacity: 0.92; }
+        .graph-fullscreen {
             position: fixed;
-            background: var(--bg);
-            border: 1px solid var(--border);
-            border-radius: 4px;
-            padding: 0.25rem 0;
-            z-index: 2000;
-            box-shadow: 0 2px 12px rgba(0,0,0,0.2);
-            min-width: 180px;
-        }
-        .graph-ctx-menu-item {
-            padding: 0.4rem 0.75rem;
-            cursor: pointer;
-            font-size: 0.85rem;
-            color: var(--fg);
-        }
-        .graph-ctx-menu-item:hover {
+            top: 0; left: 0; right: 0; bottom: 0;
             background: var(--accent);
         }
+        .graph-fullscreen svg { width: 100%; height: 100%; }
 
-        .link-modal-overlay {
-            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0,0,0,0.5);
-            z-index: 3000;
-            display: flex; align-items: center; justify-content: center;
-        }
-        .link-modal {
+        /* Floating query bar */
+        .graph-query-bar {
+            position: fixed;
+            top: 52px; left: 50%; transform: translateX(-50%);
+            z-index: 150;
+            display: flex;
+            gap: 0.4rem;
+            align-items: center;
             background: var(--bg);
             border: 1px solid var(--border);
             border-radius: 8px;
-            padding: 1.5rem;
-            width: 460px;
-            max-width: 90vw;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            padding: 0.35rem 0.5rem;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+            width: min(700px, calc(100vw - 2rem));
         }
-        .link-modal h3 { margin: 0 0 1rem; font-size: 1.1rem; }
-        .link-modal label { display: block; margin-bottom: 0.3rem; font-size: 0.85rem; font-weight: 600; }
-        .link-modal input, .link-modal textarea {
-            width: 100%; box-sizing: border-box;
-            padding: 0.5rem; border: 1px solid var(--border);
-            border-radius: 4px; background: var(--accent); color: var(--fg);
-            font-size: 0.9rem; font-family: inherit;
+        .graph-query-input {
+            flex: 1;
+            min-width: 0;
+            padding: 0.4rem 0.6rem;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            background: var(--bg);
+            color: var(--fg);
+            font-family: "SF Mono", "Consolas", monospace;
+            font-size: 0.85rem;
         }
-        .link-modal textarea { height: 60px; resize: vertical; }
-        .link-modal-actions { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1rem; }
-        .autocomplete-wrap { position: relative; }
-        .autocomplete-dropdown {
-            position: absolute; top: 100%; left: 0; right: 0;
-            background: var(--bg); border: 1px solid var(--border);
-            border-radius: 0 0 4px 4px; max-height: 200px; overflow-y: auto;
-            z-index: 3001; box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        .graph-query-input:focus {
+            outline: none;
+            border-color: var(--link);
+            box-shadow: 0 0 0 2px rgba(38, 139, 210, 0.15);
         }
-        .autocomplete-item {
-            padding: 0.4rem 0.5rem; cursor: pointer; font-size: 0.85rem;
+        .graph-query-bar .qb-btn {
+            padding: 0.35rem 0.65rem;
+            border: 1px solid var(--base1);
+            border-radius: 4px;
+            background: var(--blue);
+            color: var(--base3);
+            cursor: pointer;
+            font-size: 0.8rem;
+            font-family: inherit;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .graph-query-bar .qb-btn:hover { background: var(--cyan); border-color: var(--cyan); }
+        .graph-query-bar .qb-btn.secondary { background: var(--base2); color: var(--base00); border-color: var(--base1); }
+        .graph-query-bar .qb-btn.secondary:hover { background: var(--base3); }
+        .graph-query-bar .qb-help-toggle {
+            background: none; border: none; cursor: pointer;
+            color: var(--muted); font-size: 1rem; padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+        }
+        .graph-query-bar .qb-help-toggle:hover { color: var(--fg); background: var(--accent); }
+
+        /* Floating stats pill */
+        .graph-stats-pill {
+            position: fixed;
+            top: 52px; right: 12px;
+            z-index: 150;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.3rem 0.6rem;
+            font-size: 0.75rem;
+            color: var(--muted);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            display: flex; gap: 0.6rem; align-items: center;
+        }
+        .graph-stats-pill strong { color: var(--fg); }
+
+        /* Floating query description */
+        .graph-query-desc {
+            position: fixed;
+            bottom: 40px; left: 50%; transform: translateX(-50%);
+            z-index: 150;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.25rem 0.75rem;
+            font-size: 0.78rem;
+            color: var(--muted);
+            font-style: italic;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            white-space: nowrap;
+        }
+
+        /* Floating help panel */
+        .graph-help-overlay {
+            display: none;
+            position: fixed;
+            top: 100px; left: 50%; transform: translateX(-50%);
+            z-index: 300;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem 1.25rem;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+            width: min(560px, calc(100vw - 2rem));
+            max-height: calc(100vh - 160px);
+            overflow-y: auto;
+        }
+        .graph-help-overlay.visible { display: block; }
+        .graph-help-overlay .help-header {
             display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 0.6rem;
         }
-        .autocomplete-item:hover, .autocomplete-item.active { background: var(--accent); }
-        .autocomplete-badge {
-            font-size: 0.7rem; padding: 0.1rem 0.3rem; border-radius: 3px;
-            background: var(--border); color: var(--muted);
+        .graph-help-overlay .help-header h3 { margin: 0; font-size: 0.95rem; }
+        .graph-help-overlay .help-close {
+            background: none; border: none; cursor: pointer;
+            color: var(--muted); font-size: 1.2rem; padding: 0; line-height: 1;
+        }
+        .graph-help-overlay .help-close:hover { color: var(--fg); }
+        .graph-help-overlay code {
+            background: var(--accent);
+            padding: 0.1rem 0.3rem;
+            border-radius: 2px;
+            font-size: 0.82em;
+        }
+        .graph-help-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 0.4rem;
+            font-size: 0.82rem;
+            color: var(--muted);
         }
     "#;
 
-    let graph_json = serde_json::to_string(&graph).unwrap_or("{}".to_string());
-
     let html = format!(
         r##"
-        <style>{styles}</style>
-        <h1>Knowledge Graph</h1>
+        <style>{page_styles}{graph_styles}</style>
 
-        <div class="graph-controls">
-            <form action="/graph" method="get" style="display: flex; gap: 0.5rem; flex: 1;">
+        <div class="graph-fullscreen" id="graph-container"></div>
+
+        <div class="graph-query-bar">
+            <form action="/graph" method="get" style="display: contents;">
                 <input type="text" name="q" class="graph-query-input"
                        value="{query_escaped}"
-                       placeholder="Query: from:KEY depth:2 type:paper has:time orphans hubs">
-                <button class="btn" type="submit">Apply</button>
-                <a href="/graph" class="btn secondary">Reset</a>
+                       placeholder="from:KEY depth:2 type:paper author:NAME year:2024 hubs orphans">
+                <button class="qb-btn" type="submit">Apply</button>
+                <a href="/graph" class="qb-btn secondary">Reset</a>
             </form>
+            <button class="qb-help-toggle" onclick="document.querySelector('.graph-help-overlay').classList.toggle('visible')" title="Query help">?</button>
         </div>
 
-        <div class="query-description">Showing: {query_desc}</div>
-
-        <div class="graph-stats">
+        <div class="graph-stats-pill">
             <span><strong>{nodes}</strong> nodes</span>
             <span><strong>{edges}</strong> edges</span>
             <span><strong>{orphans}</strong> orphans</span>
-            <span><strong>{hubs}</strong> hubs (≥{hub_threshold} links)</span>
-            <span>avg degree: <strong>{avg_deg:.1}</strong></span>
+            <span><strong>{hubs}</strong> hubs</span>
+            <span>avg\u00a0<strong>{avg_deg:.1}</strong></span>
         </div>
 
-        <div class="graph-container" id="graph-container">
-            <svg id="graph-svg"></svg>
-            <div class="legend">
-                <div class="legend-item"><div class="legend-dot note"></div>Note</div>
-                <div class="legend-item"><div class="legend-dot paper"></div>Paper</div>
-                <div class="legend-item"><svg width="30" height="12"><line x1="0" y1="6" x2="30" y2="6" stroke="#b58900" stroke-dasharray="4,3" stroke-width="1.5"/></svg> Citation</div>
-                <div class="legend-item"><svg width="30" height="12"><line x1="0" y1="6" x2="30" y2="6" stroke="#859900" stroke-width="1.5"/></svg> Manual link</div>
+        <div class="graph-query-desc">Showing: {query_desc}</div>
+
+        <div class="graph-help-overlay">
+            <div class="help-header">
+                <h3>Query Language</h3>
+                <button class="help-close" onclick="this.closest('.graph-help-overlay').classList.remove('visible')">&times;</button>
             </div>
-        </div>
-
-        <div class="graph-help">
-            <strong>Query Language</strong> &nbsp; <em style="font-weight:normal">(drag from green handle to link nodes)</em>
             <div class="graph-help-grid">
-                <span><code>from:KEY</code> — Center on node</span>
-                <span><code>depth:N</code> — Expand N hops</span>
-                <span><code>type:paper</code> — Filter by type</span>
-                <span><code>type:note</code> — Only notes</span>
-                <span><code>has:time</code> — With time tracking</span>
-                <span><code>links:>N</code> — Min connections</span>
-                <span><code>links:&lt;N</code> — Max connections</span>
-                <span><code>orphans</code> — Disconnected only</span>
-                <span><code>hubs</code> — Highly connected</span>
-                <span><code>path:A->B</code> — Shortest path</span>
-                <span><code>category:X</code> — By time category</span>
-                <span><code>recent:N</code> — Last N days</span>
+                <span><code>from:KEY</code> Center on node</span>
+                <span><code>depth:N</code> Expand N hops</span>
+                <span><code>type:paper</code> Filter by type</span>
+                <span><code>type:note</code> Only notes</span>
+                <span><code>has:time</code> With time tracking</span>
+                <span><code>links:&gt;N</code> Min connections</span>
+                <span><code>links:&lt;N</code> Max connections</span>
+                <span><code>orphans</code> Disconnected only</span>
+                <span><code>hubs</code> Highly connected</span>
+                <span><code>path:A-&gt;B</code> Shortest path</span>
+                <span><code>category:X</code> By time category</span>
+                <span><code>recent:N</code> Last N days</span>
+                <span><code>author:NAME</code> By author name</span>
+                <span><code>venue:NAME</code> By venue/journal</span>
+                <span><code>year:YYYY</code> By year</span>
+                <span><code>year:YYYY-YYYY</code> Year range</span>
+                <span><code>title:TEXT</code> Search titles</span>
+            </div>
+            <div style="margin-top: 0.6rem; font-size: 0.78rem; color: var(--muted);">
+                Drag from green handle to link nodes. Click any edge to annotate.
             </div>
         </div>
 
-        <script src="https://d3js.org/d3.v7.min.js"></script>
-        <script>
-            const graphData = {graph_json};
-            const allNotes = {notes_json};
-            const isLoggedIn = {logged_in_js};
-            const hasCenter = {has_center_js};
-            const container = document.getElementById('graph-container');
-            const svg = d3.select('#graph-svg');
-            const width = container.clientWidth;
-            const height = container.clientHeight;
-
-            // Build node map for edge tooltips
-            const nodeMap = {{}};
-            graphData.nodes.forEach(n => {{ nodeMap[n.id] = n; }});
-
-            // Create tooltip
-            const tooltip = d3.select('body').append('div')
-                .attr('class', 'node-tooltip')
-                .style('display', 'none');
-
-            // Define arrowhead markers
-            const defs = svg.append('defs');
-
-            function addMarker(id, color) {{
-                defs.append('marker')
-                    .attr('id', id)
-                    .attr('viewBox', '0 -7 14 14')
-                    .attr('refX', 14)
-                    .attr('refY', 0)
-                    .attr('markerWidth', 10)
-                    .attr('markerHeight', 10)
-                    .attr('markerUnits', 'userSpaceOnUse')
-                    .attr('orient', 'auto')
-                    .append('path')
-                    .attr('d', 'M0,-5L12,0L0,5')
-                    .attr('fill', color);
-            }}
-
-            addMarker('arrow-default', '#93a1a1');
-            addMarker('arrow-citation', '#b58900');
-            addMarker('arrow-manual', '#859900');
-
-            // Force simulation
-            const simulation = d3.forceSimulation(graphData.nodes)
-                .force('link', d3.forceLink(graphData.edges)
-                    .id(d => d.id)
-                    .distance(80))
-                .force('charge', d3.forceManyBody().strength(-200))
-                .force('center', d3.forceCenter(width / 2, height / 2))
-                .force('collision', d3.forceCollide().radius(30));
-
-            // Create link groups
-            const linkG = svg.append('g');
-            const link = linkG
-                .selectAll('line')
-                .data(graphData.edges)
-                .join('line')
-                .attr('class', d => {{
-                    let cls = 'link';
-                    if (d.edge_type === 'citation') cls += ' citation';
-                    if (d.edge_type === 'manual') cls += ' manual';
-                    return cls;
-                }})
-                .attr('stroke-width', d => Math.sqrt(d.weight) * 1.5)
-                .attr('marker-end', d => {{
-                    if (!hasCenter) return null;
-                    if (d.edge_type === 'citation') return 'url(#arrow-citation)';
-                    if (d.edge_type === 'manual') return 'url(#arrow-manual)';
-                    return 'url(#arrow-default)';
-                }});
-
-            // Edge hover tooltips
-            link.on('mouseover', function(event, d) {{
-                const srcNode = (typeof d.source === 'object') ? d.source : nodeMap[d.source];
-                const tgtNode = (typeof d.target === 'object') ? d.target : nodeMap[d.target];
-                const srcTitle = srcNode ? srcNode.title : d.source;
-                const tgtTitle = tgtNode ? tgtNode.title : d.target;
-
-                const typeLabels = {{
-                    crosslink: 'cites ([@ref])',
-                    parent: 'child of',
-                    citation: 'PDF citation',
-                    manual: 'linked by user'
-                }};
-                const typeLabel = typeLabels[d.edge_type] || d.edge_type;
-
-                let html = '<div class="title">' + srcTitle + ' &rarr; ' + tgtTitle + '</div>';
-                html += '<div class="meta">Type: ' + typeLabel;
-                if (d.annotation) html += '<br>' + d.annotation;
-                html += '</div>';
-
-                d3.select(this).attr('stroke-width', 4).attr('stroke-opacity', 1);
-                tooltip.style('display', 'block').html(html)
-                    .style('left', (event.pageX + 10) + 'px')
-                    .style('top', (event.pageY - 10) + 'px');
-            }})
-            .on('mouseout', function(event, d) {{
-                d3.select(this).attr('stroke-width', Math.sqrt(d.weight) * 1.5).attr('stroke-opacity', null);
-                tooltip.style('display', 'none');
-            }});
-
-            // Create node groups
-            const nodeG = svg.append('g');
-            const node = nodeG
-                .selectAll('g')
-                .data(graphData.nodes)
-                .join('g')
-                .attr('class', d => {{
-                    let cls = 'node ' + d.node_type;
-                    if (d.in_degree + d.out_degree === 0) cls += ' orphan';
-                    if (d.in_degree + d.out_degree >= {hub_threshold}) cls += ' hub';
-                    return cls;
-                }})
-                .call(d3.drag()
-                    .filter(event => !event.button)
-                    .on('start', dragstarted)
-                    .on('drag', dragged)
-                    .on('end', dragended));
-
-            // Add circles to nodes
-            function nodeRadius(d) {{
-                const base = 8;
-                const degree = (d.in_degree || 0) + (d.out_degree || 0);
-                return base + Math.sqrt(degree) * 3;
-            }}
-
-            node.append('circle')
-                .attr('r', nodeRadius);
-
-            // Add labels
-            node.append('text')
-                .text(d => d.title.length > 15 ? d.title.substring(0, 15) + '...' : d.title)
-                .attr('dy', d => -(12 + Math.sqrt(d.in_degree + d.out_degree) * 3));
-
-            // Connector handles for drag-to-link (only when logged in)
-            if (isLoggedIn) {{
-                node.append('circle')
-                    .attr('class', 'link-handle')
-                    .attr('r', 6)
-                    .attr('cx', d => nodeRadius(d) + 4)
-                    .attr('cy', 0)
-                    .each(function(d) {{
-                        this.addEventListener('pointerdown', function(e) {{
-                            e.stopPropagation();
-                            e.stopImmediatePropagation();
-                            e.preventDefault();
-                            startLinkDrag(d, e);
-                        }});
-                    }});
-            }}
-
-            // Node hover interactions
-            node.on('mouseover', function(event, d) {{
-                d3.select(this).classed('selected', true);
-                link.classed('highlighted', l => l.source.id === d.id || l.target.id === d.id);
-
-                tooltip.style('display', 'block')
-                    .html(`
-                        <div class="title">${{d.title}}</div>
-                        <div class="meta">
-                            Type: ${{d.node_type}}<br>
-                            Links: ${{d.in_degree}} in, ${{d.out_degree}} out
-                            ${{d.time_total > 0 ? '<br>Time: ' + Math.floor(d.time_total/60) + 'h ' + (d.time_total%60) + 'm' : ''}}
-                            ${{d.primary_category ? '<br>Category: ' + d.primary_category : ''}}
-                        </div>
-                    `)
-                    .style('left', (event.pageX + 10) + 'px')
-                    .style('top', (event.pageY - 10) + 'px');
-            }})
-            .on('mouseout', function() {{
-                d3.select(this).classed('selected', false);
-                link.classed('highlighted', false);
-                tooltip.style('display', 'none');
-            }})
-            .on('click', function(event, d) {{
-                window.location.href = '/note/' + d.id;
-            }})
-            .on('dblclick', function(event, d) {{
-                window.location.href = '/graph?q=from:' + d.id + ' depth:2';
-            }});
-
-            // Drag-to-link: draw a temporary line from source to cursor,
-            // highlight target node, open modal on drop
-            function startLinkDrag(sourceNode, startEvent) {{
-                const svgEl = svg.node();
-                const tempLine = svg.append('line')
-                    .attr('class', 'temp-link-line');
-
-                let targetNode = null;
-
-                function simToSvg(sx, sy) {{
-                    const t = d3.zoomTransform(svgEl);
-                    return [t.k * sx + t.x, t.k * sy + t.y];
-                }}
-
-                function svgCoords(clientX, clientY) {{
-                    const pt = svgEl.createSVGPoint();
-                    pt.x = clientX;
-                    pt.y = clientY;
-                    return pt.matrixTransform(svgEl.getScreenCTM().inverse());
-                }}
-
-                function getSimCoords(clientX, clientY) {{
-                    const svgPt = svgCoords(clientX, clientY);
-                    const t = d3.zoomTransform(svgEl);
-                    return [(svgPt.x - t.x) / t.k, (svgPt.y - t.y) / t.k];
-                }}
-
-                function updateLine(clientX, clientY) {{
-                    const [sx, sy] = simToSvg(sourceNode.x, sourceNode.y);
-                    const ep = svgCoords(clientX, clientY);
-                    tempLine
-                        .attr('x1', sx).attr('y1', sy)
-                        .attr('x2', ep.x).attr('y2', ep.y);
-                }}
-
-                updateLine(startEvent.clientX, startEvent.clientY);
-
-                function onMove(e) {{
-                    updateLine(e.clientX, e.clientY);
-                    const [mx, my] = getSimCoords(e.clientX, e.clientY);
-
-                    let closest = null;
-                    let minDist = Infinity;
-                    graphData.nodes.forEach(n => {{
-                        if (n === sourceNode) return;
-                        const dx = n.x - mx;
-                        const dy = n.y - my;
-                        const dist = Math.sqrt(dx*dx + dy*dy);
-                        const threshold = nodeRadius(n) + 15;
-                        if (dist < threshold && dist < minDist) {{
-                            minDist = dist;
-                            closest = n;
-                        }}
-                    }});
-                    targetNode = closest;
-                    node.classed('link-target', d => d === closest);
-                }}
-
-                function onUp() {{
-                    window.removeEventListener('pointermove', onMove);
-                    window.removeEventListener('pointerup', onUp);
-                    tempLine.remove();
-                    node.classed('link-target', false);
-
-                    if (targetNode) {{
-                        openLinkModal(sourceNode, targetNode);
-                    }}
-                }}
-
-                window.addEventListener('pointermove', onMove);
-                window.addEventListener('pointerup', onUp);
-            }}
-
-            // Link creation modal
-            function openLinkModal(sourceNode, preSelectedTarget) {{
-                d3.selectAll('.link-modal-overlay').remove();
-
-                const overlay = d3.select('body').append('div')
-                    .attr('class', 'link-modal-overlay');
-
-                const modal = overlay.append('div')
-                    .attr('class', 'link-modal');
-
-                modal.append('h3').text('Add link from "' + sourceNode.title + '"'
-                    + (preSelectedTarget ? ' to "' + preSelectedTarget.title + '"' : ''));
-
-                modal.append('label').text('Target note');
-                const acWrap = modal.append('div').attr('class', 'autocomplete-wrap');
-                const targetInput = acWrap.append('input')
-                    .attr('type', 'text')
-                    .attr('id', 'link-target-input')
-                    .attr('placeholder', 'Search notes...')
-                    .attr('autocomplete', 'off');
-                const dropdown = acWrap.append('div')
-                    .attr('class', 'autocomplete-dropdown')
-                    .style('display', 'none');
-
-                let selectedKey = preSelectedTarget ? preSelectedTarget.id : null;
-                let selectedIdx = -1;
-                let currentMatches = [];
-
-                if (preSelectedTarget) {{
-                    targetInput.property('value', preSelectedTarget.title);
-                }}
-
-                function renderDropdown(matches) {{
-                    currentMatches = matches;
-                    selectedIdx = -1;
-                    dropdown.html('');
-                    if (matches.length === 0) {{
-                        dropdown.style('display', 'none');
-                        return;
-                    }}
-                    dropdown.style('display', 'block');
-                    matches.forEach((m, i) => {{
-                        const item = dropdown.append('div')
-                            .attr('class', 'autocomplete-item')
-                            .on('click', () => selectTarget(m));
-                        item.append('span').text(m.title);
-                        item.append('span').attr('class', 'autocomplete-badge').text(m.node_type);
-                    }});
-                }}
-
-                function selectTarget(m) {{
-                    selectedKey = m.key;
-                    targetInput.property('value', m.title);
-                    dropdown.style('display', 'none');
-                }}
-
-                targetInput.on('input', function() {{
-                    selectedKey = null;
-                    const q = this.value.toLowerCase().trim();
-                    if (q.length === 0) {{ dropdown.style('display', 'none'); return; }}
-                    const matches = allNotes
-                        .filter(n => n.key !== sourceNode.id &&
-                            (n.title.toLowerCase().includes(q) || n.key.toLowerCase().includes(q)))
-                        .slice(0, 10);
-                    renderDropdown(matches);
-                }});
-
-                targetInput.on('keydown', function(event) {{
-                    if (event.key === 'ArrowDown') {{
-                        event.preventDefault();
-                        if (currentMatches.length > 0) {{
-                            selectedIdx = Math.min(selectedIdx + 1, currentMatches.length - 1);
-                            dropdown.selectAll('.autocomplete-item').classed('active', (d, i) => i === selectedIdx);
-                        }}
-                    }} else if (event.key === 'ArrowUp') {{
-                        event.preventDefault();
-                        selectedIdx = Math.max(selectedIdx - 1, 0);
-                        dropdown.selectAll('.autocomplete-item').classed('active', (d, i) => i === selectedIdx);
-                    }} else if (event.key === 'Enter') {{
-                        event.preventDefault();
-                        if (selectedIdx >= 0 && selectedIdx < currentMatches.length) {{
-                            selectTarget(currentMatches[selectedIdx]);
-                        }}
-                    }} else if (event.key === 'Escape') {{
-                        dropdown.style('display', 'none');
-                    }}
-                }});
-
-                modal.append('div').style('height', '0.75rem');
-                modal.append('label').text('Annotation (optional)');
-                const annInput = modal.append('textarea')
-                    .attr('id', 'link-annotation')
-                    .attr('placeholder', 'Describe this link...');
-
-                const actions = modal.append('div').attr('class', 'link-modal-actions');
-                actions.append('button')
-                    .attr('class', 'btn secondary')
-                    .text('Cancel')
-                    .on('click', () => overlay.remove());
-
-                const submitBtn = actions.append('button')
-                    .attr('class', 'btn')
-                    .text('Add Link')
-                    .on('click', () => {{
-                        if (!selectedKey) {{
-                            targetInput.node().focus();
-                            return;
-                        }}
-                        const annotation = annInput.property('value').trim() || null;
-                        submitBtn.attr('disabled', true).text('Adding...');
-                        fetch('/api/graph/edge', {{
-                            method: 'POST',
-                            headers: {{ 'Content-Type': 'application/json' }},
-                            body: JSON.stringify({{ source: sourceNode.id, target: selectedKey, annotation }})
-                        }}).then(r => {{
-                            if (r.ok) {{
-                                overlay.remove();
-                                window.location.reload();
-                            }} else {{
-                                r.text().then(t => alert('Error: ' + t));
-                                submitBtn.attr('disabled', null).text('Add Link');
-                            }}
-                        }}).catch(e => {{
-                            alert('Network error: ' + e);
-                            submitBtn.attr('disabled', null).text('Add Link');
-                        }});
-                    }});
-
-                // Close on overlay click
-                overlay.on('click', function(event) {{
-                    if (event.target === overlay.node()) overlay.remove();
-                }});
-
-                // Close on Escape
-                function escHandler(event) {{
-                    if (event.key === 'Escape') {{
-                        overlay.remove();
-                        document.removeEventListener('keydown', escHandler);
-                    }}
-                }}
-                document.addEventListener('keydown', escHandler);
-
-                // Focus target input
-                setTimeout(() => targetInput.node().focus(), 50);
-            }}
-
-            // Update positions on simulation tick
-            simulation.on('tick', () => {{
-                link
-                    .attr('x1', d => d.source.x)
-                    .attr('y1', d => d.source.y)
-                    .attr('x2', d => {{
-                        if (!hasCenter) return d.target.x;
-                        const dx = d.target.x - d.source.x;
-                        const dy = d.target.y - d.source.y;
-                        const dist = Math.sqrt(dx*dx + dy*dy) || 1;
-                        const r = nodeRadius(d.target);
-                        return d.target.x - dx * (r / dist);
-                    }})
-                    .attr('y2', d => {{
-                        if (!hasCenter) return d.target.y;
-                        const dx = d.target.x - d.source.x;
-                        const dy = d.target.y - d.source.y;
-                        const dist = Math.sqrt(dx*dx + dy*dy) || 1;
-                        const r = nodeRadius(d.target);
-                        return d.target.y - dy * (r / dist);
-                    }});
-
-                node.attr('transform', d => {{
-                    d.x = Math.max(20, Math.min(width - 20, d.x));
-                    d.y = Math.max(20, Math.min(height - 20, d.y));
-                    return `translate(${{d.x}},${{d.y}})`;
-                }});
-            }});
-
-            // Drag functions
-            function dragstarted(event, d) {{
-                if (!event.active) simulation.alphaTarget(0.3).restart();
-                d.fx = d.x;
-                d.fy = d.y;
-            }}
-
-            function dragged(event, d) {{
-                d.fx = event.x;
-                d.fy = event.y;
-            }}
-
-            function dragended(event, d) {{
-                if (!event.active) simulation.alphaTarget(0);
-                d.fx = null;
-                d.fy = null;
-            }}
-
-            // Zoom support
-            const zoom = d3.zoom()
-                .scaleExtent([0.3, 3])
-                .on('zoom', (event) => {{
-                    linkG.attr('transform', event.transform);
-                    nodeG.attr('transform', event.transform);
-                }});
-
-            svg.call(zoom);
-
-            // Handle window resize
-            window.addEventListener('resize', () => {{
-                const newWidth = container.clientWidth;
-                const newHeight = container.clientHeight;
-                simulation.force('center', d3.forceCenter(newWidth / 2, newHeight / 2));
-                simulation.alpha(0.3).restart();
-            }});
-        </script>
+        {graph_script}
         "##,
-        styles = graph_styles,
+        page_styles = page_styles,
+        graph_styles = graph_styles,
         query_escaped = html_escape(query_str),
         query_desc = query.describe(),
         nodes = graph.stats.total_nodes,
         edges = graph.stats.total_edges,
         orphans = graph.stats.orphan_count,
         hubs = graph.stats.hub_count,
-        hub_threshold = graph.stats.hub_threshold,
         avg_deg = graph.stats.avg_degree,
-        graph_json = graph_json,
-        notes_json = notes_json,
-        logged_in_js = if logged_in { "true" } else { "false" },
-        has_center_js = if has_center { "true" } else { "false" },
+        graph_script = graph_script,
     );
 
     Html(base_html("Knowledge Graph", &html, None, logged_in))

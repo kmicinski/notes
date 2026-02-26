@@ -1,0 +1,2368 @@
+arXiv:2004.03082v3 [cs.PL] 7 Nov 2020
+
+egg: Fast and Extensible Equality Saturation
+MAX WILLSEY, University of Washington, Seattle, USA
+CHANDRAKANA NANDI, University of Washington, Seattle, USA
+YISU REMY WANG, University of Washington, Seattle, USA
+OLIVER FLATT, University of Utah, Salt Lake City, USA
+ZACHARY TATLOCK, University of Washington, Seattle, USA
+PAVEL PANCHEKHA, University of Utah, Salt Lake City, USA
+An e-graph efficiently represents a congruence relation over many expressions. Although they were originally
+developed in the late 1970s for use in automated theorem provers, a more recent technique known as equality
+saturation repurposes e-graphs to implement state-of-the-art, rewrite-driven compiler optimizations and
+program synthesizers. However, e-graphs remain unspecialized for this newer use case. Equality saturation workloads exhibit distinct characteristics and often require ad hoc e-graph extensions to incorporate
+transformations beyond purely syntactic rewrites.
+This work contributes two techniques that make e-graphs fast and extensible, specializing them to equality
+saturation. A new amortized invariant restoration technique called rebuilding takes advantage of equality
+saturation’s distinct workload, providing asymptotic speedups over current techniques in practice. A general
+mechanism called e-class analyses integrates domain-specific analyses into the e-graph, reducing the need for
+ad hoc manipulation.
+We implemented these techniques in a new open-source library called egg. Our case studies on three
+previously published applications of equality saturation highlight how egg’s performance and flexibility
+enable state-of-the-art results across diverse domains.
+
+1
+
+INTRODUCTION
+
+Equality graphs (e-graphs) were originally developed to efficiently represent congruence relations
+in automated theorem provers (ATPs). At a high level, e-graphs [Nelson 1980; Nieuwenhuis and
+Oliveras 2005] extend union-find [Tarjan 1975] to compactly represent equivalence classes of
+expressions while maintaining a key invariant: the equivalence relation is closed under congruence.1
+Over the past decade, several projects have repurposed e-graphs to implement state-of-the-art,
+rewrite-driven compiler optimizations and program synthesizers using a technique known as
+equality saturation [Joshi et al. 2002; Nandi et al. 2020; Panchekha et al. 2015; Premtoon et al. 2020;
+Stepp et al. 2011; Tate et al. 2009; Wang et al. 2020]. Given an input program 𝑝, equality saturation
+constructs an e-graph 𝐸 that represents a large set of programs equivalent to 𝑝, and then extracts
+the “best” program from 𝐸. The e-graph is grown by repeatedly applying pattern-based rewrites.
+Critically, these rewrites only add information to the e-graph, eliminating the need for careful
+ordering. Upon reaching a fixed point (saturation), 𝐸 will represent all equivalent ways to express
+𝑝 with respect to the given rewrites. After saturation (or timeout), a final extraction procedure
+analyzes 𝐸 and selects the optimal program according to a user-provided cost function.
+Ideally, a user could simply provide a language grammar and rewrites, and equality saturation
+would produce a effective optimizer. Two challenges block this ideal. First, maintaining congruence
+can become expensive as 𝐸 grows. In part, this is because e-graphs from the conventional ATP
+setting remain unspecialized to the distinct equality saturation workload. Second, many applications
+critically depend on domain-specific analyses, but integrating them requires ad hoc extensions to
+the e-graph. The lack of a general extension mechanism has forced researchers to re-implement
+equality saturation from scratch several times [Panchekha et al. 2015; Tate et al. 2009; Wu et al.
+2019]. These challenges limit equality saturation’s practicality.
+1 Intuitively, congruence simply means that 𝑎 ≡ 𝑏 implies 𝑓 (𝑎) ≡ 𝑓 (𝑏).
+
+2
+
+Willsey et al.
+
+Equality Saturation Workload. ATPs frequently query and modify e-graphs and additionally
+require backtracking to undo modifications (e.g., in DPLL(T) [Davis and Putnam 1960]). These
+requirements force conventional e-graph designs to maintain the congruence invariant after every
+operation. In contrast, the equality saturation workload does not require backtracking and can be
+factored into distinct phases of (1) querying the e-graph to simultaneously find all rewrite matches
+and (2) modifying the e-graph to merge in equivalences for all matched terms.
+We present a new amortized algorithm called rebuilding that defers e-graph invariant maintenance to equality saturation phase boundaries without compromising soundness. Empirically,
+rebuilding provides asymptotic speedups over conventional approaches.
+Domain-specific Analyses. Equality saturation is primarily driven by syntactic rewriting, but
+many applications require additional interpreted reasoning to bring domain knowledge into the
+e-graph. Past implementations have resorted to ad hoc e-graph manipulations to integrate what
+would otherwise be simple program analyses like constant folding.
+To flexibly incorporate such reasoning, we introduce a new, general mechanism called e-class
+analyses. An e-class analysis annotates each e-class (an equivalence class of terms) with facts drawn
+from a semilattice domain. As the e-graph grows, facts are introduced, propagated, and joined
+to satisfy the e-class analysis invariant, which relates analysis facts to the terms represented in
+the e-graph. Rewrites cooperate with e-class analyses by depending on analysis facts and adding
+equivalences that in turn establish additional facts. Our case studies and examples (Sections 5 and
+6) demonstrate e-class analyses like constant folding and free variable analysis which required
+bespoke customization in previous equality saturation implementations.
+egg. We implement rebuilding and e-class analyses in an open-source2 library called egg
+(e-graphs good). egg specifically targets equality saturation, taking advantage of its workload
+characteristics and supporting easy extension mechanisms to provide e-graphs specialized for
+program synthesis and optimization. egg also addresses more prosaic challenges, e.g., parameterizing over user-defined languages, rewrites, and cost functions while still providing an optimized
+implementation. Our case studies demonstrate how egg’s features constitute a general, reusable
+e-graph library that can support equality saturation across diverse domains.
+In summary, the contributions of this paper include:
+• Rebuilding (Section 3), a technique that restores key correctness and performance invariants
+only at select points in the equality saturation algorithm. Our evaluation demonstrates that
+rebuilding is faster than existing techniques in practice.
+• E-class analysis (Section 4), a technique for integrating domain-specific analyses that cannot be expressed as purely syntactic rewrites. The e-class analysis invariant provides the
+guarantees that enable cooperation between rewrites and analyses.
+• A fast, extensible implementation of e-graphs in a library dubbed egg (Section 5).
+• Case studies of real-world, published tools that use egg for deductive synthesis and program
+optimization across domains such as floating point accuracy, linear algebra optimization, and
+CAD program synthesis (Section 6). Where previous implementations existed, egg is orders
+of magnitude faster and offers more features.
+2
+
+BACKGROUND
+
+egg builds on e-graphs and equality saturation. This section describes those techniques and presents
+the challenges that egg addresses.
+
+2 web: https://egraphs-good.github.io, source: https://github.com/egraphs-good/egg, documentation: https://docs.rs/egg
+
+egg: Fast and Extensible Equality Saturation
+
+function symbols
+e-class ids
+terms
+e-nodes
+e-classes
+
+𝑓 ,𝑔
+𝑎, 𝑏
+𝑡 ::= 𝑓 | 𝑓 (𝑡 1, . . . , 𝑡𝑚 )
+𝑛 ::= 𝑓 | 𝑓 (𝑎 1, . . . , 𝑎𝑚 )
+𝑐 ::= {𝑛 1, . . . , 𝑛𝑚 }
+
+3
+
+opaque identifiers
+𝑚≥1
+𝑚≥1
+𝑚≥1
+
+Fig. 1. Syntax and metavariables for the components of an e-graph. Function symbols may stand alone as
+constant e-nodes and terms. An e-class id is an opaque identifier that can be compared for equality with =.
+
+2.1
+
+E-graphs
+
+An e-graph is a data structure that stores a set of terms and a congruence relation over those terms.
+Originally developed for and still used in the heart of theorem provers [De Moura and Bjørner 2008;
+Detlefs et al. 2005; Nelson 1980], e-graphs have also been used to power a program optimization
+technique called equality saturation [Joshi et al. 2002; Nandi et al. 2020; Panchekha et al. 2015;
+Premtoon et al. 2020; Stepp et al. 2011; Tate et al. 2009; Wang et al. 2020].
+2.1.1 Definitions. Intuitively, an e-graph is a set of equivalence classes (e-classes). Each e-class is a
+set of e-nodes representing equivalent terms from a given language, and an e-node is a function
+symbol paired with a list of children e-classes. More precisely:
+Definition 2.1 (Definition of an E-graph). Given the definitions and syntax in Figure 1, an e-graph
+is a tuple (𝑈 , 𝑀, 𝐻 ) where:
+• A union-find data structure [Tarjan 1975] 𝑈 stores an equivalence relation (denoted with
+≡id ) over e-class ids.
+• The e-class map 𝑀 maps e-class ids to e-classes. All equivalent e-class ids map to the same
+e-class, i.e., 𝑎 ≡id 𝑏 iff 𝑀 [𝑎] is the same set as 𝑀 [𝑏]. An e-class id 𝑎 is said to refer to the
+e-class 𝑀 [find(𝑎)].
+• The hashcons3 𝐻 is a map from e-nodes to e-class ids.
+Note that an e-class has an identity (its canonical e-class id), but an e-node does not.4 We use
+e-class id 𝑎 and the e-class 𝑀 [find(𝑎)] synonymously when clear from the context.
+Definition 2.2 (Canonicalization). An e-graph’s union-find 𝑈 provides a find operation that
+canonicalizes e-class ids such that find(𝑈 , 𝑎) = find(𝑈 , 𝑏) iff 𝑎 ≡id 𝑏. We omit the first argument
+of find where clear from context.
+• An e-class id 𝑎 is canonical iff find(𝑎) = 𝑎.
+• An e-node 𝑛 is canonical iff 𝑛 = canonicalize(𝑛), where
+canonicalize(𝑓 (𝑎 1, 𝑎 2, ...)) = 𝑓 (find(𝑎 1 ), find(𝑎 2 ), ...).
+Definition 2.3 (Representation of Terms). An e-graph, e-class, or e-node is said to represent a term
+𝑡 if 𝑡 can be “found” within it. Representation is defined recursively:
+• An e-graph represents a term if any of its e-classes do.
+• An e-class 𝑐 represents a term if any e-node 𝑛 ∈ 𝑐 does.
+• An e-node 𝑓 (𝑎 1, 𝑎 2, ...) represents a term 𝑓 (𝑡 1, 𝑡 2, ...) if they have the same function symbol 𝑓
+and e-class 𝑀 [𝑎𝑖 ] represents term 𝑡𝑖 .
+3 We use the term hashcons to evoke the memoization technique, since both avoid creating new duplicates of existing objects.
+4 Our definition of an e-graph reflects egg’s design and therefore differs with some other e-graph definitions and implemen-
+
+tations. In particular, making e-classes but not e-nodes identifiable is unique to our definition.
+
+4
+
+Willsey et al.
+
+a
+
+/
+
+/
+
+*
+
+*
+
+2
+
+(a) Initial e-graph
+contains (𝑎 × 2)/2.
+
+a
+
+/
+*
+
+<<
+2
+
+1
+
+(b) After applying rewrite
+𝑥 × 2 → 𝑥 ≪ 1.
+
+a
+
+*
+
+/
+
+<<
+
+/
+
+*
+
+2
+
+1
+
+(c) After applying rewrite
+(𝑥 × 𝑦)/𝑧 → 𝑥 × (𝑦/𝑧).
+
+a
+
+*
+<<
+
+/
+
+2
+
+1
+
+(d) After applying rewrites
+𝑥/𝑥 → 1 and 1 × 𝑥 → 𝑥.
+
+Fig. 2. An e-graph consists of e-classes (dashed boxes) containing equivalent e-nodes (solid boxes). Edges
+connect e-nodes to their child e-classes. Additions and modifications are emphasized in black. Applying
+rewrites to an e-graph adds new e-nodes and edges, but nothing is removed. Expressions added by rewrites
+are merged with the matched e-class. In Figure 2d, the rewrites do not add any new nodes, only merge
+e-classes. The resulting e-graph has a cycle, representing infinitely many expressions: 𝑎, 𝑎 × 1, 𝑎 × 1 × 1, and
+so on.
+
+When each e-class is a singleton (containing only one e-node), an e-graph is essentially a term
+graph with sharing. Figure 2a shows an e-graph that represents the expression (𝑎 × 2)/2.
+Definition 2.4 (Equivalence). An e-graph defines three equivalence relations.
+• Over e-class ids: 𝑎 ≡id 𝑏 iff find(𝑎) = find(𝑏).
+• Over e-nodes: 𝑛 1 ≡node 𝑛 2 iff e-nodes 𝑛 1, 𝑛 2 are in the same e-class, i.e., ∃𝑎. 𝑛 1, 𝑛 2 ∈ 𝑀 [𝑎].
+• Over terms: 𝑡 1 ≡term 𝑡 2 iff terms 𝑡 1, 𝑡 2 are represented in the same e-class.
+We use ≡ without the subscript when the relation is clear from context.
+Definition 2.5 (Congruence). For a given e-graph, let  denote a congruence relation over e-nodes
+such that 𝑓 (𝑎 1, 𝑎 2, ...)  𝑓 (𝑏 1, 𝑏 2, ...) iff 𝑎𝑖 ≡id 𝑏𝑖 . Let ∗ denote the congruence closure of ≡node ,
+i.e., the smallest superset of ≡node that is also a superset of . Note that there may be two e-nodes
+such that 𝑛 1 ∗ 𝑛 2 but 𝑛 1  𝑛 2 and 𝑛 1 ̸≡node 𝑛 2 . The relation  only represents a single step of
+congruence; more than one step may be required to compute the congruence closure.
+2.1.2 E-graph Invariants. The e-graph must maintain invariants in order to correctly and efficiently
+implement the operations given in Section 2.1.3. This section only defines the invariants, discussion
+of how they are maintained is deferred to Section 3. These are collectively referred to as the e-graph
+invariants.
+Definition 2.6 (The Congruence Invariant). The equivalence relation over e-nodes must be closed
+over congruence, i.e., (≡node ) = (∗ ). The e-graph must ensure that congruent e-nodes are in the
+same e-class. Since identical e-nodes are trivially congruent, this implies that an e-node must be
+uniquely contained in a single e-class.
+Definition 2.7 (The Hashcons Invariant). The hashcons 𝐻 must map all canonical e-nodes to their
+e-class ids. In other words:
+e-node 𝑛 ∈ 𝑀 [𝑎] ⇐⇒ 𝐻 [canonicalize(𝑛)] = find(𝑎)
+If the hashcons invariant holds, then a procedure lookup can quickly find which e-class (if any)
+has an e-node congruent to a given e-node 𝑛: lookup(𝑛) = 𝐻 [canonicalize(𝑛)].
+
+egg: Fast and Extensible Equality Saturation
+
+5
+
+2.1.3 Interface and Rewriting. E-graphs bear many similarities to the classic union-find data structure that they employ internally, and they inherit much of the terminology. E-graphs provide two
+main low-level mutating operations:
+• add takes an e-node 𝑛 and:
+– if lookup(𝑛) = 𝑎, return 𝑎;
+– if lookup(𝑛) = ∅, then set 𝑀 [𝑎] = {𝑛} and return the id 𝑎.
+• merge (sometimes called assert or union) takes two e-class ids 𝑎 and 𝑏, unions them in the
+union-find 𝑈 , and combines the e-classes by setting both 𝑀 [𝑎] and 𝑀 [𝑏] to 𝑀 [𝑎] ∪ 𝑀 [𝑏].
+Both of these operations must take additional steps to maintain the congruence invariant.
+Invariant maintenance is discussed in Section 3.
+E-graphs also offers operations for querying the data structure.
+• find canonicalizes e-class ids using the union-find 𝑈 as described in definition 2.1.
+• ematch performs the e-matching [de Moura and Bjørner 2007; Detlefs et al. 2005] procedure
+for finding patterns in the e-graph. ematch takes a pattern term 𝑝 with variable placeholders
+and returns a list of tuples (𝜎, 𝑐) where 𝜎 is a substitution of variables to e-class ids such that
+𝑝 [𝜎] is represented in e-class 𝑐.
+These can be composed to perform rewriting over the e-graph. To apply a rewrite ℓ → 𝑟 to
+an e-graph, ematch finds tuples (𝜎, 𝑐) where e-class 𝑐 represents ℓ [𝜎]. Then, for each tuple,
+merge(𝑐, add(𝑟 [𝜎])) adds 𝑟 [𝜎] to the e-graph and unifies it with the matching e-class c.
+Figure 2 shows an e-graph undergoing a series of rewrites. Note how the process is only additive;
+the initial term (𝑎 ×2)/2 is still represented in the e-graph. Rewriting in an e-graph can also saturate,
+meaning the e-graph has learned every possible equivalence derivable from the given rewrites. If
+the user tried to apply 𝑥 × 𝑦 → 𝑦 × 𝑥 to an e-graph twice, the second time would add no additional
+e-nodes and perform no new merges; the e-graph can detect this and stop applying that rule.
+2.2
+
+Equality Saturation
+
+Term rewriting [Dershowitz 1993] is a time-tested approach for equational reasoning in program
+optimization [Joshi et al. 2002; Tate et al. 2009], theorem proving [De Moura and Bjørner 2008;
+Detlefs et al. 2005], and program transformation [Andries et al. 1999]. In this setting, a tool repeatedly
+chooses one of a set of axiomatic rewrites, searches for matches of the left-hand pattern in the
+given expression, and replaces matching instances with the substituted right-hand side.
+Term rewriting is typically destructive and “forgets” the matched left-hand side. Consider applying a simple strength reduction rewrite: (𝑎 × 2)/2 → (𝑎 ≪ 1)/2. The new term carries no
+information about the initial term. Applying strength reduction at this point prevents us from
+canceling out 2/2. In the compilers community, this classically tricky question of when to apply
+which rewrite is called the phase ordering problem.
+One solution to the phase ordering problem would simply apply all rewrites simultaneously,
+keeping track of every expression seen. This eliminates the problem of choosing the right rule, but
+a naive implementation would require space exponential in the number of given rewrites. Equality
+saturation [Stepp et al. 2011; Tate et al. 2009] is a technique to do this rewriting efficiently using an
+e-graph.
+Figure 3 shows the equality saturation workflow. First, an initial e-graph is created from the
+input term. The core of the algorithm runs a set of rewrite rules until the e-graph is saturated (or
+a timeout is reached). Finally, a procedure called extraction selects the optimal represented term
+according to some cost function. For simple cost functions, a bottom-up, greedy traversal of the
+e-graph suffices to find the best term. Other extraction procedures have been explored for more
+complex cost functions [Wang et al. 2020; Wu et al. 2019].
+
+6
+
+Willsey et al.
+
+Input
+Term
+
+Initialize
+
+E-graph
+
+Apply Rewrites
+
+Extract
+
+Optimized
+Term
+
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+
+def equality_saturation(expr, rewrites):
+egraph = initial_egraph(expr)
+while not egraph.is_saturated_or_timeout():
+for rw in rewrites:
+for (subst, eclass) in egraph.ematch(rw.lhs):
+eclass2 = egraph.add(rw.rhs.subst(subst))
+egraph.merge(eclass, eclass2)
+return egraph.extract_best()
+
+Fig. 3. Box diagram and pseudocode for equality saturation. Traditionally, equality saturation maintains the
+e-graph data structure invariants throughout the algorithm.
+
+Equality saturation eliminates the tedious and often error-prone task of choosing when to apply
+which rewrites, promising an appealingly simple workflow: state the relevant rewrites for the
+language, create an initial e-graph from a given expression, fire the rules until saturation, and
+finally extract the cheapest equivalent expression. Unfortunately, the technique remains ad hoc;
+prospective equality saturation users must implement their own e-graphs customized to their
+language, avoid performance pitfalls, and hack in the ability to do interpreted reasoning that is not
+supported by purely syntactic rewrites. egg aims to address each aspect of these difficulties.
+2.3
+
+Equality Saturation and Theorem Proving
+
+An equality saturation engine and a theorem prover each have capabilities that would be impractical
+to replicate in the other. Automated theorem provers like satisfiability modulo theory (SMT) solvers
+are general tools that, in addition to supporting satisfiability queries, incorporate sophisticated,
+domain-specific solvers to allow interpreted reasoning within the supported theories. On the other
+hand, equality saturation is specialized for optimization, and its extraction procedure directly
+produces an optimal term with respect to a given cost function.
+While SMT solvers are indeed the more general tool, equality saturation is not superseded by
+SMT; the specialized approach can be much faster when the full generality of SMT is not needed. To
+demonstrate this, we replicated a portion of the recent TASO paper [Jia et al. 2019], which optimizes
+deep learning models. As part of the work, they must verify a set of synthesized equalities with
+respect to a trusted set of universally quantified axioms. TASO uses Z3 [De Moura and Bjørner
+2008] to perform the verification even though most of Z3’s features (disjunctions, backtracking,
+theories, etc.) were not required. An equality saturation engine can also be used for verifying these
+equalities by adding the left and right sides of each equality to an e-graph, running the axioms
+as rewrites, and then checking if both sides end up in the same e-class. Z3 takes 24.65 seconds
+to perform the verification; egg performs the same task in 1.56 seconds (15× faster), or only 0.52
+seconds (47× faster) when using egg’s batched evaluation (Section 5.3).
+3
+
+REBUILDING: A NEW TAKE ON E-GRAPH INVARIANT MAINTENANCE
+
+Traditionally [Detlefs et al. 2005; Nelson 1980], e-graphs maintain their data structure invariants
+after each operation. We separate this invariant restoration into a procedure called rebuilding. This
+separation allows the client to choose when to enforce the e-graph invariants. Performing a rebuild
+immediately after every operation replicates the traditional approach to invariant maintenance. In
+contrast, rebuilding less frequently can amortize the cost of invariant maintenance, significantly
+improving performance.
+
+egg: Fast and Extensible Equality Saturation
+
+7
+
+In this section, we first describe how e-graphs have traditionally maintained invariants (Section 3.1). We then describe the rebuilding framework and how it captures a spectrum of invariant
+maintenance approaches, including the traditional one (Section 3.2). Using this flexibility, we then
+give a modified algorithm for equality saturation that enforces the e-graph invariants at only select
+points (Section 3.3). We finally demonstrate that this new approach offers an asymptotic speedup
+over traditional equality saturation (Section 3.4).
+3.1
+
+Upward Merging
+
+Both mutating operations on the e-graph (add and merge, Section 2.1.3) can break the e-graph
+invariants if not done carefully. E-graphs have traditionally used hashconsing and upward merging
+to maintain the congruence invariant.
+The add operation relies on the hashcons invariant (Definition 2.7) to quickly check whether the
+e-node 𝑛 to be added—or one congruent to it—is already present. Without this check, add would
+create a new e-class with 𝑛 in it even if some 𝑛 ′  𝑛 was already in the e-graph, violating the
+congruence invariant.
+The merge operation e-classes can violate both e-graph invariants. If 𝑓 (𝑎, 𝑏) and 𝑓 (𝑎, 𝑐) reside
+in two different e-classes 𝑥 and 𝑦, merging 𝑏 and 𝑐 should also merge 𝑥 and 𝑦 to maintain the
+congruence invariant. This can propagate further, requiring additional merges.
+E-graphs maintain a parent list for each e-class to maintain congruence. The parent list for
+e-class 𝑐 holds all e-nodes that have 𝑐 as a child. When merging two e-classes, e-graphs inspect
+these parent lists to find parents that are now congruent, recursively “upward merging” them if
+necessary.
+The merge routine must also perform bookkeeping to preserve the hashcons invariant. In particular, merging two e-classes may change how parent e-nodes of those e-classes are canonicalized.
+The merge operation must therefore remove, re-canonicalize, and replace those e-nodes in the
+hashcons. In existing e-graph implementations [Panchekha et al. 2015] used for equality saturation,
+maintaining the invariants while merging can take the vast majority of run time.
+3.2
+
+Rebuilding in Detail
+
+Traditionally, invariant restoration is part of the merge operation itself. Rebuilding separates
+these concerns, reducing merge’s obligations and allowing for amortized invariant maintenance.
+In the rebuilding paradigm, merge maintains a worklist of e-class ids that need to be “upward
+merged”, i.e., e-classes whose parents are possibly congruent but not yet in the same e-class. The
+rebuild operation processes this worklist, restoring the invariants of deduplication and congruence.
+Rebuilding is similar to other approaches in how it restores congruence (see Related Work for
+comparison to Downey et al. [1980]); but it uniquely allows the client to choose when to restore
+invariants in the context of a larger algorithm like equality saturation.
+Figure 4 shows pseudocode for the main e-graph operations and rebuilding. Note that add and
+canonicalize are given for completeness, but they are unchanged from the traditional e-graph
+implementation. The merge operation is similar, but it only adds the new e-class to the worklist
+instead of immediately starting upward merging. Adding a call to rebuild right after the addition
+to the worklist (Figure 4 line 19) would yield the traditional behavior of restoring the invariants
+immediately.
+The rebuild method essentially calls repair on the e-classes from the worklist until the worklist
+is empty. Instead of directly manipulating the worklist, egg’s rebuild method first moves it into
+a local variable and deduplicates e-classes up to equivalence. Processing the worklist may merge
+e-classes, so breaking the worklist into chunks ensures that e-class ids made equivalent in the
+previous chunk are deduplicated in the subsequent chunk.
+
+8
+
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+
+Willsey et al.
+
+def add(enode):
+enode = self.canonicalize(enode)
+if enode in self.hashcons:
+return self.hashcons[enode]
+else:
+eclass_id = self.new_singleton_eclass(enode)
+for child in enode.children:
+child.parents.add(enode, eclass_id)
+self.hashcons[enode] = eclass_id
+return eclass_id
+def merge(id1, id2)
+if self.find(id1) == self.find(id2):
+return self.find(id1)
+new_id = self.union_find.union(id1, id2)
+# traditional egraph merge can be
+# emulated by calling rebuild right after
+# adding the eclass to the worklist
+self.worklist.add(new_id)
+return new_id
+def canonicalize(enode)
+new_ch = [self.find(e) for e in enode.children]
+return mk_enode(enode.op, new_ch)
+def find(eclass_id):
+return self.union_find.find(eclass_id)
+
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+45
+46
+47
+48
+49
+50
+51
+52
+53
+
+def rebuild():
+while self.worklist.len() > 0:
+# empty the worklist into a local variable
+todo = take(self.worklist)
+# canonicalize and deduplicate the eclass refs
+# to save calls to repair
+todo = { self.find(eclass) for eclass in todo }
+for eclass in todo:
+self.repair(eclass)
+def repair(eclass):
+# update the hashcons so it always points
+# canonical enodes to canonical eclasses
+for (p_node, p_eclass) in eclass.parents:
+self.hashcons.remove(p_node)
+p_node = self.canonicalize(p_node)
+self.hashcons[p_node] = self.find(p_eclass)
+# deduplicate the parents, noting that equal
+# parents get merged and put on the worklist
+new_parents = {}
+for (p_node, p_eclass) in eclass.parents:
+p_node = self.canonicalize(p_node)
+if p_node in new_parents:
+self.merge(p_eclass, new_parents[p_node])
+new_parents[p_node] = self.find(p_eclass)
+eclass.parents = new_parents
+
+Fig. 4. Pseudocode for the add, merge, rebuild, and supporting methods. In each method, self refers to the
+e-graph being modified.
+
+The actual work of rebuild occurs in the repair method. repair examines an e-class 𝑐 and first
+canonicalizes e-nodes in the hashcons that have 𝑐 as a child. Then it performs what is essentially
+one “layer” of upward merging: if any of the parent e-nodes have become congruent, then their
+e-classes are merged and the result is added to the worklist.
+Deduplicating the worklist, and thus reducing calls to repair, is at the heart of why deferring
+rebuilding improves performance. Intuitively, the upward merging process of rebuilding traces
+out a “path” of congruence through the e-graph. When rebuilding happens immediately after
+merge (and therefore frequently), these paths can substantially overlap. By deferring rebuilding,
+the chunk-and-deduplicate approach can coalesce the overlapping parts of these paths, saving
+what would have been redundant work. In our modified equality saturation algorithm (Section 3.3),
+deferred rebuilding is responsible for a significant, asymptotic speedup (Section 3.4).
+3.2.1 Examples of Rebuilding. Deferred rebuilding speeds up congruence maintenance by amortizing the work of maintaining the hashcons invariant. Consider the following terms in an e-graph:
+𝑓1 (𝑥), ..., 𝑓𝑛 (𝑥), 𝑦1, ..., 𝑦𝑛 . Let the workload be merge(𝑥, 𝑦1 ), ..., merge(𝑥, 𝑦𝑛 ). Each merge may change
+the canonical representation of the 𝑓𝑖 (𝑥)s, so the traditional invariant maintenance strategy could
+require 𝑂 (𝑛 2 ) hashcons updates. With deferred rebuilding the merges happen before the hashcons
+invariant is restored, requiring no more than 𝑂 (𝑛) hashcons updates.
+Deferred rebuilding can also reduce the number of calls to repair. Consider the following 𝑤
+terms in an e-graph, each nested under 𝑑 function symbols:
+𝑓1 (𝑓2 (. . . 𝑓𝑑 (𝑥 1 ))),
+
+...,
+
+𝑓1 (𝑓2 (. . . 𝑓𝑑 (𝑥 𝑤 )))
+
+egg: Fast and Extensible Equality Saturation
+
+9
+
+Note that 𝑤 corresponds the width of this group of terms, and 𝑑 to the depth. Let the workload be
+𝑤 − 1 merges that merge all the 𝑥s together: for 𝑖 ∈ [2, 𝑤], merge(𝑥 1, 𝑥𝑖 ).
+In the traditional upward merging paradigm where rebuild is called after every merge, each
+merge(𝑥𝑖 , 𝑥 𝑗 ) will require 𝑂 (𝑑) calls to repair to maintain congruence, one for each layer of 𝑓𝑖 s.
+Over the whole workload, this requires 𝑂 (𝑤𝑑) calls to repair.
+With deferred rebuilding, however, the 𝑤 − 1 merges can all take place before congruence must be
+restored. Suppose the 𝑥s are all merged into an e-class 𝑐 𝑥 When rebuild finally is called, the only
+element in the deduplicated worklist is 𝑐 𝑥 . Calling repair on 𝑐 𝑥 will merge the e-classes of the 𝑓𝑑
+e-nodes into an e-class 𝑐 𝑓𝑑 , adding the e-classes that contained those e-nodes back to the worklist.
+When the worklist is again deduplicated, 𝑐 𝑓𝑑 will be the only element, and the process repeats.
+Thus, the whole workload only incurs 𝑂 (𝑑) calls to repair, eliminating the factor corresponding
+to the width of this group of terms. Figure 8 shows that the number calls to repair is correlated
+with time spent doing congruence maintenance.
+3.2.2 Proof of Congruence. Intuitively, rebuilding is a delay of the upward merging process, allowing the user to choose when to restore the e-graph invariants. They are substantially similar in
+structure, with a critical a difference in when the code is run. Below we offer a proof demonstrating
+that rebuilding restores the e-graph congruence invariant.
+Theorem 3.1. Rebuilding restores congruence and terminates.
+Proof. Since rebuilding only merges congruent nodes, the congruence closure ∗ is fixed even
+though ≡node changes. When (≡node ) = (∗ ), congruence is restored. Note that both ≡node and
+∗ are finite. We therefore show that rebuilding causes ≡node to approach ∗ . We define the set
+of incongruent e-node pairs as 𝐼 = (∗ ) \ (≡node ); in other words, (𝑛 1, 𝑛 2 ) ∈ 𝐼 if 𝑛 1 ∗ 𝑛 2 but
+𝑛 1 ̸≡node 𝑛 2 .
+Due to the additive nature of equality saturation, ≡node only increases and therefore 𝐼 is nonincreasing. However, a call to repair inside the loop of rebuild does not necessarily shrink 𝐼 .
+Some calls instead remove an element from the worklist but do not modify the e-graph at all.
+Let the set 𝑊 be the worklist of e-classes to be processed by repair; in Figure 4, 𝑊 corresponds
+to self.worklist plus the unprocessed portion of the todo local variable. We show that each
+call to repair decreases the tuple (|𝐼 |, |𝑊 |) lexicographically until (|𝐼 |, |𝑊 |) = (0, 0), and thus
+rebuilding terminates with (≡node ) = (∗ ).
+Given an e-class 𝑐 from 𝑊 , repair examines 𝑐’s parents for congruent e-nodes that are not yet
+in the same e-class:
+• If at least one pair of 𝑐’s parents are congruent, rebuilding merges each pair (𝑝 1 , 𝑝 2 ), which
+adds to 𝑊 but makes 𝐼 smaller by definition.
+• If no such congruent pairs are found, do nothing. Then, |𝑊 | is decreased by 1 since 𝑐 came
+from the worklist and repair did not add anything back.
+Since (|𝐼 |, |𝑊 |) decreases lexicographically, |𝑊 | eventually reaches 0, so rebuild terminates.
+Note that 𝑊 contains precisely those e-classes that need to be “upward merged” to check for
+congruent parents. So, when 𝑊 is empty, rebuild has effectively performed upward merging.
+By Nelson [1980, Chapter 7], |𝐼 | = 0. Therefore, when rebuilding terminates, congruence is restored.
+□
+3.3
+
+Rebuilding and Equality Saturation
+
+Rebuilding offers the choice of when to enforce the e-graph invariants, potentially saving work if
+deferred thanks to the deduplication of the worklist. The client is responsible for rebuilding at a
+time that maximizes performance without limiting the application.
+
+10
+
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+
+Willsey et al.
+
+def equality_saturation(expr, rewrites):
+egraph = initial_egraph(expr)
+while not egraph.is_saturated_or_timeout():
+
+# reading and writing is mixed
+for rw in rewrites:
+for (subst, eclass) in egraph.ematch(rw.lhs):
+# in traditional equality saturation,
+# matches can be applied right away
+# because invariants are always maintained
+eclass2 = egraph.add(rw.rhs.subst(subst))
+egraph.merge(eclass, eclass2)
+# restore the invariants after each merge
+egraph.rebuild()
+return egraph.extract_best()
+
+(a) Traditional equality saturation alternates between searching and applying rules, and the
+e-graph maintains its invariants throughout.
+
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+
+def equality_saturation(expr, rewrites):
+egraph = initial_egraph(expr)
+while not egraph.is_saturated_or_timeout():
+matches = []
+# read-only phase, invariants are preserved
+for rw in rewrites:
+for (subst, eclass) in egraph.ematch(rw.lhs):
+matches.append((rw, subst, eclass))
+# write-only phase, temporarily break invariants
+for (rw, subst, eclass) in matches:
+eclass2 = egraph.add(rw.rhs.subst(subst))
+egraph.merge(eclass, eclass2)
+# restore the invariants once per iteration
+egraph.rebuild()
+return egraph.extract_best()
+
+(b) egg splits equality saturation iterations into read
+and write phases. The e-graph invariants are not
+constantly maintained, but restored only at the end
+of each iteration by the rebuild method (Section 3).
+
+Fig. 5. Pseudocode for traditional and egg’s version of the equality saturation algorithm.
+
+egg provides a modified equality saturation algorithm to take advantage of rebuilding. Figure 5
+shows pseudocode for both traditional equality saturation and egg’s variant, which exhibits two
+key differences:
+(1) Each iteration is split into a read phase, which searches for all the rewrite matches, and a
+write phase that applies those matches.5
+(2) Rebuilding occurs only once per iteration, at the end.
+egg’s separation of the read and write phases means that rewrites are truly unordered. In
+traditional equality saturation, later rewrites in the given rewrite list are favored in the sense that
+they can “see” the results of earlier rewrites in the same iteration. Therefore, the results depend on
+the order of the rewrite list if saturation is not reached (which is common on large rewrite lists or
+input expressions). egg’s equality saturation algorithm is invariant to the order of the rewrite list.
+Separating the read and write phases also allows egg to safely defer rebuilding. If rebuilding were
+deferred in the traditional equality saturation algorithm, rules later in the rewrite list would be
+searched against an e-graph with broken invariants. Since congruence may not hold, there may be
+missing equivalences, resulting in missing matches. These matches will be seen after the rebuild
+during the next iteration (if another iteration occurs), but the false reporting could impact metrics
+collection, rule scheduling,6 or saturation detection.
+
+5 Although the original equality saturation paper [Tate et al. 2009] does not have separate reading and writing phases,
+
+some e-graph implementations (like the one inside Z3 [De Moura and Bjørner 2008]) do separate these phases as an
+implementation detail. Ours is the first algorithm to take advantage of this by deferring invariant maintenance.
+6 An optimization introduced in Figure 5.2 that relies on an accurate count of how many times a rewrite was matched.
+
+egg: Fast and Extensible Equality Saturation
+
+Congruence time (sec) - log scale
+
+Congruence time (sec) - linear scale
+Rebuilding once per iteration
+
+1200
+Rebuilding once per iteration
+
+11
+
+1000
+800
+600
+400
+200
+0
+
+0
+
+200
+
+102
+100
+10 2
+10 4
+
+400 600 800 1000 1200
+Rebuilding every merge
+
+10 4
+
+10 2
+100
+Rebuilding every merge
+
+102
+
+Fig. 6. Rebuilding once per iteration—as opposed to after every merge—significantly speeds up congruence
+maintenance. Both plots show the same data: one point for each of the 32 tests. The diagonal line is 𝑦 = 𝑥;
+points below the line mean deferring rebuilding is faster. In aggregate over all tests (using geometric mean),
+congruence is 88× faster, and equality saturation is 21× faster. The linear scale plot shows that deferred
+rebuilding is significantly faster. The log scale plot suggests the speedup is greater than some constant
+multiple; Figure 7 demonstrates this in greater detail.
+
+Time spent in congruence (sec)
+
+Speedup (log scale)
+
+300×
+100×
+30×
+10×
+3×
+1×
+0.3×
+
+100
+
+101
+
+102 103 104 105
+Rewrites applied so far
+
+106
+
+Fig. 7. As more rewrites are applied, deferring rebuilding gives greater speedup. Each line represents
+a single test: each equality saturation iteration plots
+the cumulative rewrites applied so far against the
+multiplicative speedup of deferring rebuilding; the
+dot represents the end of that test. Both the test suite
+as a whole (the dots) and individual tests (the lines)
+demonstrate an asymptotic speedup that increases
+with the problem size.
+
+3.4
+
+Rebuilding every merge
+Rebuilding once per iteration
+
+102
+100
+10 2
+10 4
+100
+
+101
+
+102 103 104 105
+Number of calls to repair
+
+106
+
+Fig. 8. The time spent in congruence maintenance
+correlates with the number of calls to the repair
+method. Spearman correlation yields 𝑟 = 0.98 with a
+p-value of 3.6e-47, indicating that the two quantities
+are indeed positively correlated.
+
+Evaluating Rebuilding
+
+To demonstrate that deferred rebuilding provides faster congruence closure than traditional upward
+merging, we modified egg to call rebuild immediately after every merge. This provides a one-toone comparison of deferred rebuilding against the traditional approach, isolated from the many
+other factors that make egg efficient: overall design and algorithmic differences, programming
+language performance, and other orthogonal performance improvements.
+
+12
+
+Willsey et al.
+
+We ran egg’s test suite using both rebuild strategies, measuring the time spent on congruence
+maintenance. Each test consists of one run of egg’s equality saturation algorithm to optimize a
+given expression. Of the 32 total tests, 8 hit the iteration limit of 100 and the remainder saturated.
+Note that both rebuilding strategies use egg’s phase-split equality saturation algorithm, and the
+resulting e-graphs are identical in all cases. These experiments were performed on a 2020 Macbook
+Pro with a 2 GHz quad-core Intel Core i5 processor and 16GB of memory.
+Figure 6 shows our how rebuilding speeds up congruence maintenance. Overall, our experiments
+show an aggregate 88× speedup on congruence closure and 21× speedup over the entire equality saturation algorithm. Figure 7 shows this speedup is asymptotic; the multiplicative speedup
+increases as problem gets larger.
+egg’s test suite consists of two main applications: math, a small computer algebra system capable
+of symbolic differentiation and integration; and lambda, a partial evaluator for the untyped lambda
+calculus using explicit substitution to handle variable binding (shown in Section 5). Both are typical
+egg applications primarily driven by syntactic rewrites, with a few key uses of egg’s more complex
+features like e-class analyses and dynamic/conditional rewrites.
+egg can be configured to capture various metrics about equality saturation as it runs, including
+the time spent in the read phase (searching for matches), the write phase (applying matches), and
+rebuilding. In Figure 6, congruence time is measured as the time spent applying matches plus
+rebuilding. Other parts of the equality saturation algorithm (creating the initial e-graph, extracting
+the final term) take negligible take compared to the equality saturation iterations.
+Deferred rebuilding amortizes the examination of e-classes for congruence maintenance; deduplicating the worklist reduces the number of calls to the repair. Figure 8 shows that time spent in
+congruence is correlated with the number of calls to the repair methods.
+The case study in Section 6.1 provides a further evaluation of rebuilding. Rebuilding (and other
+egg features) have also been implemented in a Racket-based e-graph, demonstrating that rebuilding
+is a conceptual advance that need not be tied to the egg implementation.
+4
+
+EXTENDING E-GRAPHS WITH E-CLASS ANALYSES
+
+As discussed so far, e-graphs and equality saturation provide an efficient way to implement a term
+rewriting system. Rebuilding enhances that efficiency, but the approach remains designed for purely
+syntactic rewrites. However, program analysis and optimization typically require more than just
+syntactic information. Instead, transformations are computed based on the input terms and also
+semantic facts about that input term, e.g., constant value, free variables, nullability, numerical sign,
+size in memory, and so on. The “purely syntactic” restriction has forced existing equality saturation
+applications [Panchekha et al. 2015; Stepp et al. 2011; Tate et al. 2009] to resort to ad hoc passes over
+the e-graph to implement analyses like constant folding. These ad hoc passes require manually
+manipulating the e-graph, the complexity of which could prevent the implementation of more
+sophisticated analyses.
+We present a new technique called e-class analysis, which allows the concise expression of a
+program analysis over the e-graph. An e-class analysis resembles abstract interpretation lifted to
+the e-graph level, attaching analysis data from a semilattice to each e-class. The e-graph maintains
+and propagates this data as e-classes get merged and new e-nodes are added. Analysis data can be
+used directly to modify the e-graph, to inform how or if rewrites apply their right-hand sides, or to
+determine the cost of terms during the extraction process.
+E-class analyses provide a general mechanism to replace what previously required ad hoc
+extensions that manually manipulate the e-graph. E-class analyses also fit within the equality
+saturation workflow, so they can naturally cooperate with the equational reasoning provided by
+rewrites. Moreover, an analysis lifted to the e-graph level automatically benefits from a sort of
+
+egg: Fast and Extensible Equality Saturation
+
+13
+
+“partial-order reduction” for free: large numbers of similar programs may be analyzed for little
+additional cost thanks to the e-graph’s compact representation.
+This section provides a conceptual explanation of e-class analyses as well as dynamic and
+conditional rewrites that can use the analysis data. The following sections will provide concrete
+examples: Section 5 discusses the egg implementation and a complete example of a partial evaluator
+for the lambda calculus; Section 6 discusses how three published projects have used egg and its
+unique features (like e-class analyses).
+4.1
+
+E-class Analyses
+
+An e-class analysis defines a domain 𝐷 and associates a value 𝑑𝑐 ∈ 𝐷 to each e-class 𝑐. The e-class
+𝑐 contains the associated data 𝑑𝑐 , i.e., given an e-class 𝑐, one can get 𝑑𝑐 easily, but not vice-versa.
+The interface of an e-class analysis is as follows, where 𝐺 refers to the e-graph, and 𝑛 and 𝑐 refer
+to e-nodes and e-classes within 𝐺:
+make(𝑛) → 𝑑𝑐
+
+join(𝑑𝑐 1 , 𝑑𝑐 2 ) → 𝑑𝑐
+modify(𝑐) → 𝑐 ′
+
+When a new e-node 𝑛 is added to 𝐺 into a new, singleton e-class 𝑐,
+construct a new value 𝑑𝑐 ∈ 𝐷 to be associated with 𝑛’s new e-class,
+typically by accessing the associated data of 𝑛’s children.
+When e-classes 𝑐 1, 𝑐 2 are being merged into 𝑐, join 𝑑𝑐 1 , 𝑑𝑐 2 into a new
+value 𝑑𝑐 to be associated with the new e-class 𝑐.
+Optionally modify the e-class 𝑐 based on 𝑑𝑐 , typically by adding an
+e-node to 𝑐. Modify should be idempotent if no other changes occur
+to the e-class, i.e., modify(modify(𝑐)) = modify(𝑐)
+
+The domain 𝐷 together with the join operation should form a join-semilattice. The semilattice
+perspective is useful for defining the analysis invariant (where ∧ is the join operation):
+Û
+∀𝑐 ∈ 𝐺 . 𝑑𝑐 =
+make(𝑛) and modify(𝑐) = 𝑐
+𝑛 ∈𝑐
+
+The first part of the analysis invariant states that the data associated with each e-class must be
+the join of the make for every e-node in that e-class. Since 𝐷 is a join-semilattice, this means that
+∀𝑐, ∀𝑛 ∈ 𝑐, 𝑑𝑐 ≥ make(𝑛). The motivation for the second part is more subtle. Since the analysis can
+modify an e-class through the modify method, the analysis invariant asserts that these modifications
+are driven to a fixed point. When the analysis invariant holds, a client looking at the analysis data
+can be assured that the analysis is “stable” in the sense that recomputing make, join, and modify
+will not modify the e-graph or any analysis data.
+4.1.1 Maintaining the Analysis Invariant. We extend the rebuilding procedure from Section 3 to
+restore the analysis invariant as well as the congruence invariant. Figure 9 shows the necessary
+modifications to the rebuilding code from Figure 4.
+Adding e-nodes and merging e-classes risk breaking the analysis invariant in different ways.
+Adding e-nodes is the simpler case; lines 10–11 restore the invariant for the newly created, singleton
+e-class that holds the new e-node. When merging e-nodes, the first concern is maintaining the
+semilattice portion of the analysis invariant. Since join forms a semilattice over the domain 𝐷 of
+the analysis data, the order in which the joins occur does not matter. Therefore, line 18 suffices to
+update the analysis data of the merged e-class.
+Since make(𝑛) creates analysis data by looking at the data of 𝑛’s, children, merging e-classes
+can violate the analysis invariant in the same way it can violate the congruence invariant. The
+solution is to use the same worklist mechanism introduced in Section 3. Lines 37–44 of the repair
+method (which rebuild on each element of the worklist) re-make and merge the analysis data
+
+14
+
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+
+Willsey et al.
+
+def add(enode):
+enode = self.canonicalize(enode)
+if enode in self.hashcons:
+return self.hashcons[enode]
+else:
+eclass = self.new_singleton_eclass(enode)
+for child_eclass in enode.children:
+child_eclass.parents.add(enode, eclass)
+self.hashcons[enode] = eclass
+eclass.data = analysis.make(enode)
+analysis.modify(eclass)
+return eclass
+def merge(eclass1, eclass2)
+union = self.union_find.union(eclass1, eclass2)
+if not union.was_already_unioned:
+d1, d2 = eclass1.data, eclass2.data
+union.eclass.data = analysis.join(d1, d2)
+self.worklist.add(union.eclass)
+return union.eclass
+
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+
+def repair(eclass):
+for (p_node, p_eclass) in eclass.parents:
+self.hashcons.remove(p_node)
+p_node = self.canonicalize(p_node)
+self.hashcons[p_node] = self.find(p_eclass)
+new_parents = {}
+for (p_node, p_eclass) in eclass.parents:
+p_node = self.canonicalize(p_node)
+if p_node in new_parents:
+self.union(p_eclass, new_parents[p_node])
+new_parents[p_node] = self.find(p_eclass)
+eclass.parents = new_parents
+# any mutations modify makes to eclass
+# will add to the worklist
+analysis.modify(eclass)
+for (p_node, p_eclass) in eclass.parents:
+new_data = analysis.join(
+p_eclass.data,
+analysis.make(p_node))
+if new_data != p_eclass.data:
+p_eclass.data = new_data
+self.worklist.add(p_eclass)
+
+Fig. 9. The pseudocode for maintaining the e-class analysis invariant is largely similar to how rebuilding
+maintains congruence closure (Section 3). Only lines 10–11, 17–18, and 37–44 are added. Grayed out or
+missing code is unchanged from Figure 4.
+
+of the parent of any recently merged e-classes. The new repair method also calls modify once,
+which suffices due to its idempotence. In the pseudocode, modify is reframed as a mutating method
+for clarity.
+egg’s implementation of e-class analyses assumes that the analysis domain 𝐷 is indeed a semilattice and that modify is idempotent. Without these properties, egg may fail to restore the analysis
+invariant on rebuild, or it may not terminate.
+4.1.2 Example: Constant Folding. The data produced by e-class analyses can be usefully consumed
+by other components of an equality saturation system (see Section 4.2), but e-class analyses can
+be useful on their own thanks to the modify hook. Typical modify hooks will either do nothing,
+check some invariant about the e-classes being merged, or add an e-node to that e-class (using the
+regular add and merge methods of the e-graph).
+As mentioned above, other equality saturation implementations have implemented constant
+folding as custom, ad hoc passes over the e-graph. We can formulate constant folding as an
+e-class analysis that highlights the parallels with abstract interpretation. Let the domain 𝐷 =
+Option<Constant>, and let the join operation be the “or” operation of the Option type:
+match (a, b) {
+(None,
+None
+) => None,
+(Some(x), None
+) => Some(x),
+(None,
+Some(y)) => Some(y),
+(Some(x), Some(y)) => { assert!(x == y); Some(x) }
+}
+
+Note how join can also aid in debugging by checking properties about values that are unified in
+the e-graph; in this case we assert that all terms represented in an e-class should have the same
+
+egg: Fast and Extensible Equality Saturation
+
+15
+
+constant value. The make operation serves as the abstraction function, returning the constant value
+of an e-node if it can be computed from the constant values associated with its children e-classes.
+The modify operation serves as a concretization function in this setting. If 𝑑𝑐 is a constant value,
+then modify(𝑐) would add 𝛾 (𝑑𝑐 ) = 𝑛 to 𝑐, where 𝛾 concretizes the constant value into a childless
+e-node.
+Constant folding is an admittedly simple analysis, but one that did not formerly fit within the
+equality saturation framework. E-class analyses support more complicated analyses in a general
+way, as discussed in later sections on the egg implementation and case studies (Sections 5 and 6).
+4.2
+
+Conditional and Dynamic Rewrites
+
+In equality saturation applications, most of the rewrites are purely syntactic. In some cases, additional data may be needed to determine if or how to perform the rewrite. For example, the rewrite
+𝑥/𝑥 → 1 is only valid if 𝑥 ≠ 0. A more complex rewrite may need to compute the right-hand side
+dynamically based on an analysis fact from the left-hand side.
+The right-hand side of a rewrite can be generalized to a function apply that takes a substitution
+and an e-class generated from e-matching the left-hand side, and produces a term to be added to
+the e-graph and unified with the matched e-class. For a purely syntactic rewrite, the apply function
+need not inspect the matched e-class in any way; it would simply apply the substitution to the
+right-hand pattern to produce a new term.
+E-class analyses greatly increase the utility of this generalized form of rewriting. The apply function can look at the analysis data for the matched e-class or any of the e-classes in the substitution
+to determine if or how to construct the right-hand side term. These kinds of rewrites can broken
+down further into two categories:
+• Conditional rewrites like 𝑥/𝑥 → 1 that are purely syntactic but whose validity depends on
+checking some analysis data;
+• Dynamic rewrites that compute the right-hand side based on analysis data.
+Conditional rewrites are a subset of the more general dynamic rewrites. Our egg implementation
+supports both. The example in Section 5 and case studies in Section 6 heavily use generalized
+rewrites, as it is typically the most convenient way to incorporate domain knowledge into the
+equality saturation framework.
+4.3
+
+Extraction
+
+Equality saturation typically ends with an extraction phase that selects an optimal represented term
+from an e-class according to some cost function. In many domains [Nandi et al. 2020; Panchekha
+et al. 2015], AST size (sometimes weighted differently for different operators) suffices as a simple,
+local cost function. We say a cost function 𝑘 is local when the cost of a term 𝑓 (𝑎 1, ...) can be
+computed from the function symbol 𝑓 and the costs of the children. With such cost functions,
+extracting an optimal term can be efficiently done with a fixed-point traversal over the e-graph
+that selects the minimum cost e-node from each e-class [Panchekha et al. 2015].
+Extraction can be formulated as an e-class analysis when the cost function is local. The analysis
+data is a tuple (𝑛, 𝑘 (𝑛)) where 𝑛 is the cheapest e-node in that e-class and 𝑘 (𝑛) its cost. The make(𝑛)
+operation calculates the cost 𝑘 (𝑛) based on the analysis data (which contain the minimum costs) of
+𝑛’s children. The merge operation simply takes the tuple with lower cost. The semilattice portion of
+the analysis invariant then guarantees that the analysis data will contain the lowest-cost e-node in
+each class. Extract can then proceed recursively; if the analysis data for e-class 𝑐 gives 𝑓 (𝑐 1, 𝑐 2, ...) as
+the optimal e-node, the optimal term represented in 𝑐 is extract(𝑐) = 𝑓 (extract(𝑐 1 ), extract(𝑐 2 ), ...).
+This not only further demonstrates the generality of e-class analyses, but also provides the ability
+
+16
+
+Willsey et al.
+
+to do extraction “on the fly”; conditional and dynamic rewrites can determine their behavior based
+on the cheapest term in an e-class.
+Extraction (whether done as a separate pass or an e-class analysis) can also benefit from the
+analysis data. Typically, a local cost function can only look at the function symbol of the e-node 𝑛
+and the costs of 𝑛’s children. When an e-class analysis is attached to the e-graph, however, a cost
+function may observe the data associated with 𝑛’s e-class, as well as the data associated with 𝑛’s
+children. This allows a cost function to depend on computed facts rather that just purely syntactic
+information. In other words, the cost of an operator may differ based on its inputs. Section 6.2
+provides a motivating case study wherein an e-class analysis computes the size and shape of tensors,
+and this size information informs the cost function.
+5
+
+egg: EASY, EXTENSIBLE, AND EFFICIENT E-GRAPHS
+
+We implemented the techniques of rebuilding and e-class analysis in egg, an easy-to-use, extensible,
+and efficient e-graph library. To the best of our knowledge, egg is the first general-purpose, reusable
+e-graph implementation. This has allowed focused effort on ease of use and optimization, knowing
+that any benefits will be seen across use cases as opposed to a single, ad hoc instance.
+This section details egg’s implementation and some of the various optimizations and tools it
+provides to the user. We use an extended example of a partial evaluator for the lambda calculus7 , for
+which we provide the complete source code (which few changes for readability) in Figure 10 and
+Figure 11. While contrived, this example is compact and familiar, and it highlights (1) how egg is
+used and (2) some of its novel features like e-class analyses and dynamic rewrites. It demonstrates
+how egg can tackle binding, a perennially tough problem for e-graphs, with a simple explicit
+substitution approach powered by egg’s extensibility. Section 6 goes further, providing real-world
+case studies of published projects that have depended on egg.
+egg is implemented in ~5000 lines of Rust,8 including code, tests, and documentation. egg is
+open-source, well-documented, and distributed via Rust’s package management system.9 All of
+egg’s components are generic over the user-provided language, analysis, and cost functions.
+5.1 Ease of Use
+egg’s ease of use comes primarily from its design as a library. By defining only a language and
+some rewrite rules, a user can quickly start developing a synthesis or optimization tool. Using
+egg as a Rust library, the user defines the language using the define_language! macro shown in
+Figure 10, lines 1-22. Childless variants in the language may contain data of user-defined types,
+and e-class analyses or dynamic rewrites may inspect this data.
+The user provides rewrites as shown in Figure 10, lines 51-100. Each rewrite has a name, a
+left-hand side, and a right-hand side. For purely syntactic rewrites, the right-hand is simply a
+pattern. More complex rewrites can incorporate conditions or even dynamic right-hand sides, both
+explained in the Section 5.2 and Figure 11.
+Equality saturation workflows, regardless of the application domain, typically have a similar
+structure: add expressions to an empty e-graph, run rewrites until saturation or timeout, and
+extract the best equivalent expressions according to some cost function. This “outer loop” of
+equality saturation involves a significant amount of error-prone boilerplate:
+7 E-graphs do not have any “built-in” support for binding; for example, equality modulo alpha renaming is not free. The
+
+explicit substitution provided in this section is is illustrative but rather high in performance cost. Better support for languages
+with binding is important future work.
+8 Rust is a high-level systems programming language. egg has been integrated into applications written in other programming
+languages using both C FFI and serialization approaches.
+9 Source: https://github.com/mwillsey/egg. Documentation: https://docs.rs/egg. Package: https://crates.io/crates/egg.
+
+egg: Fast and Extensible Equality Saturation
+
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+45
+46
+47
+48
+49
+50
+
+define_language! {
+enum Lambda {
+// enum variants have data or children (eclass Ids)
+// [Id; N] is an array of N `Id`s
+// base type operators
+"+" = Add([Id; 2]), "=" = Eq([Id; 2]),
+"if" = If([Id; 3]),
+// functions and binding
+"app" = App([Id; 2]), "lam" = Lambda([Id; 2]),
+"let" = Let([Id; 3]), "fix" = Fix([Id; 2]),
+// (var x) is a use of `x` as an expression
+"var" = Use(Id),
+// (subst a x b) substitutes a for (var x) in b
+"subst" = Subst([Id; 3]),
+// base types have no children, only data
+Bool(bool), Num(i32), Symbol(String),
+}
+}
+// example terms and what they simplify to
+// pulled directly from the egg test suite
+test_fn! { lambda_under, rules(),
+"(lam x (+ 4 (app (lam y (var y)) 4)))"
+=> "(lam x 8))",
+}
+test_fn! { lambda_compose_many, rules(),
+"(let compose (lam f (lam g (lam x
+(app (var f)
+(app (var g) (var x))))))
+(let add1 (lam y (+ (var y) 1))
+(app (app (var compose) (var add1))
+(app (app (var compose) (var add1))
+(app (app (var compose) (var add1))
+(app (app (var compose) (var add1))
+(var add1)))))))"
+=> "(lam ?x (+ (var ?x) 5))"
+}
+test_fn! { lambda_if_elim, rules(),
+"(if (= (var a) (var b))
+(+ (var a) (var a))
+(+ (var a) (var b)))"
+=> "(+ (var a) (var b))"
+}
+
+17
+
+51
+52
+53
+54
+55
+56
+57
+58
+59
+60
+61
+62
+63
+64
+65
+66
+67
+68
+69
+70
+71
+72
+73
+74
+75
+76
+77
+78
+79
+80
+81
+82
+83
+84
+85
+86
+87
+88
+89
+90
+91
+92
+93
+94
+95
+96
+97
+98
+99
+100
+
+// Returns a list of rewrite rules
+fn rules() -> Vec<Rewrite<Lambda, LambdaAnalysis>> { vec![
+// open term rules
+rw!("if-true"; "(if true ?then ?else)" => "?then"),
+rw!("if-false"; "(if false ?then ?else)" => "?else"),
+rw!("if-elim"; "(if (= (var ?x) ?e) ?then ?else)" => "?else"
+if ConditionEqual::parse("(let ?x ?e ?then)",
+"(let ?x ?e ?else)")),
+rw!("add-comm"; "(+ ?a ?b)"
+=> "(+ ?b ?a)"),
+rw!("add-assoc"; "(+ (+ ?a ?b) ?c)" => "(+ ?a (+ ?b ?c))"),
+rw!("eq-comm";
+"(= ?a ?b)"
+=> "(= ?b ?a)"),
+// substitution introduction
+rw!("fix";
+"(fix ?v ?e)" =>
+"(let ?v (fix ?v ?e) ?e)"),
+rw!("beta";
+"(app (lam ?v ?body) ?e)" =>
+"(let ?v ?e ?body)"),
+// substitution propagation
+rw!("let-app"; "(let ?v ?e (app ?a ?b))" =>
+"(app (let ?v ?e ?a) (let ?v ?e ?b))"),
+rw!("let-add"; "(let ?v ?e (+
+?a ?b))" =>
+"(+
+(let ?v ?e ?a) (let ?v ?e ?b))"),
+rw!("let-eq"; "(let ?v ?e (=
+?a ?b))" =>
+"(=
+(let ?v ?e ?a) (let ?v ?e ?b))"),
+rw!("let-if"; "(let ?v ?e (if ?cond ?then ?else))" =>
+"(if (let ?v ?e ?cond)
+(let ?v ?e ?then)
+(let ?v ?e ?else))"),
+// substitution elimination
+rw!("let-const";
+"(let ?v ?e ?c)" => "?c"
+if is_const(var("?c"))),
+rw!("let-var-same"; "(let ?v1 ?e (var ?v1))" => "?e"),
+rw!("let-var-diff"; "(let ?v1 ?e (var ?v2))" => "(var ?v2)"
+if is_not_same_var(var("?v1"), var("?v2"))),
+rw!("let-lam-same"; "(let ?v1 ?e (lam ?v1 ?body))" =>
+"(lam ?v1 ?body)"),
+rw!("let-lam-diff"; "(let ?v1 ?e (lam ?v2 ?body))" =>
+( CaptureAvoid {
+fresh: var("?fresh"), v2: var("?v2"), e: var("?e"),
+if_not_free: "(lam ?v2 (let ?v1 ?e ?body))"
+.parse().unwrap(),
+if_free: "(lam ?fresh (let ?v1 ?e
+(let ?v2 (var ?fresh) ?body)))"
+.parse().unwrap(),
+})
+if is_not_same_var(var("?v1"), var("?v2"))),
+]}
+
+Fig. 10. egg is generic over user-defined languages; here we define a language and rewrite rules for a lambda
+calculus partial evaluator. The provided define_language! macro (lines 1-22) allows the simple definition of
+a language as a Rust enum, automatically deriving parsing and pretty printing. A value of type Lambda is an
+e-node that holds either data that the user can inspect or some number of e-class children (e-class Ids).
+Rewrite rules can also be defined succinctly (lines 51-100). Patterns are parsed as s-expressions: strings from
+the define_language! invocation (ex: fix, =, +) and data from the variants (ex: false, 1) parse as operators
+or terms; names prefixed by “?” parse as pattern variables.
+Some of the rewrites made are conditional using the “left => right if cond” syntax. The if-elim rewrite
+on line 57 uses egg’s provided ConditionEqual as a condition, only applying the right-hand side if the
+e-graph can prove the two argument patterns equivalent. The final rewrite, let-lam-diff, is dynamic to
+support capture avoidance; the right-hand side is a Rust value that implements the Applier trait instead of a
+pattern. Figure 11 contains the supporting code for these rewrites.
+We also show some of the tests (lines 27-50) from egg’s lambda test suite. The tests proceed by inserting the
+term on the left-hand side, running egg’s equality saturation, and then checking to make sure the right-hand
+pattern can be found in the same e-class as the initial term.
+
+18
+
+Willsey et al.
+
+• Checking for saturation, timeouts, and e-graph size limits.
+• Orchestrating the read-phase, write-phase, rebuild system (Figure 4) that makes egg fast.
+• Recording performance data at each iteration.
+• Potentially coordinating rule execution so that expansive rules like associativity do not
+dominate the e-graph.
+• Finally, extracting the best expression(s) according to a user-defined cost function.
+egg provides these functionalities through its Runner and Extractor interfaces. Runners automatically detect saturation, and can be configured to stop after a time, e-graph size, or iterations
+limit. The equality saturation loop provided by egg calls rebuild, so users need not even know
+about egg’s deferred invariant maintenance. Runners record various metrics about each iteration
+automatically, and the user can hook into this to report relevant data. Extractors select the optimal
+term from an e-graph given a user-defined, local cost function.10 The two can be combined as well;
+users commonly record the “best so far” expression by extracting in each iteration.
+Figure 10 also shows egg’s test_fn! macro for easily creating tests (lines 27-50). These tests
+create an e-graph with the given expression, run equality saturation using a Runner, and check to
+make sure the right-hand pattern can be found in the same e-class as the initial expression.
+5.2
+
+Extensibility
+
+For simple domains, defining a language and purely syntactic rewrites will suffice. However, our
+partial evaluator requires interpreted reasoning, so we use some of egg’s more advanced features
+like e-class analyses and dynamic rewrites. Importantly, egg supports these extensibility features
+as a library: the user need not modify the e-graph or egg’s internals.
+Figure 11 shows the remainder of the code for our lambda calculus partial evaluator. It uses
+an e-class analysis (LambdaAnalysis) to track free variables and constants associated with each
+e-class. The implementation of the e-class analysis is in Lines 11-50. The e-class analysis invariant
+guarantees that the analysis data contains an over-approximation of free variables from terms
+represented in that e-class. The analysis also does constant folding (see the make and modify
+methods). The let-lam-diff rewrite (Line 90, Figure 10) uses the CaptureAvoid (Lines 81-100,
+Figure 11) dynamic right-hand side to do capture-avoiding substitution only when necessary based
+on the free variable information. The conditional rewrites from Figure 10 depend on the conditions
+is_not_same_var and is_var (Lines 68-74, Figure 11) to ensure correct substitution.
+egg is extensible in other ways as well. As mentioned above, Extractors are parameterized by a
+user-provided cost function. Runners are also extensible with user-provided rule schedulers that can
+control the behavior of potentially troublesome rewrites. In typical equality saturation, each rewrite
+is searched for and applied each iteration. This can cause certain rewrites, commonly associativity or
+distributivity, to dominate others and make the search space less productive. Applied in moderation,
+these rewrites can trigger other rewrites and find greatly improved expressions, but they can also
+slow the search by exploding the e-graph exponentially in size. By default, egg uses the built-in
+backoff scheduler that identifies rewrites that are matching in exponentially-growing locations and
+temporarily bans them. We have observed that this greatly reduced run time (producing the same
+results) in many settings. egg can also use a conventional every-rule-every-time scheduler, or the
+user can supply their own.
+
+10 As mentioned in Section 4.3, extraction can be implemented as part of an e-class analysis. The separate Extractor feature
+
+is still useful for ergonomic and performance reasons.
+
+egg: Fast and Extensible Equality Saturation
+
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+45
+46
+47
+48
+49
+50
+
+type EGraph = egg::EGraph<Lambda, LambdaAnalysis>;
+struct LambdaAnalysis;
+struct FC {
+free: HashSet<Id>,
+// our analysis data stores free vars
+constant: Option<Lambda>, // and the constant value, if any
+}
+// helper function to make pattern meta-variables
+fn var(s: &str) -> Var { s.parse().unwrap() }
+impl Analysis<Lambda> for LambdaAnalysis {
+type Data = FC; // attach an FC to each eclass
+// merge implements semilattice join by joining into `to`
+// returning true if the `to` data was modified
+fn merge(&self, to: &mut FC, from: FC) -> bool {
+let before_len = to.free.len();
+// union the free variables
+to.free.extend(from.free.iter().copied());
+if to.constant.is_none() && from.constant.is_some() {
+to.constant = from.constant;
+true
+} else {
+before_len != to.free.len()
+}
+}
+fn make(egraph: &EGraph, enode: &Lambda) -> FC {
+let f = |i: &Id| egraph[*i].data.free.iter().copied();
+let mut free = HashSet::default();
+match enode {
+Use(v) => { free.insert(*v); }
+Let([v, a, b]) => {
+free.extend(f(b)); free.remove(v); free.extend(f(a));
+}
+Lambda([v, b]) | Fix([v, b]) => {
+free.extend(f(b)); free.remove(v);
+}
+_ => enode.for_each_child(
+|c| free.extend(&egraph[c].data.free)),
+}
+FC { free: free, constant: eval(egraph, enode) }
+}
+fn modify(egraph: &mut EGraph, id: Id) {
+if let Some(c) = egraph[id].data.constant.clone() {
+let const_id = egraph.add(c);
+egraph.union(id, const_id);
+}
+}
+}
+
+19
+
+51
+52
+53
+54
+55
+56
+57
+58
+59
+60
+61
+62
+63
+64
+65
+66
+67
+68
+69
+70
+71
+72
+73
+74
+75
+76
+77
+78
+79
+80
+81
+82
+83
+84
+85
+86
+87
+88
+89
+90
+91
+92
+93
+94
+95
+96
+97
+98
+99
+100
+
+// evaluate an enode if the children have constants
+// Rust's `?` extracts an Option, early returning if None
+fn eval(eg: &EGraph, enode: &Lambda) -> Option<Lambda> {
+let c = |i: &Id| eg[*i].data.constant.clone();
+match enode {
+Num(_) | Bool(_) => Some(enode.clone()),
+Add([x, y]) => Some(Num(c(x)? + c(y)?)),
+Eq([x, y]) => Some(Bool(c(x)? == c(y)?)),
+_ => None,
+}
+}
+// Functions of this type can be conditions for rewrites
+trait ConditionFn = Fn(&mut EGraph, Id, &Subst) -> bool;
+// The following two functions return closures of the
+// correct signature to be used as conditions in Figure 10.
+fn is_not_same_var(v1: Var, v2: Var) -> impl ConditionFn {
+|eg, _, subst| eg.find(subst[v1]) != eg.find(subst[v2])
+}
+fn is_const(v: Var) -> impl ConditionFn {
+// check the LambdaAnalysis data
+|eg, _, subst| eg[subst[v]].data.constant.is_some()
+}
+struct CaptureAvoid {
+fresh: Var, v2: Var, e: Var,
+if_not_free: Pattern<Lambda>, if_free: Pattern<Lambda>,
+}
+impl Applier<Lambda, LambdaAnalysis> for CaptureAvoid {
+// Given the egraph, the matching eclass id, and the
+// substitution generated by the match, apply the rewrite
+fn apply_one(&self, egraph: &mut EGraph,
+id: Id, subst: &Subst) -> Vec<Id>
+{
+let (v2, e) = (subst[self.v2], subst[self.e]);
+let v2_free_in_e = egraph[e].data.free.contains(&v2);
+if v2_free_in_e {
+let mut subst = subst.clone();
+// make a fresh symbol using the eclass id
+let sym = Lambda::Symbol(format!("_{}", id).into());
+subst.insert(self.fresh, egraph.add(sym));
+// apply the given pattern with the modified subst
+self.if_free.apply_one(egraph, id, &subst)
+} else {
+self.if_not_free.apply_one(egraph, id, &subst)
+}
+}
+}
+
+Fig. 11. Our partial evaluator example highlights three important features egg provides for extensibility:
+e-class analyses, conditional rewrites, and dynamic rewrites.
+The LambdaAnalysis type, which implements the Analysis trait, represents the e-class analysis. Its associated data (FC) stores the constant term from that e-class (if any) and an over-approximation of the free
+variables used by terms in that e-class. The constant term is used to perform constant folding. The merge
+operation implements the semilattice join, combining the free variable sets and taking a constant if one exists.
+In make, the analysis computes the free variable sets based on the e-node and the free variables of its children;
+the eval generates the new constants if possible. The modify hook of Analysis adds the constant to the
+e-graph.
+Some of the conditional rewrites in Figure 10 depend on conditions defined here. Any function with the
+correct signature may serve as a condition.
+The CaptureAvoid type implements the Applier trait, allowing it to serve as the right-hand side of a rewrite.
+CaptureAvoid takes two patterns and some pattern variables. It checks the free variable set to determine if a
+capture-avoiding substitution is required, applying the if_free pattern if so and the if_not_free pattern
+otherwise.
+
+20
+
+5.3
+
+Willsey et al.
+
+Efficiency
+
+egg’s novel rebuilding algorithm (Section 3) combined with systems programming best practices
+makes e-graphs—and the equality saturation use case in particular—more efficient than prior tools.
+egg is implemented in Rust, giving the compiler freedom to specialize and inline user-written
+code. This is especially important as egg’s generic nature leads to tight interaction between library
+code (e.g., searching for rewrites) and user code (e.g., comparing operators). egg is designed from
+the ground up to use cache-friendly, flat buffers with minimal indirection for most internal data
+structures. This is in sharp contrast to traditional representations of e-graphs [Detlefs et al. 2005;
+Nelson 1980] that contains many tree- and linked list-like data structures. egg additionally compiles
+patterns to be executed by a small virtual machine [de Moura and Bjørner 2007], as opposed to
+recursively walking the tree-like representation of patterns.
+Aside from deferred rebuilding, egg’s equality saturation algorithm leads to implementation-level
+performance enhancements. Searching for rewrite matches, which is the bulk of running time, can
+be parallelized thanks to the phase separation. Either the rules or e-classes could be searched in
+parallel. Furthermore, the once-per-iteration frequency of rebuilding allows egg to establish other
+performance-enhancing invariants that hold during the read-only search phase. For example, egg
+sorts e-nodes within each e-class to enable binary search, and also maintains a cache mapping
+function symbols to e-classes that contain e-nodes with that function symbol.
+Many of egg’s extensibility features can also be used to improve performance. As mentioned
+above, rule scheduling can lead to great performance improvement in the face of “expansive” rules
+that would otherwise dominate the search space. The Runner interface also supports user hooks
+that can stop the equality saturation after some arbitrary condition. This can be useful when using
+equality saturation to prove terms equal; once they are unified, there is no point in continuing.
+egg’s Runners also support batch simplification, where multiple terms can be added to the initial
+e-graph before running equality saturation. If the terms are substantially similar, both rewriting
+and any e-class analyses will benefit from the e-graph’s inherent structural deduplication. The case
+study in Section 6.1 uses batch simplification to achieve a large speedup with simplifying similar
+expressions.
+6
+
+CASE STUDIES
+
+This section relates three independently-developed, published projects from diverse domains that
+incorporated egg as an easy-to-use, high-performance e-graph implementation. In all three cases,
+the developers had first rolled their own e-graph implementations. egg allowed them to delete
+code, gain performance, and in some cases dramatically broaden the project’s scope thanks to
+egg’s speed and flexibility. In addition to gaining performance, all three projects use egg’s novel
+extensibility features like e-class analyses and dynamic/conditional rewrites.
+6.1
+
+Herbie: Improving Floating Point Accuracy
+
+Herbie automatically improves accuracy for floating-point expressions, using random sampling to
+measure error, a set of rewrite rules for generating program variants, and algorithms that prune
+and combine program variants to achieve minimal error. Herbie received PLDI 2015’s Distinguished
+Paper award [Panchekha et al. 2015] and has been continuously developed since then, sporting
+hundreds of Github stars, hundreds of downloads, and thousands of users on its online version.
+Herbie uses e-graphs for algebraic simplification of mathematical expressions, which is especially
+important for avoiding floating-point errors introduced by cancellation, function inverses, and
+redundant computation.
+
+egg: Fast and Extensible Equality Saturation
+
+21
+
+Until our case study, Herbie used a custom e-graph implementation written in Racket (Herbie’s
+implementation language) that closely followed traditional e-graph implementations. With timeouts
+disabled, e-graph-based simplification consumed the vast majority of Herbie’s run time. As a fix,
+Herbie sharply limits the simplification process, placing a size limit on the e-graph itself and a
+time limit on the whole procedure. When the timeout is exceeded, simplification fails altogether.
+Furthermore, the Herbie authors knew of several features that they believed would improve Herbie’s
+output but could not be implemented because they required more calls to simplification and would
+thus introduce unacceptable slowdowns. Taken together, slow simplification reduced Herbie’s
+performance, completeness, and efficacy.
+We implemented a egg simplification backend for Herbie. The egg backend is over 3000× faster
+than Herbie’s initial simplifier and is now used by default as of Herbie 1.4. Herbie has also backported
+some of egg’s features like batch simplification and rebuilding to its e-graph implementation (which
+is still usable, just not the default), demonstrating the portability of egg’s conceptual improvements.
+6.1.1 Implementation. Herbie is implemented in Racket while egg is in Rust; the egg simplification
+backend is thus implemented as a Rust library that provides a C-level API for Herbie to access via
+foreign-function interface (FFI). The Rust library defines the Herbie expression grammar (with
+named constants, numeric constants, variables, and operations) as well as the e-class analysis
+necessary to do constant folding. The library is implemented in under 500 lines of Rust.
+Herbie’s set of rewrite rules is not fixed; users can select which rewrites to use using commandline flags. Herbie serializes the rewrites to strings, and the egg backend parses and instantiates
+them on the Rust side.
+Herbie separates exact and inexact program constants: exact operations on exact constants (such
+as the addition of two rational numbers) are evaluated and added to the e-graph, while operations
+on inexact constants or that yield inexact outputs are not. We thus split numeric constants in the
+Rust-side grammar between exact rational numbers and inexact constants, which are described
+by an opaque identifier, and transformed Racket-side expressions into this form before serializing
+them and passing them to the Rust driver. To evaluate operations on exact constants, we used
+the constant folding e-class analysis to track the “exact value” of each e-class.11 Every time an
+operation e-node is added to the egg e-graph, we check whether all arguments to that operation
+have exact value (using the analysis data), and if so do rational number arithmetic to evaluate it.
+The e-class analysis is cleaner than the corresponding code in Herbie’s implementation, which is a
+built-in pass over the entire e-graph.
+6.1.2 Results. Our egg simplification backend is a drop-in replacement to the existing Herbie
+simplifier, making it easy to compare speed and results. We compare using Herbie’s standard test
+suite of roughly 500 benchmarks, with timeouts disabled. Figure 12 shows the results. The egg
+simplification backend is over 3000× faster than Herbie’s initial simplifier. This speedup eliminated
+Herbie’s largest bottleneck: the initial implementation dominated Herbie’s total run time at 98.1%,
+backporting egg improvements into Herbie cuts that to about half the total run time, and egg
+simplification takes under 5% of the total run time. Practically, the run time of Herbie’s initial
+implementation was smaller, since timeouts cause tests failures when simplification takes too long.
+Therefore, the speedup also improved Herbie’s completeness, as simplification now never times
+out.
+Since incorporating egg into Herbie, the Herbie developers have backported some of egg’s key
+performance improvements into the Racket e-graph implementation. First, batch simplification gives
+11 Herbie’s rewrite rules guarantee that different exact values can never become equal; the semilattice join checks this
+
+invariant on the Rust side.
+
+22
+
+Willsey et al.
+
+Minutes spent in simplification
+
+104
+
+5022.0
+(98.1% of total run time)
+
+103
+102
+
+49.4
+(68.7%)
+
+22.4
+(48.8%)
+
+101
+100
+
+1.4
+(4.8%)
+initial Racket + batching
+implementation
+
++ rebuilding
+
+egg
+
+Fig. 12. Herbie sped up its expression simplification phase by adopting egg-inspired features like batched
+simplification and rebuilding into its Racket-based e-graph implementation. Herbie also supports using egg
+itself for additional speedup. Note that the y-axis is log-scale.
+
+a large speedup because Herbie simplifies many similar expressions. When done simultaneously in
+one equality saturation, the e-graph’s structural sharing can massively deduplicate work. Second,
+deferring rebuilding (as discussed in Section 3) gives a further 2.2× speedup. As demonstrated in
+Figure 7, rebuilding offers an asymptotic speedup, so Herbie’s improved implementation (and the
+egg backend as well) will scale better as the search size grows.
+6.2
+
+Spores: Optimizing Linear Algebra
+
+Spores [Wang et al. 2020] is an optimizer for machine learning programs. It translates linear algebra
+(LA) expressions to relational algebra (RA), performs rewrites, and finally translates the result
+back to linear algebra. Each rewrite is built up from simple identities in relational algebra like the
+associativity of join. These relational identities express more fine-grained equality than textbook
+linear algebra identities, allowing Spores to discover novel optimizations not found by traditional
+optimizers based on LA identities. Spores performs holistic optimization, taking into account the
+complex interactions among factors like sparsity, common subexpressions, and fusible operators
+and their impact on execution time.
+6.2.1 Implementation. Spores is implemented entirely in Rust using egg. egg empowers Spores
+to orchestrate the complex interactions described above elegantly and effortlessly. Spores works
+in three steps: first, it translates the input LA expression to RA; second, it optimizes the RA
+expression by equality saturation; finally, it translates the optimized RA expression back to LA.
+Since the translation between LA and RA is straightforward, we focus the discussion on the
+equality saturation step in RA. Spores represents a relation as a function from tuples to real
+numbers: 𝐴 : (𝑎 1, 𝑎 2, ..., 𝑎𝑛 ) → R. This is similar to the index notation in linear algebra, where
+a matrix A can be viewed as a function 𝜆𝑖, 𝑗 .𝐴𝑖 𝑗 . A tuple is identified with a named record, e.g.
+(1, 2) = {𝑎 1 : 1, 𝑎 2 : 2} = {𝑎 2 : 2, 𝑎 1 : 1}, so that order in a tuple doesn’t matter. There are just three
+operations on relations: join, union and aggregate. Join (⊗) takes two relations and returns their
+natural join, multiplying the associated real number for joined tuples:
+¯ 𝑎)
+¯
+¯ × 𝐵(𝑏)
+𝐴 ⊗ 𝐵 = 𝜆𝑎¯ ∪ 𝑏.𝐴(
+
+egg: Fast and Extensible Equality Saturation
+
+23
+
+𝐴 ⊕ (𝐵 ⊕ 𝐶) = ⊕(𝐴, 𝐵, 𝐶)
+
+(⊕ is assoc. & comm.)
+
+(1)
+
+𝐴 ⊗ (𝐵 ⊗ 𝐶) = ⊗(𝐴, 𝐵, 𝐶)
+
+(⊗ is assoc. & comm.)
+
+(2)
+
+𝐴 ⊗ (𝐵 ⊕ 𝐶) = 𝐴 ⊗ 𝐵 ⊕ 𝐴 ⊗ 𝐶
+∑︁
+∑︁
+∑︁
+𝐵
+𝐴⊕
+(𝐴 ⊕ 𝐵) =
+
+(⊗ distributes over ⊕)
+
+(3)
+
+∑︁ ∑︁
+𝑖
+
+𝐴⊗
+
+𝐴=
+
+𝑖
+
+∑︁
+
+(5)
+
+𝐴
+
+𝑖,𝑗
+
+𝑗
+
+∑︁
+
+∑︁
+
+(4)
+
+𝑖
+
+𝑖
+
+𝑖
+
+∑︁
+
+(𝐴 ⊗ 𝐵)
+
+(requires 𝑖 ∉ 𝐴)
+
+(6)
+
+𝐴 = 𝐴 ⊗ dimension(𝑖)
+
+(requires 𝑖 ∉ 𝐴)
+
+(7)
+
+𝐵=
+
+𝑖
+
+𝑖
+
+Fig. 13. RA equality rules 𝑅𝐸𝑄 .
+
+Here 𝑎¯ is the set of field names for the records in 𝐴. In RA terminology, 𝑎¯ is the schema of 𝐴. Union
+(⊕) is a join in disguise: it also performs natural join on its two arguments, but adds the associated
+real instead of multiplying it:
+¯ 𝑎)
+¯
+¯ + 𝐵(𝑏)
+𝐴 ⊕ 𝐵 = 𝜆𝑎¯ ∪ 𝑏.𝐴(
+Finally, aggregate (Σ) sums its argument along a given dimension. It coincides precisely with the
+“sigma notation” in mathematics:
+∑︁
+∑︁
+¯
+𝐴 = 𝜆𝑎¯ − 𝑎𝑖 .
+𝐴(𝑎)
+𝑎𝑖
+
+𝑎𝑖
+
+The RA identities, presented in Figure 13, are also simple and intuitive. The notation 𝑖 ∉ 𝐴
+means 𝑖 is not in the schema of 𝐴, and 𝑑𝑖𝑚(𝑖) is the size of dimension 𝑖 (e.g. length of rows in a
+′
+matrix).Í
+In Equation
+Í 6, when 𝑖 ∈′ 𝐴, we first rename every 𝑖 to a fresh variable 𝑖 in 𝐵, which gives
+us: 𝐴 ⊗ 𝑖 𝐵 = 𝑖 ′ (𝐴 ⊗ 𝐵 [𝑖 → 𝑖 ]). In addition to these equalities, Spores also supports replacing
+expressions with fused operators. For example, (𝑋 −𝑈𝑉 ) 2 can be replaced by 𝑠𝑞𝑙𝑜𝑠𝑠 (𝑋, 𝑈 , 𝑉 ) which
+streams values from 𝑋, 𝑈 , 𝑉 and computes the result without creating intermediate matrices. Each
+of these fused operators is encoded with a simple identity in egg.
+Note that Equation 6 requires a way to store the schema of every expression during optimization.
+Spores uses an e-class analysis to annotate e-classes with the appropriate schema. It also leverages
+the e-class analysis for cost estimation, using a conservative cost model that overapproximates.
+As a result, equivalent expressions may have different cost estimates. The merge operation on
+the analysis data takes the lower cost, incrementally improving the cost estimate. Finally, Spores’
+e-class analysis also performs constant folding. As a whole, the e-class analysis is a composition of
+three smaller analyses in a similar style to the composition of lattices in abstract interpretation.
+6.2.2 Results. Spores is integrated into Apache SystemML [Boehm 2019] in a prototype, where it
+is able to derive all of 84 hand-written rules and heuristics for sum-product optimization. It also
+discovered novel rewrites that contribute to 1.2× to 5× speedup in end-to-end experiments. With
+greedy extraction, all compilations completed within a second.
+6.3
+
+Szalinski: Decompiling CAD into Structured Programs
+
+Several tools have emerged that reverse engineer high level Computer Aided Design (CAD) models
+from polygon meshes and voxels [Du et al. 2018; Ellis et al. 2018; Nandi et al. 2018; Sharma et al.
+
+24
+
+Willsey et al.
+
+(Diff
+(Translate (70 15 2)
+(Scale (140 30 4)
+(Translate (-0.5 -0.5 -0.5)
+(Cuboid (1 1 1)))))
+(Union
+(Translate (6 15 2)
+(Scale (6 5.196 4)
+(Translate (0 0 0)
+(Scale (0.5 0.577 1)
+(HexPrism ( 1 1))))))
+(Translate (125 15 2)
+(Scale (20 17.32 4)
+(Translate (0 0 0)
+(Scale (0.5 0.577 1)
+(HexPrism (1 1)))))))
+(Translate (102 15 2)
+(Scale ( 18 15.588 4)
+(Translate (0 0 0)
+(Scale (0.5 0.577 1)
+(HexPrism (1 1)))))))
+(Translate (81 15 2)
+(Scale (16 13.856 4)
+
+Szalinski
+Core
+Caddy
+
+E-graph
+
+Caddy
+Solvers &
+Rewrites
+
+(Diﬀerence
+(Cuboid [140, 30, 4])
+(Fold Union
+(Tabulate (i 8)
+(Translate [i 2 + 10i + 6, 15, 2]
+(HexPrism [i + 3, 4])))))
+
+6 LOC, Caddy
+3D Print
+
+…
+
+mesh decompiler
+
+facet normal 0 0 0
+outer loop
+vertex 9 15 0
+vertex 7.5 17.5964 4
+vertex 7.5 17.5964 0
+endloop
+endfacet
+facet normal 0 0 0
+outer loop
+vertex 7.5 17.5964 4
+vertex 9 15 0
+vertex 9 15 4
+endloop
+endfacet
+facet normal 0 0 0
+outer loop
+vertex 4.5 17.5964 0
+vertex 7.5 17.5964 4
+vertex 4.5 17.5964 4
+endloop
+endfacet
+
+edits
+(Diﬀerence
+(Cuboid [140, 30, 4])
+(Fold Union
+(Tabulate (i 8)
+(Translate [i 2 + 10i + 6, 15, 2]
+(Cylinder [i + 3, 4])))))
+
+(Diﬀerence
+(Cuboid [140, 30, 4])
+(Fold Union
+(Tabulate (i 4)
+(Translate [i 2 + 38i + 6, 15, 2]
+(HexPrism [i + 3, 4])))))
+
+(Diﬀerence
+(Cuboid [140, 30, 4])
+(Fold Union
+(Tabulate (i 6)
+(Translate [20i + 20, 15, 2]
+(Rotate [0, 0, 45i]
+(Cuboid [12, 12, 4]))))))
+
+(Diﬀerence
+(Cuboid [140, 30, 4])
+(Fold Union
+(Tabulate (i 10)
+(Translate [i 2 + 10i + 6, 15, 2]
+(HexPrism [(i + 3) / 2, 4])))))
+
+…
+
+~1600 LOC, Mesh
+
+~ 50 LOC, CSG
+
+Fig. 14. (Figure from Nandi et. al. [Nandi et al. 2020]) Existing mesh decompilers turn triangle meshes into flat,
+computational solid geometry (CSG) expressions. Szalinski [Nandi et al. 2020] takes in these CSG expressions
+in a format called Core Caddy, and it synthesizes smaller, structured programs in language called Caddy that
+is enriched with functional-style features. This can ease customization by simplifying edits: small, mostly local
+changes yield usefully different models. The photo shows the 3D printed hex wrench holder after customizing
+hole sizes. Szalinski is powered by egg’s extensible equality saturation, relying on its high performance,
+e-class analyses, and dynamic rewrites.
+
+2017; Tian et al. 2019]. The output of these tools are constructive solid geometry (CSG) programs.
+A CSG program is comprised of 3D solids like cubes, spheres, cylinders, affine transformations like
+scale, translate, rotate (which take a 3D vector and a CSG expression as arguments), and binary
+operators like union, intersection, and difference that combine CSG expressions. For repetitive
+models like a gear, CSG programs can be too long and therefore difficult to comprehend. A recent
+tool, Szalinski [Nandi et al. 2020], extracts the inherent structure in the CSG outputs of mesh
+decompilation tools by automatically inferring maps and folds (Figure 14). Szalinski accomplished
+this using egg’s extensible equality saturation system, allowing it to:
+• Discover structure using loop rerolling rules. This allows Szalinski to infer functional patterns
+like Fold, Map2, Repeat and Tabulate from flat CSG inputs.
+• Identify equivalence among CAD terms that are expressed as different expressions by mesh
+decompilers. Szalinski accomplishes this by using CAD identities. An example of one such
+CAD identity in Szalinski is 𝑒 ↔ rotate [0 0 0] 𝑒. This implies that any CAD expression 𝑒 is
+equivalent to a CAD expression that applies a rotation by zero degrees about x, y, and z axes
+to 𝑒.
+• Use external solvers to speculatively add potentially profitable expressions to the e-graph.
+Mesh decompilers often generate CSG expressions that order and/or group list elements in
+non-intuitive ways. To recover structure from such expressions, a tool like Szalinski must be
+able to reorder and regroup lists that expose any latent structure.
+6.3.1 Implementation. Even though CAD is different from traditional languages targeted by programming language techniques, egg supports Szalinski’s CAD language in a straightforward
+manner. Szalinski uses purely syntactic rewrites to express CAD identities and some loop rerolling
+rules (like inferring a Fold from a list of CAD expressions). Critically, however, Szalinski relies on
+egg’s dynamic rewrites and e-class analysis to infer functions for lists.
+Consider the flat CSG program in Figure 15b. A structure finding rewrite first rewrites the flat
+list of Unions to:
+(Fold Union (Map2 Translate [(0 0 0) (2 0 0) ...] (Repeat Cube 5)))
+
+egg: Fast and Extensible Equality Saturation
+(Union
+(Translate (0 0 0) Cube)
+(Translate (2 0 0) Cube)
+(Translate (4 0 0) Cube)
+(Translate (6 0 0) Cube)
+(Translate (8 0 0) Cube))
+
+(a) Five cubes in a line.
+
+(b) Flat CSG input to Szalinski.
+
+25
+(Fold Union
+(Tabulate (i 5)
+(Translate
+((* 2 i) 0 0)
+Cube)))
+
+(c) Output captures the repetition.
+
+Fig. 15. Szalinski integrates solvers into egg’s equality saturation as a dynamic rewrite. The solver-backed
+rewrites can transform repetitive lists into Tabulate expressions that capture the repetitive structure.
+
+The list of vectors is stored as Cons elements (sugared above for brevity). Szalinski uses an e-class
+analysis to track the accumulated lists in a similar style to constant folding. Then, a dynamic
+rewrite uses an arithmetic solver to rewrite the concrete list of 3D vectors in the analysis data to
+(Tabulate (i 5) (* 2 i)). A final set of syntactic rewrites can hoist the Tabulate, yielding the
+result on the right of Figure 15. Thanks to the set of syntactic CAD rewrites, this structure finding
+even works in the face of CAD identities. For example, the original program may omit the no-op
+Translate (0 0 0), even though it is necessary to see repetitive structure.
+In many cases, the repetitive structure of input CSG expression is further obfuscated because
+subexpressions may appear in arbitrary order. For these inputs, the arithmetic solvers must first
+reorder the expressions to find a closed form like a Tabulate as shown in Figure 15. However,
+reordering a list does not preserve equivalence, so adding it to the e-class of the concrete list would
+be unsound. Szalinski therefore introduces inverse transformations, a novel technique that allows
+solvers to speculatively reorder and regroup list elements to find a closed form. The solvers annotate
+the potentially profitable expression with the permutation or grouping that led to the successful
+discovery of the closed form. Later in the rewriting process, syntactic rewrites eliminate the inverse
+transformations when possible (e.g., reordering lists under a Fold Union can be eliminated). egg
+supported this novel technique without modification.
+6.3.2 Results. Szalinski’s initial protoype used a custom e-graph written in OCaml. Anecdotally,
+switching to egg removed most of the code, eliminated bugs, facilitated the key contributions of
+solver-backed rewrites and inverse transformations, and made the tool about 1000× faster. egg’s
+performance allowed a shift from running on small, hand-picked examples to a comprehensive
+evaluation on over 2000 real-world models from a 3D model sharing forum [Nandi et al. 2020].
+7
+
+RELATED WORK
+
+Term Rewriting. Term rewriting [Dershowitz and Jouannaud 1990] has been used widely to
+facilitate equational reasoning for program optimizations [Boyle et al. 1996; van den Brand et al.
+2002; Visser et al. 1998]. A term rewriting system applies a database of semantics preserving rewrites
+or axioms to an input expression to get a new expression, which may, according to some cost
+function, be more profitable compared to the input. Rewrites are typically symbolic and have a left
+hand side and a right hand side. To apply a rewrite to an expression, a rewrite system implements
+pattern matching—if the left hand side of a rewrite rule matches with the input expression, the
+system computes a substitution which is then applied to the right-hand side of the rewrite rule.
+Upon applying a rewrite rule, a rewrite system typically replaces the old expression by the new
+expression. This can lead to the phase ordering problem— it makes it impossible to apply a rewrite
+to the old expression in the future which could have led to a more optimal result.
+
+26
+
+Willsey et al.
+
+E-graphs and E-matching. E-graph were originally proposed several decades ago as an efficient
+data structure for maintaining congruence closure [Kozen 1977; Nelson 1980; Nelson and Oppen
+1980]. E-graphs continue to be a critical component in successful SMT solvers where they are
+used for combining satisfiability theories by sharing equality information [De Moura and Bjørner
+2008]. A key difference between past implementations of e-graphs and egg’s e-graph is our novel
+rebuilding algorithm that maintains invariants only at certain critical points (Section 3). This makes
+egg more efficient for the purpose of equality saturation. egg implements the pattern compilation
+strategy introduced by de Moura et al. [de Moura and Bjørner 2007] that is used in state of the art
+theorem provers [De Moura and Bjørner 2008]. Some provers [De Moura and Bjørner 2008; Detlefs
+et al. 2005] propose optimizations like mod-time, pattern-element and inverted-path-index to find
+new terms and relevant patterns for matching, and avoid redundant matches. So far, we have found
+egg to be faster than several prior e-graph implementations even without these optimizations.
+They are, however, compatible with egg’s design and could be explored in the future. Another key
+difference is egg’s powerful e-class analysis abstraction and flexible interface. They empower the
+programmer to easily leverage e-graphs for problems involving complex semantic reasoning.
+Congruence Closure. Our rebuilding algorithm is similar to the congruence closure algorithm
+presented by Downey et al. [1980]. The contribution of rebuilding is not how it restores the e-graph
+invariants but when; it gives the client the ability to specialize invariant restoration to a particular
+workload like equality saturation. Their algorithm also features a worklist of merges to be processed
+further, but it is offline, i.e., the algorithm processes a given set of equalities and outputs the set
+of equalities closed over congruence. Rebuilding is adapted to the online e-graph (and equality
+saturation) setting, where rewrites frequently examine the current set of equalities and assert
+new ones. Rebuilding additionally propagates e-class analysis facts (Section 4.1). Despite these
+differences, the core algorithms algorithms are similar enough that theoretical results on offline
+performance characteristics [Downey et al. 1980] apply to both. We do not provide theoretical
+analysis of rebuilding for the online setting; it is likely highly workload dependent.
+Superoptimization and Equality Saturation. The Denali [Joshi et al. 2002] superoptimizer first
+demonstrated how to use e-graphs for optimized code generation as an alternative to handoptimized machine code and prior exhaustive approaches [Massalin 1987], both of which were less
+scalable. The inputs to Denali are programs in a C-like language from which it produces assembly
+programs. Denali supported three types of rewrites—arithmetic, architectural, and program-specific.
+After applying these rewrites till saturation, it used architectural description of the hardware to
+generate constraints that were solved using a SAT solver to output a near-optimal program. While
+Denali’s approach was a significant improvement over prior work, it was intended to be used on
+straight line code only and therefore, did not apply to large real programs.
+Equality saturation [Stepp et al. 2011; Tate et al. 2009] developed a compiler optimization phase
+that works for complex language constructs like loops and conditionals. The first equality saturation
+paper used an intermediate representation called Program Expression Graphs (PEGs) to encode
+loops and conditionals. PEGs have specialized nodes that can represent infinite sequences, which
+allows them to represent loops. It uses a global profitability heuristic for extraction which is
+implemented using a pseudo-boolean solver. Recently, [Premtoon et al. 2020] uses PEGs for code
+search. egg can support PEGs as a user-defined language, and thus their technique could be ported.
+8
+
+CONCLUSION
+
+We presented two new techniques, rebuilding and e-class analysis, that make equality saturation
+fast and extensible enough for a new family of applications. Rebuilding is a new way to amortize the
+cost of maintaining the e-graph’s data structure invariants, specializing the e-graph to the equality
+
+egg: Fast and Extensible Equality Saturation
+
+27
+
+saturation workload. E-class analysis is a general framework allowing for interpreted reasoning
+beyond what purely syntactic rewrites can provide.
+We implemented both of these techniques in egg, a reusable, extensible, and efficient e-graph
+library. egg is generic over the user-defined language, which allowed focused effort on optimization
+and efficiency while obviating the need for ad hoc e-graph implementations and manipulations.
+Our case studies show that equality saturation can now scale further and be used more flexibly than
+before; egg provided new functionality and large speedups. We believe that these contributions
+position equality saturation as a powerful toolkit for program synthesis and optimization.
+ACKNOWLEDGMENTS
+Thanks to our anonymous paper and artifact reviewers for their feedback. Special thanks to our
+shepherd Simon Peyton Jones, Leonardo de Moura, and many members of the PLSE group. This
+work was supported in part by the Applications Driving Architectures (ADA) Research Center, a
+JUMP Center co-sponsored by SRC and DARPA, as well as the National Science Foundation under
+Grant Nos. 1813166 and 1749570.
+REFERENCES
+Marc Andries, Gregor Engels, Annegret Habel, Berthold Hoffmann, Hans-Jörg Kreowski, Sabine Kuske, Detlef Plump, Andy
+Schürr, and Gabriele Taentzer. 1999. Graph Transformation for Specification and Programming. Sci. Comput. Program.
+34, 1 (April 1999), 1–54. https://doi.org/10.1016/S0167-6423(98)00023-9
+Matthias Boehm. 2019. Apache SystemML. Encyclopedia of Big Data Technologies (2019), 81–86. https://doi.org/10.1007/9783-319-77525-8_187
+James M. Boyle, Terence J. Harmer, and Victor L. Winter. 1996. The TAMPR Program Transformation System: Simplifying
+the Development of Numerical Software. In Modern Software Tools for Scientific Computing, SciTools 1996, Oslo, Norway,
+September 16-18, 1996, Erlend Arge, Are Magnus Bruaset, and Hans Petter Langtangen (Eds.). Birkhäuser, 353–372.
+https://doi.org/10.1007/978-1-4612-1986-6_17
+Martin Davis and Hilary Putnam. 1960. A Computing Procedure for Quantification Theory. J. ACM 7, 3 (July 1960), 201–215.
+https://doi.org/10.1145/321033.321034
+Leonardo de Moura and Nikolaj Bjørner. 2007. Efficient E-Matching for SMT Solvers. In Automated Deduction – CADE-21,
+Frank Pfenning (Ed.). Springer Berlin Heidelberg, Berlin, Heidelberg, 183–198.
+Leonardo De Moura and Nikolaj Bjørner. 2008. Z3: An Efficient SMT Solver. In Proceedings of the Theory and Practice of
+Software, 14th International Conference on Tools and Algorithms for the Construction and Analysis of Systems (Budapest,
+Hungary) (TACAS’08/ETAPS’08). Springer-Verlag, Berlin, Heidelberg, 337–340. http://dl.acm.org/citation.cfm?id=1792734.
+1792766
+Nachum Dershowitz. 1993. A taste of rewrite systems. Springer Berlin Heidelberg, Berlin, Heidelberg, 199–228. https:
+//doi.org/10.1007/3-540-56883-2_11
+Nachum Dershowitz and Jean-Pierre Jouannaud. 1990. Rewrite Systems. In Handbook of Theoretical Computer Science, Volume
+B: Formal Models and Semantics, Jan van Leeuwen (Ed.). Elsevier and MIT Press, 243–320. https://doi.org/10.1016/b9780-444-88074-1.50011-1
+David Detlefs, Greg Nelson, and James B. Saxe. 2005. Simplify: A Theorem Prover for Program Checking. J. ACM 52, 3
+(May 2005), 365–473. https://doi.org/10.1145/1066100.1066102
+Peter J. Downey, Ravi Sethi, and Robert Endre Tarjan. 1980. Variations on the Common Subexpression Problem. J. ACM 27,
+4 (Oct. 1980), 758–771. https://doi.org/10.1145/322217.322228
+Tao Du, Jeevana Priya Inala, Yewen Pu, Andrew Spielberg, Adriana Schulz, Daniela Rus, Armando Solar-Lezama, and
+Wojciech Matusik. 2018. InverseCSG: automatic conversion of 3D models to CSG trees. 1–16. https://doi.org/10.1145/
+3272127.3275006
+Kevin Ellis, Daniel Ritchie, Armando Solar-Lezama, and Joshua B. Tenenbaum. 2018. Learning to Infer Graphics Programs
+from Hand-Drawn Images. In Neural Information Processing Systems (NIPS).
+Zhihao Jia, Oded Padon, James Thomas, Todd Warszawski, Matei Zaharia, and Alex Aiken. 2019. TASO: optimizing deep
+learning computation with automatic generation of graph substitutions. In Proceedings of the 27th ACM Symposium on
+Operating Systems Principles. 47–62.
+Rajeev Joshi, Greg Nelson, and Keith Randall. 2002. Denali: A Goal-directed Superoptimizer. SIGPLAN Not. 37, 5 (May 2002),
+304–314. https://doi.org/10.1145/543552.512566
+
+28
+
+Willsey et al.
+
+Dexter Kozen. 1977. Complexity of Finitely Presented Algebras. In Proceedings of the Ninth Annual ACM Symposium on
+Theory of Computing (Boulder, Colorado, USA) (STOC ’77). Association for Computing Machinery, New York, NY, USA,
+164–177. https://doi.org/10.1145/800105.803406
+Henry Massalin. 1987. Superoptimizer: A Look at the Smallest Program. In Proceedings of the Second International Conference
+on Architectual Support for Programming Languages and Operating Systems (Palo Alto, California, USA) (ASPLOS II). IEEE
+Computer Society Press, Washington, DC, USA, 122–126. https://doi.org/10.1145/36206.36194
+Chandrakana Nandi, James R. Wilcox, Pavel Panchekha, Taylor Blau, Dan Grossman, and Zachary Tatlock. 2018. Functional
+Programming for Compiling and Decompiling Computer-aided Design. Proc. ACM Program. Lang. 2, ICFP, Article 99
+(July 2018), 31 pages. https://doi.org/10.1145/3236794
+Chandrakana Nandi, Max Willsey, Adam Anderson, James R. Wilcox, Eva Darulova, Dan Grossman, and Zachary Tatlock.
+2020. Synthesizing Structured CAD Models with Equality Saturation and Inverse Transformations. In Proceedings of
+the 41st ACM SIGPLAN Conference on Programming Language Design and Implementation (London, UK) (PLDI 2020).
+Association for Computing Machinery, New York, NY, USA, 31–44. https://doi.org/10.1145/3385412.3386012
+Charles Gregory Nelson. 1980. Techniques for Program Verification. Ph.D. Dissertation. Stanford, CA, USA. AAI8011683.
+Greg Nelson and Derek C. Oppen. 1980. Fast Decision Procedures Based on Congruence Closure. J. ACM 27, 2 (April 1980),
+356–364. https://doi.org/10.1145/322186.322198
+Robert Nieuwenhuis and Albert Oliveras. 2005. Proof-Producing Congruence Closure. In Proceedings of the 16th International
+Conference on Term Rewriting and Applications (Nara, Japan) (RTA’05). Springer-Verlag, Berlin, Heidelberg, 453–468.
+https://doi.org/10.1007/978-3-540-32033-3_33
+Pavel Panchekha, Alex Sanchez-Stern, James R. Wilcox, and Zachary Tatlock. 2015. Automatically Improving Accuracy for
+Floating Point Expressions. SIGPLAN Not. 50, 6 (June 2015), 1–11. https://doi.org/10.1145/2813885.2737959
+Varot Premtoon, James Koppel, and Armando Solar-Lezama. 2020. Semantic Code Search via Equational Reasoning. In
+Proceedings of the 41st ACM SIGPLAN Conference on Programming Language Design and Implementation (London, UK) (PLDI
+2020). Association for Computing Machinery, New York, NY, USA, 1066–1082. https://doi.org/10.1145/3385412.3386001
+Rust. [n.d.]. Rust programming language. https://www.rust-lang.org/
+Gopal Sharma, Rishabh Goyal, Difan Liu, Evangelos Kalogerakis, and Subhransu Maji. 2017. CSGNet: Neural Shape Parser
+for Constructive Solid Geometry. CoRR abs/1712.08290 (2017). arXiv:1712.08290 http://arxiv.org/abs/1712.08290
+Michael Stepp, Ross Tate, and Sorin Lerner. 2011. Equality-Based Translation Validator for LLVM. In Computer Aided
+Verification, Ganesh Gopalakrishnan and Shaz Qadeer (Eds.). Springer Berlin Heidelberg, Berlin, Heidelberg, 737–742.
+Robert Endre Tarjan. 1975. Efficiency of a Good But Not Linear Set Union Algorithm. J. ACM 22, 2 (April 1975), 215–225.
+https://doi.org/10.1145/321879.321884
+Ross Tate, Michael Stepp, Zachary Tatlock, and Sorin Lerner. 2009. Equality Saturation: A New Approach to Optimization.
+In Proceedings of the 36th Annual ACM SIGPLAN-SIGACT Symposium on Principles of Programming Languages (Savannah,
+GA, USA) (POPL ’09). ACM, New York, NY, USA, 264–276. https://doi.org/10.1145/1480881.1480915
+Yonglong Tian, Andrew Luo, Xingyuan Sun, Kevin Ellis, William T. Freeman, Joshua B. Tenenbaum, and Jiajun Wu.
+2019. Learning to Infer and Execute 3D Shape Programs. In International Conference on Learning Representations.
+https://openreview.net/forum?id=rylNH20qFQ
+Mark van den Brand, Jan Heering, Paul Klint, and Pieter A. Olivier. 2002. Compiling language definitions: the ASF+SDF
+compiler. ACM Trans. Program. Lang. Syst. 24, 4 (2002), 334–368. https://doi.org/10.1145/567097.567099
+Eelco Visser, Zine-El-Abidine Benaissa, and Andrew P. Tolmach. 1998. Building Program Optimizers with Rewriting
+Strategies. In Proceedings of the third ACM SIGPLAN International Conference on Functional Programming (ICFP ’98),
+Baltimore, Maryland, USA, September 27-29, 1998, Matthias Felleisen, Paul Hudak, and Christian Queinnec (Eds.). ACM,
+13–26. https://doi.org/10.1145/289423.289425
+Yisu Remy Wang, Shana Hutchison, Jonathan Leang, Bill Howe, and Dan Suciu. 2020. SPORES: Sum-Product Optimization
+via Relational Equality Saturation for Large Scale Linear Algebra. Proceedings of the VLDB Endowment (2020).
+Chenming Wu, Haisen Zhao, Chandrakana Nandi, Jeffrey I. Lipton, Zachary Tatlock, and Adriana Schulz. 2019. Carpentry
+Compiler. ACM Transactions on Graphics 38, 6 (2019), Article No. 195. presented at SIGGRAPH Asia 2019.
+
+
