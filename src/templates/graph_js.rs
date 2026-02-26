@@ -1122,6 +1122,7 @@ pub fn render_graph_js(config: &GraphRendererConfig) -> String {
                 }}
                 updateLine(startEvent.clientX, startEvent.clientY);
 
+                const queryBar = document.querySelector('.graph-query-bar');
                 function cleanup() {{
                     window.removeEventListener('pointermove', onMove);
                     window.removeEventListener('pointerup', onUp);
@@ -1129,6 +1130,7 @@ pub fn render_graph_js(config: &GraphRendererConfig) -> String {
                     tempLine.remove();
                     node.classed('link-target', false);
                     if (searchPanel) {{ searchPanel.remove(); searchPanel = null; }}
+                    if (queryBar) queryBar.style.display = '';
                 }}
 
                 function onMove(e) {{
@@ -1172,6 +1174,7 @@ pub fn render_graph_js(config: &GraphRendererConfig) -> String {
 
                 async function openSearchPanel(initialChar) {{
                     await ensureNotesLoaded();
+                    if (queryBar) queryBar.style.display = 'none';
 
                     searchPanel = d3.select(_kgContainer).append('div')
                         .attr('class', 'kg-search-panel');
