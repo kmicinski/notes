@@ -590,7 +590,87 @@ pub fn parse_bibtex(bibtex: &str) -> Option<ParsedBibtex> {
     }
 
     fn strip_bibtex_braces(s: &str) -> String {
-        s.chars().filter(|c| *c != '{' && *c != '}').collect()
+        let no_braces: String = s.chars().filter(|c| *c != '{' && *c != '}').collect();
+        clean_latex(&no_braces)
+    }
+
+    /// Convert common LaTeX accent/special-char sequences to Unicode.
+    fn clean_latex(s: &str) -> String {
+        // Order matters: longer patterns before shorter ones to avoid partial matches.
+        static REPLACEMENTS: &[(&str, &str)] = &[
+            // Dashes (longer first)
+            ("---", "\u{2014}"), // em dash
+            ("--", "\u{2013}"),  // en dash
+            // Named commands (longer first to avoid prefix conflicts)
+            ("\\ss", "\u{00DF}"), ("\\ae", "\u{00E6}"), ("\\AE", "\u{00C6}"),
+            ("\\oe", "\u{0153}"), ("\\OE", "\u{0152}"), ("\\aa", "\u{00E5}"), ("\\AA", "\u{00C5}"),
+            ("\\o", "\u{00F8}"), ("\\O", "\u{00D8}"), ("\\l", "\u{0142}"), ("\\L", "\u{0141}"),
+            ("\\i", "\u{0131}"), ("\\j", "\u{0237}"),
+            // Diaeresis / umlaut \"
+            ("\\\"a", "\u{00E4}"), ("\\\"e", "\u{00EB}"), ("\\\"i", "\u{00EF}"),
+            ("\\\"o", "\u{00F6}"), ("\\\"u", "\u{00FC}"), ("\\\"y", "\u{00FF}"),
+            ("\\\"A", "\u{00C4}"), ("\\\"E", "\u{00CB}"), ("\\\"I", "\u{00CF}"),
+            ("\\\"O", "\u{00D6}"), ("\\\"U", "\u{00DC}"), ("\\\"Y", "\u{0178}"),
+            // Acute \'
+            ("\\'a", "\u{00E1}"), ("\\'e", "\u{00E9}"), ("\\'i", "\u{00ED}"),
+            ("\\'o", "\u{00F3}"), ("\\'u", "\u{00FA}"), ("\\'y", "\u{00FD}"),
+            ("\\'c", "\u{0107}"), ("\\'n", "\u{0144}"), ("\\'s", "\u{015B}"), ("\\'z", "\u{017A}"),
+            ("\\'A", "\u{00C1}"), ("\\'E", "\u{00C9}"), ("\\'I", "\u{00CD}"),
+            ("\\'O", "\u{00D3}"), ("\\'U", "\u{00DA}"), ("\\'Y", "\u{00DD}"),
+            ("\\'C", "\u{0106}"), ("\\'N", "\u{0143}"), ("\\'S", "\u{015A}"), ("\\'Z", "\u{0179}"),
+            // Grave \`
+            ("\\`a", "\u{00E0}"), ("\\`e", "\u{00E8}"), ("\\`i", "\u{00EC}"),
+            ("\\`o", "\u{00F2}"), ("\\`u", "\u{00F9}"),
+            ("\\`A", "\u{00C0}"), ("\\`E", "\u{00C8}"), ("\\`I", "\u{00CC}"),
+            ("\\`O", "\u{00D2}"), ("\\`U", "\u{00D9}"),
+            // Circumflex \^
+            ("\\^a", "\u{00E2}"), ("\\^e", "\u{00EA}"), ("\\^i", "\u{00EE}"),
+            ("\\^o", "\u{00F4}"), ("\\^u", "\u{00FB}"),
+            ("\\^A", "\u{00C2}"), ("\\^E", "\u{00CA}"), ("\\^I", "\u{00CE}"),
+            ("\\^O", "\u{00D4}"), ("\\^U", "\u{00DB}"),
+            // Tilde \~
+            ("\\~a", "\u{00E3}"), ("\\~n", "\u{00F1}"), ("\\~o", "\u{00F5}"),
+            ("\\~A", "\u{00C3}"), ("\\~N", "\u{00D1}"), ("\\~O", "\u{00D5}"),
+            // Macron \=
+            ("\\=a", "\u{0101}"), ("\\=e", "\u{0113}"), ("\\=i", "\u{012B}"),
+            ("\\=o", "\u{014D}"), ("\\=u", "\u{016B}"),
+            ("\\=A", "\u{0100}"), ("\\=E", "\u{0112}"), ("\\=I", "\u{012A}"),
+            ("\\=O", "\u{014C}"), ("\\=U", "\u{016A}"),
+            // Caron \v
+            ("\\vc", "\u{010D}"), ("\\vs", "\u{0161}"), ("\\vz", "\u{017E}"),
+            ("\\vr", "\u{0159}"), ("\\vn", "\u{0148}"), ("\\ve", "\u{011B}"),
+            ("\\vd", "\u{010F}"), ("\\vt", "\u{0165}"),
+            ("\\vC", "\u{010C}"), ("\\vS", "\u{0160}"), ("\\vZ", "\u{017D}"),
+            ("\\vR", "\u{0158}"), ("\\vN", "\u{0147}"), ("\\vE", "\u{011A}"),
+            ("\\vD", "\u{010E}"), ("\\vT", "\u{0164}"),
+            // Breve \u
+            ("\\ua", "\u{0103}"), ("\\ug", "\u{011F}"),
+            ("\\uA", "\u{0102}"), ("\\uG", "\u{011E}"),
+            // Cedilla \c
+            ("\\cc", "\u{00E7}"), ("\\cs", "\u{015F}"),
+            ("\\cC", "\u{00C7}"), ("\\cS", "\u{015E}"),
+            // Double acute \H
+            ("\\Ho", "\u{0151}"), ("\\Hu", "\u{0171}"),
+            ("\\HO", "\u{0150}"), ("\\HU", "\u{0170}"),
+            // Ogonek \k
+            ("\\ka", "\u{0105}"), ("\\ke", "\u{0119}"),
+            ("\\kA", "\u{0104}"), ("\\kE", "\u{0118}"),
+            // Dot above \.
+            ("\\.z", "\u{017C}"), ("\\.Z", "\u{017B}"),
+            ("\\.g", "\u{0121}"), ("\\.G", "\u{0120}"),
+            // Strip formatting commands
+            ("\\textit", ""), ("\\textbf", ""), ("\\textrm", ""),
+            ("\\textsc", ""), ("\\textsf", ""), ("\\texttt", ""),
+            ("\\emph", ""), ("\\mbox", ""),
+        ];
+
+        let mut result = s.to_string();
+        for &(pattern, replacement) in REPLACEMENTS {
+            result = result.replace(pattern, replacement);
+        }
+        // BibTeX tilde = non-breaking space
+        result = result.replace('~', " ");
+        result
     }
 
     result.title = extract_field(bibtex, "title");
